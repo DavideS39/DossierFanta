@@ -1441,7 +1441,10 @@ async function init(){
   try{
     const nameRes = window.storage ? await window.storage.get('my-name', false).catch(()=>null) : null;
     myName = nameRes ? nameRes.value : (localStorage.getItem('df_name') || '');
-  }catch(e){ myName = ''; }
+  }catch(e){ 
+    console.warn('Errore caricamento nome utente:', e.message);
+    myName = ''; 
+  }
   await loadAiSettings();
 loadSortPrefs();
 loadCardFields();
@@ -1458,16 +1461,28 @@ async function loadAiSettings(){
   try{
     const res = window.storage ? await window.storage.get('ai-settings', false).catch(()=>null) : null;
     if(res){ aiSettings = Object.assign(aiSettings, JSON.parse(res.value)); return; }
-  }catch(e){}
+  }catch(e){
+    console.warn('Errore nel caricamento AI settings da storage remoto:', e.message);
+  }
   try{
     const raw = localStorage.getItem('df_ai_settings');
     if(raw) aiSettings = Object.assign(aiSettings, JSON.parse(raw));
-  }catch(e){}
+  }catch(e){
+    console.warn('Errore nel caricamento AI settings da localStorage:', e.message);
+  }
 }
 
 async function saveAiSettings(){
-  try{ if(window.storage) await window.storage.set('ai-settings', JSON.stringify(aiSettings), false); }catch(e){}
-  try{ localStorage.setItem('df_ai_settings', JSON.stringify(aiSettings)); }catch(e){}
+  try{ 
+    if(window.storage) await window.storage.set('ai-settings', JSON.stringify(aiSettings), false); 
+  }catch(e){
+    console.warn('Errore nel salvataggio AI settings su storage remoto:', e.message);
+  }
+  try{ 
+    localStorage.setItem('df_ai_settings', JSON.stringify(aiSettings)); 
+  }catch(e){
+    console.warn('Errore nel salvataggio AI settings su localStorage:', e.message);
+  }
 }
 
 document.getElementById('settingsBtn').onclick = openSettingsModal;
@@ -1594,12 +1609,56 @@ let simSettings = {
 };
 let simFormations = [];
 
-function loadSimSettings(){ try{ const r=localStorage.getItem('df_sim_settings'); if(r) simSettings=Object.assign(simSettings, JSON.parse(r)); }catch(e){} }
-function saveSimSettings(){ try{ localStorage.setItem('df_sim_settings', JSON.stringify(simSettings)); }catch(e){} }
-function loadSimFormations(){ try{ const r=localStorage.getItem('df_sim_formations'); if(r) simFormations=JSON.parse(r); }catch(e){} }
-function saveSimFormations(){ try{ localStorage.setItem('df_sim_formations', JSON.stringify(simFormations)); }catch(e){} }
-function loadSimSelection(){ try{ const r=localStorage.getItem('df_sim_selection'); if(r) simSelectedIds=JSON.parse(r); }catch(e){} }
-function saveSimSelection(){ try{ localStorage.setItem('df_sim_selection', JSON.stringify(simSelectedIds)); }catch(e){} }
+function loadSimSettings(){ 
+  try{ 
+    const r=localStorage.getItem('df_sim_settings'); 
+    if(r) simSettings=Object.assign(simSettings, JSON.parse(r)); 
+  }catch(e){ 
+    console.warn('Errore nel caricamento impostazioni simulazione:', e.message);
+  } 
+}
+
+function saveSimSettings(){ 
+  try{ 
+    localStorage.setItem('df_sim_settings', JSON.stringify(simSettings)); 
+  }catch(e){ 
+    console.warn('Errore nel salvataggio impostazioni simulazione:', e.message);
+  } 
+}
+
+function loadSimFormations(){ 
+  try{ 
+    const r=localStorage.getItem('df_sim_formations'); 
+    if(r) simFormations=JSON.parse(r); 
+  }catch(e){ 
+    console.warn('Errore nel caricamento formazioni simulazione:', e.message);
+  } 
+}
+
+function saveSimFormations(){ 
+  try{ 
+    localStorage.setItem('df_sim_formations', JSON.stringify(simFormations)); 
+  }catch(e){ 
+    console.warn('Errore nel salvataggio formazioni simulazione:', e.message);
+  } 
+}
+
+function loadSimSelection(){ 
+  try{ 
+    const r=localStorage.getItem('df_sim_selection'); 
+    if(r) simSelectedIds=JSON.parse(r); 
+  }catch(e){ 
+    console.warn('Errore nel caricamento selezione simulazione:', e.message);
+  } 
+}
+
+function saveSimSelection(){ 
+  try{ 
+    localStorage.setItem('df_sim_selection', JSON.stringify(simSelectedIds)); 
+  }catch(e){ 
+    console.warn('Errore nel salvataggio selezione simulazione:', e.message);
+  } 
+}
 
 function simGetMedia(p){ const v=p.fmAnnoScorso; return (v!=null && String(v).trim()!=='')?Number(v):null; }
 function simGetPresenze(p){ const v=p.presenzeAnnoScorso; return (v!=null && String(v).trim()!=='')?Number(v):null; }
@@ -2407,16 +2466,57 @@ async function runBulkImport(type){
   if(type === 'creators'){ await runCreatorOpinionsImport(statusEl); return; }
   if(type === 'videos'){ await runPlayerVideosImport(statusEl); return; }
   if(type === 'calendario'){ await runCalendarioImport(statusEl); return; }
+  
+  // Validazione del tipo di importazione
+  if(!['players', 'teams'].includes(type)){
+    statusEl.textContent = 'Tipo di importazione non valido. Usa "players" o "teams".';
+    return;
+  }
+  
   const raw = document.getElementById('importTextarea').value.trim();
+  if(!raw){
+    statusEl.textContent = 'Incolla i dati JSON da importare.';
+    return;
+  }
+  
   let items;
   try{
     items = JSON.parse(raw);
     if(!Array.isArray(items)) throw new Error('Deve essere un array JSON, es. [ {...}, {...} ]');
+    
+    // Validazione struttura elementi
+    const requiredFields = type === 'players' ? ['nome'] : ['nome'];
+    const invalidItems = items.filter((it, idx) => {
+      const missing = requiredFields.filter(f => !it[f]);
+      if(missing.length > 0){
+        console.warn(`Elemento ${idx + 1} manca di: ${missing.join(', ')}`);
+        return true;
+      }
+      return false;
+    });
+    
+    if(invalidItems.length > 0){
+      statusEl.textContent = `Trovati ${invalidItems.length} elementi non validi. Controlla la console per i dettagli.`;
+      return;
+    }
+    
   }catch(e){
+    console.error('Errore parsing JSON import:', e);
     statusEl.textContent = 'JSON non valido: ' + e.message;
     return;
   }
+  
   if(items.length === 0){ statusEl.textContent = 'Nessun elemento da importare.'; return; }
+  
+  // Conferma prima di procedere con import massivi
+  if(items.length > 50){
+    const confirmed = confirm(`Stai per importare ${items.length} elementi. Continuare?`);
+    if(!confirmed){
+      statusEl.textContent = 'Importazione annullata.';
+      return;
+    }
+  }
+  
   statusEl.textContent = `Importazione di ${items.length} elementi...`;
   const table = type==='players' ? 'players' : 'teams';
   const prefix = type==='players' ? 'p' : 't';
@@ -2443,7 +2543,7 @@ async function runBulkImport(type){
     showToast(`${rows.length} elementi importati`);
     setTimeout(() => { const ov = document.getElementById('importOverlay'); if(ov) ov.remove(); }, 900);
   }catch(e){
-    console.error(e);
+    console.error('Errore importazione bulk:', e);
     statusEl.textContent = 'Errore durante l\'importazione: ' + (e.message || e);
   }
 }
@@ -2539,7 +2639,7 @@ async function runCalendarioImport(statusEl){
     showToast(`${dbRows.length} partite importate`);
     setTimeout(() => { const ov = document.getElementById('importOverlay'); if(ov) ov.remove(); }, 1200);
   }catch(e){
-    console.error(e);
+    console.error('Errore importazione calendario:', e);
     statusEl.textContent = 'Errore durante l\'importazione: ' + (e.message || e) + ' — hai creato la tabella calendario_serie_a su Supabase?';
   }
 }
@@ -2595,7 +2695,7 @@ async function runPlayerVideosImport(statusEl){
     showToast(`${dbRows.length} video importati`);
     setTimeout(() => { const ov = document.getElementById('importOverlay'); if(ov) ov.remove(); }, 1400);
   }catch(e){
-    console.error(e);
+    console.error('Errore importazione video:', e);
     statusEl.textContent = 'Errore durante l\'importazione: ' + (e.message || e) + ' — hai creato la tabella player_videos su Supabase?';
   }
 }
@@ -2648,7 +2748,7 @@ async function runCreatorOpinionsImport(statusEl){
     showToast(`${dbRows.length} pareri creator importati`);
     setTimeout(() => { const ov = document.getElementById('importOverlay'); if(ov) ov.remove(); }, 1400);
   }catch(e){
-    console.error(e);
+    console.error('Errore importazione pareri:', e);
     statusEl.textContent = 'Errore durante l\'importazione: ' + (e.message || e) + ' — hai creato la tabella creator_opinions su Supabase?';
   }
 }
@@ -2738,8 +2838,16 @@ document.getElementById('whoBtn').onclick = async () => {
   const n = prompt('Come ti chiami? (per firmare le tue note)', myName || '');
   if(n !== null){
     myName = n.trim();
-    try{ if(window.storage) await window.storage.set('my-name', myName, false); }catch(e){}
-    try{ localStorage.setItem('df_name', myName); }catch(e){}
+    try{ 
+      if(window.storage) await window.storage.set('my-name', myName, false); 
+    }catch(e){
+      console.warn('Errore nel salvataggio nome utente su storage remoto:', e.message);
+    }
+    try{ 
+      localStorage.setItem('df_name', myName); 
+    }catch(e){
+      console.warn('Errore nel salvataggio nome utente su localStorage:', e.message);
+    }
     updateWhoBtn();
   }
 };
@@ -3810,7 +3918,7 @@ async function assignPlayer(playerId, teamName, prezzo){
   try{
     await persistPlayer(p, ['asta']);
   }catch(e){
-    console.error(e);
+    console.error('Errore assegnazione giocatore:', e);
     p.asta = previous;
     render();
     if(currentTab==='asta') renderAsta();
@@ -3832,7 +3940,7 @@ async function unassignPlayer(playerId){
   try{
     await persistPlayer(p, ['asta']);
   }catch(e){
-    console.error(e);
+    console.error('Errore rimozione assegnazione:', e);
     p.asta = previous;
     render();
     if(currentTab==='asta') renderAsta();
@@ -4723,7 +4831,7 @@ if (f.type === 'select') {
     return '<input ' + attr + ' value="' + escapeHtml(Array.isArray(val) ? val.join(', ') : val) + '" placeholder="es. must buy, occasione">';
   }
   if (f.type === 'number') {
-    return '<input ' + attr + ' type="number"' + (f.step ? ' step="' + f.step + '"' : '') + (f.min != null ? ' min="' + f.min + '"' : '') + (f.max != null ? ' max="' + f.max + '"' : '') + ' value="' + val + '">';
+    return '<input ' + attr + ' type="number"' + (f.step ? ' step="' + f.step + '"' : '') + (f.min != null ? ' min="' + f.min + '"' : '') + (f.max != null ? ' max="' + f.max + '"' : '') + ' value="' + escapeHtml(val) + '">';
   }
   return '<input ' + attr + ' type="text" value="' + escapeHtml(val) + '">';
 }
@@ -4960,7 +5068,7 @@ data.custom = custom;
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
   } catch(e) {
-    console.error(e);
+    console.error('Errore salvataggio giocatore:', e);
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
@@ -5446,7 +5554,7 @@ async function doTeamAutosaveScoped(winId) {
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
   } catch(e) {
-    console.error(e);
+    console.error('Errore salvataggio squadra:', e);
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
@@ -5800,7 +5908,7 @@ async function persistTeamBoardScoped(winId) {
     }
     if (statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
   } catch(e) {
-    console.error(e);
+    console.error('Errore salvataggio lavagna tattica:', e);
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
 }
@@ -6320,7 +6428,7 @@ async function persistTeamBoard(){
     }
     if(statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
   }catch(e){
-    console.error(e);
+    console.error('Errore persistenza lavagna:', e);
     if(statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
 }
@@ -6782,7 +6890,7 @@ data.custom = custom;
     const statusEl = document.getElementById('saveStatus');
     if(statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
   }catch(e){
-    console.error(e);
+    console.error('Errore persistenza giocatore:', e);
     const statusEl = document.getElementById('saveStatus');
     if(statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
