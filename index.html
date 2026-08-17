@@ -1069,6 +1069,7 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
   <div id="listView">
     <div class="searchbar">
 <input type="text" id="searchInput" placeholder="Cerca ovunque: nome, note, valutazioni, tag...">
+<button class="btn small" id="addPlayerQuickBtn" style="margin-left:8px; padding:6px 10px; font-size:11px;">+ Nuovo giocatore</button>
 </div>
 <div class="controls-panel">
 <div class="control-group">
@@ -2435,6 +2436,7 @@ function openImportModal(){
   document.getElementById('closeImport').onclick = () => overlay.remove();
   document.getElementById('cancelImport').onclick = () => overlay.remove();
   document.getElementById('runImport').onclick = () => runBulkImport(importType);
+  document.getElementById('addPlayerQuickBtn').onclick = () => { openEditor('player', null); };
   document.getElementById('importFileInput').onchange = (e) => {
     const file = e.target.files[0];
     if(!file) return;
