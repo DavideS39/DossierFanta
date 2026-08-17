@@ -4965,8 +4965,9 @@ data.custom = custom;
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
   renderAllTagsDatalist();
-  render();
-  if (currentTab === 'compare') renderCompare();
+  // Non fare render() completo durante autosave per non perdere il focus negli input
+  // render();
+  // if (currentTab === 'compare') renderCompare();
 }
 
 function renderCustomFieldsScoped(winId) {
@@ -5158,8 +5159,10 @@ async function generateAiSummaryScoped(winId, forceMode) {
     p.aiSummary = aiSummary;
     p.aiRequest = null;
     await persistPlayer(p, ['aiSummary','aiRequest']);
-    render();
-    if (currentTab === 'compare') renderCompare();
+    renderAllTagsDatalist();
+    // Non fare render() completo dopo generazione AI per non perdere il focus
+    // render();
+    // if (currentTab === 'compare') renderCompare();
     refreshAiSummaryAreaScoped(winId, p);
     showToast(parsed.parseFailed ? 'Riassunto generato ma formato inatteso' : 'Riassunto generato');
   } catch(e) {
@@ -5180,7 +5183,9 @@ async function requestAsyncSummaryScoped(winId) {
   if (!p) { showToast('Salva prima almeno il nome del giocatore'); return; }
   p.aiRequest = { status: 'pending', requestedBy: myName || 'anonimo', requestedAt: new Date().toISOString() };
   await persistPlayer(p, ['aiRequest']);
-  render();
+  renderAllTagsDatalist();
+  // Non fare render() completo per non perdere il focus
+  // render();
   refreshAiSummaryAreaScoped(winId, p);
   showToast('Richiesta in coda: verrà elaborata quando accendi lo script sul PC');
 }
@@ -5445,10 +5450,9 @@ async function doTeamAutosaveScoped(winId) {
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
-  renderTeamDatalist();
-  renderAllTeamTagsDatalist();
-  render();
-  if (currentTab === 'teams') renderTeams();
+  // Non aggiornare i datalist durante autosave per evitare di perdere il focus negli input
+  // renderTeamDatalist();
+  // renderAllTeamTagsDatalist();
 }
 
 // ---------- SCOPED TACTICAL BOARD ----------
@@ -6558,8 +6562,10 @@ async function generateAiSummary(forceMode){
     p.aiSummary = aiSummary;
     p.aiRequest = null;
     await persistPlayer(p, ['aiSummary','aiRequest']);
-    render();
-    if(currentTab==='compare') renderCompare();
+    renderAllTagsDatalist();
+    // Non fare render() completo dopo generazione AI per non perdere il focus
+    // render();
+    // if(currentTab==='compare') renderCompare();
     refreshAiSummaryAreaIfEditing(p);
     showToast(parsed.parseFailed ? 'Riassunto generato ma formato inatteso, mostro testo grezzo' : 'Riassunto generato');
   }catch(e){
@@ -6578,7 +6584,9 @@ async function requestAsyncSummary(){
   if(!p){ showToast('Salva prima almeno il nome del giocatore'); return; }
   p.aiRequest = { status:'pending', requestedBy: myName||'anonimo', requestedAt: new Date().toISOString() };
   await persistPlayer(p, ['aiRequest']);
-  render();
+  renderAllTagsDatalist();
+  // Non fare render() completo per non perdere il focus
+  // render();
   refreshAiSummaryAreaIfEditing(p);
   showToast('Richiesta in coda: verrà elaborata quando accendi lo script sul PC');
 }
@@ -6588,7 +6596,9 @@ async function cancelAsyncRequest(){
   if(!p) return;
   p.aiRequest = null;
   await persistPlayer(p, ['aiRequest']);
-  render();
+  renderAllTagsDatalist();
+  // Non fare render() completo per non perdere il focus
+  // render();
   refreshAiSummaryAreaIfEditing(p);
   showToast('Richiesta annullata');
 }
@@ -6779,9 +6789,10 @@ data.custom = custom;
   if(table==='teams') renderTeamDatalist();
   if(table==='teams') renderAllTeamTagsDatalist();
   if(table==='players') renderAllTagsDatalist();
-  render();
-  if(currentTab==='teams') renderTeams();
-  if(currentTab==='compare') renderCompare();
+  // Non fare render() completo durante autosave per non perdere il focus negli input
+  // render();
+  // if(currentTab==='teams') renderTeams();
+  // if(currentTab==='compare') renderCompare();
 }
 
 function closeEditor(){
@@ -6809,6 +6820,7 @@ async function removeRecord(type, id){
   try{ await sb.from(table).delete().eq('id', id); }catch(e){ showToast('Errore eliminazione'); return; }
   if(type==='player'){ players = players.filter(p=>p.id!==id); compareIds = compareIds.filter(x=>x!==id); renderAllTagsDatalist(); }
   else { teams = teams.filter(t=>t.id!==id); renderTeamDatalist(); }
+  // Dopo eliminazione, fare render() completo è corretto perché l'elemento non esiste più
   render();
   if(currentTab==='teams') renderTeams();
   if(currentTab==='compare') renderCompare();
