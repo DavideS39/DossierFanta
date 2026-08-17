@@ -3051,7 +3051,14 @@ document.getElementById('searchInput').oninput = () => {
 document.getElementById('roleFilter').onchange = render;
 document.getElementById('scoutingFilter').onchange = render;
 document.getElementById('fasciaFilter').onchange = render;
-document.getElementById('sortBy').onchange = () => { try{ localStorage.setItem('df_sort_by', document.getElementById('sortBy').value); }catch(e){} render(); };
+document.getElementById('sortBy').onchange = () => { 
+  try{ 
+    localStorage.setItem('df_sort_by', document.getElementById('sortBy').value); 
+  }catch(e){
+    console.warn('Errore salvataggio preferenza ordinamento:', e.message);
+  } 
+  render(); 
+};
 document.getElementById('sortDirBtn').onclick = toggleSortDir;
 document.getElementById('posRealeFilter').onchange = render;
 
@@ -3339,7 +3346,7 @@ return (a.nome||'').localeCompare(b.nome||'');
 }
 function toggleSortDir(){
 sortDir = (sortDir === 'asc') ? 'desc' : 'asc';
-try{ localStorage.setItem('df_sort_dir', sortDir); }catch(e){}
+try{ localStorage.setItem('df_sort_dir', sortDir); }catch(e){ console.warn('Errore salvataggio direzione ordinamento:', e.message); }
 updateSortDirBtn();
 render();
 }
@@ -3356,7 +3363,7 @@ if(d === 'asc' || d === 'desc') sortDir = d;
 const k = localStorage.getItem('df_sort_by');
 const sel = document.getElementById('sortBy');
 if(k && sel && [...sel.options].some(o => o.value === k)) sel.value = k;
-}catch(e){}
+}catch(e){ console.warn('Errore caricamento preferenze ordinamento:', e.message); }
 updateSortDirBtn();
 }
 const CARD_FIELD_META = [
@@ -3384,10 +3391,10 @@ if(raw){
 const arr = JSON.parse(raw);
 if(Array.isArray(arr) && arr.length) cardFields = arr.filter(k => CARD_FIELD_META.some(m=>m.k===k));
 }
-}catch(e){}
+}catch(e){ console.warn('Errore caricamento campi scheda:', e.message); }
 }
 function saveCardFields(){
-try{ localStorage.setItem('df_card_fields', JSON.stringify(cardFields)); }catch(e){}
+try{ localStorage.setItem('df_card_fields', JSON.stringify(cardFields)); }catch(e){ console.warn('Errore salvataggio campi scheda:', e.message); }
 }
 function cardFieldHtml(p, k){
 const meta = CARD_FIELD_META.find(m=>m.k===k);
@@ -5072,7 +5079,8 @@ data.custom = custom;
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
-  renderAllTagsDatalist();
+  // Non aggiornare i datalist durante autosave per evitare di perdere il focus negli input
+  // renderAllTagsDatalist();
   // Non fare render() completo durante autosave per non perdere il focus negli input
   // render();
   // if (currentTab === 'compare') renderCompare();
@@ -5267,7 +5275,8 @@ async function generateAiSummaryScoped(winId, forceMode) {
     p.aiSummary = aiSummary;
     p.aiRequest = null;
     await persistPlayer(p, ['aiSummary','aiRequest']);
-    renderAllTagsDatalist();
+    // Non aggiornare i datalist dopo generazione AI per evitare di perdere il focus
+    // renderAllTagsDatalist();
     // Non fare render() completo dopo generazione AI per non perdere il focus
     // render();
     // if (currentTab === 'compare') renderCompare();
@@ -5291,7 +5300,8 @@ async function requestAsyncSummaryScoped(winId) {
   if (!p) { showToast('Salva prima almeno il nome del giocatore'); return; }
   p.aiRequest = { status: 'pending', requestedBy: myName || 'anonimo', requestedAt: new Date().toISOString() };
   await persistPlayer(p, ['aiRequest']);
-  renderAllTagsDatalist();
+  // Non aggiornare i datalist dopo richiesta AI per evitare di perdere il focus
+  // renderAllTagsDatalist();
   // Non fare render() completo per non perdere il focus
   // render();
   refreshAiSummaryAreaScoped(winId, p);
@@ -5557,6 +5567,7 @@ async function doTeamAutosaveScoped(winId) {
     console.error('Errore salvataggio squadra:', e);
     const statusEl = $f(body, 'saveStatus');
     if (statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
+    showToast('Errore nel salvataggio automatico della squadra');
   }
   // Non aggiornare i datalist durante autosave per evitare di perdere il focus negli input
   // renderTeamDatalist();
@@ -5920,8 +5931,14 @@ function refreshTeamWindowsForRecord(rec) {
       const body = win.body;
       const cw = $f(body, 'conflictWarning');
       if (cw) cw.style.display = 'block';
-      // Refresh tactical board if no gesture in progress
-      if (!win.state.draggingPositionId && !win.state.currentStroke) {
+      // Refresh tactical board only if no interaction is in progress
+      // Check for: dragging, drawing, OR active input focus on reserve fields
+      const activeElement = document.activeElement;
+      const isReserveInputActive = activeElement && (
+        activeElement.dataset?.field === 'posRiservaInput' ||
+        activeElement.classList?.contains('tag-chip-input')
+      );
+      if (!win.state.draggingPositionId && !win.state.currentStroke && !isReserveInputActive) {
         const keepActiveId = win.state.activeLavagnaId;
         const keepMode = win.state.boardMode;
         const keepSelected = win.state.selectedPositionId;
@@ -6670,7 +6687,8 @@ async function generateAiSummary(forceMode){
     p.aiSummary = aiSummary;
     p.aiRequest = null;
     await persistPlayer(p, ['aiSummary','aiRequest']);
-    renderAllTagsDatalist();
+    // Non aggiornare i datalist dopo generazione AI per evitare di perdere il focus
+    // renderAllTagsDatalist();
     // Non fare render() completo dopo generazione AI per non perdere il focus
     // render();
     // if(currentTab==='compare') renderCompare();
@@ -6692,7 +6710,8 @@ async function requestAsyncSummary(){
   if(!p){ showToast('Salva prima almeno il nome del giocatore'); return; }
   p.aiRequest = { status:'pending', requestedBy: myName||'anonimo', requestedAt: new Date().toISOString() };
   await persistPlayer(p, ['aiRequest']);
-  renderAllTagsDatalist();
+  // Non aggiornare i datalist dopo richiesta AI per evitare di perdere il focus
+  // renderAllTagsDatalist();
   // Non fare render() completo per non perdere il focus
   // render();
   refreshAiSummaryAreaIfEditing(p);
@@ -6704,7 +6723,8 @@ async function cancelAsyncRequest(){
   if(!p) return;
   p.aiRequest = null;
   await persistPlayer(p, ['aiRequest']);
-  renderAllTagsDatalist();
+  // Non aggiornare i datalist dopo annullamento AI per evitare di perdere il focus
+  // renderAllTagsDatalist();
   // Non fare render() completo per non perdere il focus
   // render();
   refreshAiSummaryAreaIfEditing(p);
@@ -6894,9 +6914,10 @@ data.custom = custom;
     const statusEl = document.getElementById('saveStatus');
     if(statusEl) statusEl.textContent = 'Errore di salvataggio, controlla la connessione';
   }
-  if(table==='teams') renderTeamDatalist();
-  if(table==='teams') renderAllTeamTagsDatalist();
-  if(table==='players') renderAllTagsDatalist();
+  // Non aggiornare i datalist durante autosave per non perdere il focus negli input
+  // if(table==='teams') renderTeamDatalist();
+  // if(table==='teams') renderAllTeamTagsDatalist();
+  // if(table==='players') renderAllTagsDatalist();
   // Non fare render() completo durante autosave per non perdere il focus negli input
   // render();
   // if(currentTab==='teams') renderTeams();
@@ -7062,11 +7083,11 @@ let wrSettings = {
 const WR_SLOT_REPARTO = {'POR':'P','TD':'D','DC':'D','TS':'D','CC':'C','CDC':'C','COC':'C','ED':'C','ES':'C','AD':'A','AS':'A','PU':'A'};
 
 function wrLoadState(){
-  try{ const f=localStorage.getItem('df_wr_formation'); if(f) wrFormation=Object.assign(wrFormation, JSON.parse(f)); }catch(e){}
-  try{ const s=localStorage.getItem('df_wr_settings'); if(s) wrSettings=Object.assign(wrSettings, JSON.parse(s)); }catch(e){}
+  try{ const f=localStorage.getItem('df_wr_formation'); if(f) wrFormation=Object.assign(wrFormation, JSON.parse(f)); }catch(e){ console.warn('Errore caricamento formazione War Room:', e.message); }
+  try{ const s=localStorage.getItem('df_wr_settings'); if(s) wrSettings=Object.assign(wrSettings, JSON.parse(s)); }catch(e){ console.warn('Errore caricamento impostazioni War Room:', e.message); }
 }
-function wrSaveFormation(){ try{ localStorage.setItem('df_wr_formation', JSON.stringify(wrFormation)); }catch(e){} }
-function wrSaveSettings(){ try{ localStorage.setItem('df_wr_settings', JSON.stringify(wrSettings)); }catch(e){} }
+function wrSaveFormation(){ try{ localStorage.setItem('df_wr_formation', JSON.stringify(wrFormation)); }catch(e){ console.warn('Errore salvataggio formazione War Room:', e.message); } }
+function wrSaveSettings(){ try{ localStorage.setItem('df_wr_settings', JSON.stringify(wrSettings)); }catch(e){ console.warn('Errore salvataggio impostazioni War Room:', e.message); } }
 
 function wrMyTeam(){ return leagueTeams.find(t=>t.isMine)||null; }
 function wrMyPurchases(){ const m=wrMyTeam(); if(!m) return []; return players.filter(p=>p.asta && p.asta.team===m.nome); }
@@ -7517,11 +7538,11 @@ function dfApplyCorrectFasce(){
     if(typeof wrSettings!=='undefined' && wrSettings) wrSettings.fasce = DF_MOD_DIFESA_FASCE.slice();
     if(typeof simSettings!=='undefined' && simSettings) simSettings.fasce = DF_MOD_DIFESA_FASCE.slice();
     try{
-      let wr={}; try{wr=JSON.parse(localStorage.getItem('df_wr_settings')||'{}');}catch(e){}
+      let wr={}; try{wr=JSON.parse(localStorage.getItem('df_wr_settings')||'{}');}catch(e){ console.warn('Errore parsing wr_settings:', e.message); }
       wr.fasce=DF_MOD_DIFESA_FASCE; localStorage.setItem('df_wr_settings', JSON.stringify(wr));
-      let sm={}; try{sm=JSON.parse(localStorage.getItem('df_sim_settings')||'{}');}catch(e){}
+      let sm={}; try{sm=JSON.parse(localStorage.getItem('df_sim_settings')||'{}');}catch(e){ console.warn('Errore parsing sim_settings:', e.message); }
       sm.fasce=DF_MOD_DIFESA_FASCE; localStorage.setItem('df_sim_settings', JSON.stringify(sm));
-    }catch(e){}
+    }catch(e){ console.warn('Errore applicazione fasce corrette:', e.message); }
   }catch(e){ console.warn('dfApplyCorrectFasce', e); }
 }
 
@@ -7955,7 +7976,7 @@ if(typeof wrSimTeam==='function'){
 try{
 var wrResult=wrSimTeam();
 if(wrResult&&wrResult.mediaBase){projMedia=wrResult.mediaBase;}
-}catch(e){}
+}catch(e){ console.warn('Errore simulazione War Room:', e.message); }
 }
 var html='<div class="pr-sim-grid">';
 html+='<div class="pr-sim-stat"><div class="num">'+projMedia.toFixed(2)+'</div><div class="lbl">Media squadra</div></div>';
@@ -8373,7 +8394,7 @@ function bindPianoEvents(sec){
     };})(fields[i]);
   }
 }
-try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"public",table:"roster_plans"},function(){loadRosterPlans();}).subscribe();}catch(e){}
+try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"public",table:"roster_plans"},function(){loadRosterPlans();}).subscribe();}catch(e){ console.warn('Errore sottoscrizione realtime roster_plans:', e.message); }
 // FINE KIT v17
 
 
@@ -8947,6 +8968,17 @@ __v20start();
 })();
 // ===== FINE KIT v20 =====
 
+// Funzione per aggiunta rapida giocatore (pulsante nascosto)
+function openQuickAddPlayer() {
+    if (typeof showAddPlayerModal === 'function') {
+        showAddPlayerModal();
+    } else {
+        alert('Funzione di aggiunta giocatore non disponibile in questo momento.');
+    }
+}
 </script>
+<div id="quick-add-container" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999;">
+    <button id="quickAddPlayerBtn" title="Aggiungi Giocatore Rapido" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.4); font-size: 16px; width: 30px; height: 30px; cursor: pointer; border-radius: 50%; transition: all 0.3s;" onmouseover="this.style.background='rgba(0,128,0,0.5)';this.style.color='#fff'" onmouseout="this.style.background='rgba(0,0,0,0.3)';this.style.color='rgba(255,255,255,0.4)'">+</button>
+</div>
 </body>
 </html>
