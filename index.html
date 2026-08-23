@@ -50,6 +50,27 @@
   .brand h1{ margin:0; font-size:19px; letter-spacing:0.02em; font-weight:800; text-transform:uppercase; }
   .brand h1 span{ color:var(--amber); }
   .brand .who{ font-size:11px; color:var(--chalk-dim); cursor:pointer; border:1px solid var(--line); padding:4px 8px; border-radius:20px; white-space:nowrap; }
+.header-tools-bar{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; align-items:flex-start; }
+.tool-group{ display:flex; flex-direction:column; gap:4px; flex:1 1 auto; min-width:0; }
+.tool-group-label{ font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.09em; color:var(--amber); opacity:0.65; padding-left:3px; }
+.tool-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.tool-chip{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--chalk); cursor:pointer; border:1px solid var(--line); padding:5px 11px; border-radius:20px; white-space:nowrap; background:var(--pitch); transition:background .15s, border-color .15s, color .15s, transform .15s; position:relative; font-family:inherit; }
+.tool-chip:hover{ border-color:var(--amber); color:var(--amber); transform:translateY(-1px); background:rgba(217,164,65,0.08); }
+.tool-chip:active{ transform:translateY(0); }
+.tool-chip:focus-visible{ outline:none; border-color:var(--amber); box-shadow:0 0 0 2px rgba(217,164,65,0.3); }
+.tool-chip .tool-icon{ font-size:13px; line-height:1; }
+.tool-chip .tool-text{ font-weight:600; }
+.tool-chip .tool-badge{ position:absolute; top:-5px; right:-5px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--red); color:#fff; font-size:9.5px; font-weight:800; display:flex; align-items:center; justify-content:center; line-height:1; box-shadow:0 0 0 2px var(--pitch-dark); }
+.tool-chip[data-attention="true"]{ border-color:var(--amber); color:var(--amber); }
+.tool-chip[data-attention="true"] .tool-icon{ animation:toolPulse 1.8s ease-in-out infinite; }
+@keyframes toolPulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
+@media (prefers-reduced-motion: reduce){ .tool-chip .tool-icon{ animation:none !important; } }
+@media (max-width:520px){
+  .tool-group-label{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  .tool-chip{ padding:5px 9px; font-size:11px; }
+  .tool-chip .tool-text{ display:none; }
+  .tool-chip.compact-keep-text .tool-text{ display:inline; }
+}
 .header-tools{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
 .header-tools .who{ font-size:11px; color:var(--chalk-dim); cursor:pointer; border:1px solid var(--line); padding:5px 11px; border-radius:20px; white-space:nowrap; background:var(--pitch); transition:all .15s; }
 .header-tools .who:hover{ border-color:var(--amber); color:var(--amber); transform:translateY(-1px); }
@@ -75,7 +96,7 @@
 .controls-panel select:focus{ outline:none; border-color:var(--grass); }
 .controls-panel .btn{ background:var(--pitch-light); transition:border-color .15s; }
 .controls-panel .btn:hover{ border-color:rgba(217,164,65,0.45); }
-  .fab{ position:fixed; bottom:20px; right:20px; z-index:30; background:var(--amber); color:var(--ink); border:none; border-radius:50%; width:56px; height:56px; font-size:26px; font-weight:900; box-shadow:0 6px 18px rgba(0,0,0,0.4); }
+  /* (CSS .fab rimosso — il pulsante "+ Nuovo giocatore" è nella searchbar in alto, basta quello) */
 
   .card{ background:var(--pitch); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; position:relative; overflow:hidden; }
   .card::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; }
@@ -183,8 +204,10 @@
   .compare-picker[open] summary::before{ content:'▾ '; }
   .compare-picker summary .count-badge{ font-weight:400; color:var(--chalk-dim); font-size:12px; }
   .pill-list{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .pill{ font-size:12px; background:var(--pitch-light); border:1px solid var(--line); border-radius:20px; padding:5px 10px; cursor:pointer; }
+  .pill{ font-size:12px; background:var(--pitch-light); border:1px solid var(--line); border-radius:20px; padding:5px 10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; margin:0 4px 4px 0; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pill:hover{ border-color:var(--amber); color:var(--amber); }
   .pill.selected{ background:var(--amber); color:var(--ink); border-color:var(--amber); font-weight:700; }
+  .compare-search-results{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; max-height:200px; overflow-y:auto; padding:4px; background:var(--pitch); border:1px solid var(--line); border-radius:8px; }
   .compare-empty{ text-align:center; color:var(--chalk-dim); padding:40px 20px; font-size:14px; }
 
   .compare-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:10px; }
@@ -1039,6 +1062,106 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 @media (prefers-reduced-motion: reduce){.v20-ric-chip,.v20-ric-chip:hover,.v20-toggle,.v20-toggle:hover{transform:none;transition:none;}}
 /* ===== FINE KIT v20 CSS ===== */
 
+/* ========== ABBINAMENTI (kit 22 — UI overhaul + bugfix logici) ========== */
+.pair-modal{ max-width:840px; }
+.pair-modal-intro{ margin-bottom:14px; }
+.pair-intro-text{ font-size:12.5px; color:var(--chalk-dim); line-height:1.55; padding:10px 12px; background:var(--pitch); border:1px solid var(--line); border-radius:8px; }
+.pair-intro-text b{ color:var(--chalk); font-weight:600; }
+.pair-warn-inline{ margin-top:8px; padding:8px 11px; background:rgba(217,164,65,0.1); border:1px solid rgba(217,164,65,0.3); border-radius:8px; font-size:11.5px; color:var(--chalk); line-height:1.5; }
+.pair-warn-list{ margin-top:6px; }
+.pair-warn-list summary{ cursor:pointer; font-size:11px; color:var(--amber); }
+.pair-warn-list ul{ margin:6px 0 0; padding-left:18px; font-size:11px; color:var(--chalk-dim); }
+.pair-stats-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
+.pair-stat{ background:var(--pitch); border:1px solid var(--line); border-radius:8px; padding:8px 6px; text-align:center; }
+.pair-stat-num{ font-size:18px; font-weight:800; color:var(--amber); font-family:'JetBrains Mono', monospace; line-height:1.1; }
+.pair-stat-lbl{ font-size:9.5px; font-weight:700; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.05em; margin-top:3px; }
+.pair-list{ display:flex; flex-direction:column; gap:8px; }
+.pair-card{ background:var(--pitch); border:1px solid var(--line); border-radius:10px; overflow:hidden; transition:border-color .15s, transform .15s; }
+.pair-card:hover{ border-color:rgba(217,164,65,0.4); }
+.pair-card.expanded{ border-color:var(--amber); }
+.pair-card-header{ display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; background:linear-gradient(180deg, var(--pitch-dark) 0%, var(--pitch) 100%); user-select:none; }
+.pair-rank{ font-size:13px; font-weight:800; color:var(--amber); min-width:30px; font-family:'JetBrains Mono', monospace; }
+.pair-players{ flex:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.pair-player-summary{ display:inline-flex; align-items:baseline; gap:4px; }
+.pair-player-name{ font-size:13.5px; font-weight:700; color:var(--chalk); cursor:pointer; }
+.pair-player-name:hover{ color:var(--amber); text-decoration:underline; }
+.pair-player-team{ font-size:11px; color:var(--chalk-dim); }
+.pair-plus{ color:var(--chalk-dim); font-weight:700; padding:0 2px; }
+.pair-score-block{ text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.pair-score-badge{ font-size:9.5px; font-weight:800; padding:2px 7px; border-radius:10px; border:1px solid; background:rgba(0,0,0,0.2); white-space:nowrap; }
+.pair-score-num{ font-size:20px; font-weight:800; color:var(--chalk); font-family:'JetBrains Mono', monospace; line-height:1; }
+.pair-score-unit{ font-size:11px; color:var(--chalk-dim); font-weight:600; }
+.pair-score-label{ font-size:9px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.05em; }
+.pair-expand-hint{ font-size:14px; color:var(--chalk-dim); transition:transform .2s; margin-left:4px; }
+.pair-card.expanded .pair-expand-hint{ transform:rotate(90deg); }
+.pair-meta-line{ display:flex; gap:14px; padding:6px 12px; font-size:11px; color:var(--chalk-dim); border-top:1px solid var(--line); flex-wrap:wrap; background:var(--pitch); }
+.pair-meta-item{ display:inline-flex; align-items:center; gap:4px; }
+.pair-meta-ic{ font-size:11px; }
+.pair-meta-item b{ color:var(--chalk); }
+.pairs-mini-cal{ display:flex; gap:1px; padding:6px 12px; overflow-x:auto; background:var(--pitch-dark); }
+.pairs-mini-cal .day-cell{ width:13px; height:18px; flex:0 0 13px; border-radius:2px; font-size:8px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.7); cursor:default; }
+.pairs-mini-cal .day-easy{ background:rgba(76,154,106,0.75); }
+.pairs-mini-cal .day-mid{ background:rgba(217,164,65,0.65); }
+.pairs-mini-cal .day-hard{ background:rgba(193,84,63,0.75); }
+.pairs-mini-cal .day-none{ background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.2); }
+.pairs-mini-cal .day-conflict{ box-shadow:inset 0 0 0 1.5px var(--red); position:relative; }
+.pair-details{ display:none; padding:10px 12px 14px; border-top:1px solid var(--line); background:var(--pitch); }
+.pair-card.expanded .pair-details{ display:block; animation:pairFadeIn .18s ease; }
+@keyframes pairFadeIn{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
+.pair-players-info{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 12px; }
+.pair-player-info{ background:var(--pitch-light); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+.pair-player-info.empty{ text-align:center; color:var(--chalk-dim); }
+.ppi-name{ font-weight:700; font-size:13px; color:var(--chalk); margin-bottom:2px; }
+.ppi-team{ font-size:11px; color:var(--blue); margin-bottom:6px; }
+.ppi-rows{ display:flex; flex-direction:column; gap:2px; }
+.ppi-row{ display:flex; justify-content:space-between; font-size:11px; color:var(--chalk-dim); }
+.ppi-row b{ color:var(--chalk); font-weight:600; }
+.pair-detail-table-wrap{ overflow-x:auto; margin-top:4px; }
+.pair-detail-table{ width:100%; border-collapse:collapse; font-size:11.5px; }
+.pair-detail-table th{ text-align:left; padding:5px 8px; font-size:9.5px; font-weight:800; text-transform:uppercase; color:var(--amber); border-bottom:1px solid var(--line); background:var(--pitch); }
+.pair-detail-table td{ padding:4px 8px; border-bottom:1px solid rgba(255,255,255,0.04); font-family:'JetBrains Mono', monospace; }
+.pair-detail-table .cell-g{ color:var(--chalk-dim); font-weight:600; }
+.pair-detail-table .cell-hard{ color:var(--red); font-weight:600; }
+.pair-detail-table .cell-best{ color:var(--grass); font-weight:700; }
+.pair-detail-table .cell-na{ color:var(--chalk-dim); opacity:0.4; }
+.pair-detail-table tr.row-conflict{ background:rgba(193,84,63,0.06); }
+.pair-detail-table tr.row-none{ opacity:0.5; }
+.pair-detail-table .conflict-mark{ color:var(--red); margin-left:4px; }
+.pair-show-all-wrap{ text-align:center; padding:10px 0 4px; }
+.pair-empty-state{ text-align:center; padding:30px 20px; }
+.pair-empty-icon{ font-size:48px; opacity:0.5; margin-bottom:10px; }
+.pair-empty-title{ font-size:16px; font-weight:700; color:var(--chalk); margin-bottom:6px; }
+.pair-empty-text{ font-size:12px; color:var(--chalk-dim); line-height:1.5; max-width:480px; margin:0 auto; }
+.pair-empty-text b{ color:var(--chalk); }
+@media (max-width:520px){
+  .pair-stats-strip{ grid-template-columns:repeat(2,1fr); }
+  .pair-card-header{ flex-wrap:wrap; }
+  .pair-score-block{ flex-direction:row; align-items:center; gap:8px; flex-wrap:wrap; }
+  .pair-players-info{ grid-template-columns:1fr; }
+}
+@media (prefers-reduced-motion: reduce){
+  .pair-card{ transition:none; }
+  .pair-card:hover{ transform:none; }
+  .pair-card.expanded .pair-details{ animation:none; }
+}
+/* ========== ABBINAMENTI · mode toggles + side + WM adaptation ========== */
+.pair-mode-toggles{ display:inline-flex; gap:2px; margin-left:auto; margin-right:8px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--pitch); flex-shrink:0; }
+.pair-mode-toggles button{ background:transparent; border:none; color:var(--chalk-dim); font-size:13px; padding:5px 9px; cursor:pointer; font-family:inherit; line-height:1; min-width:28px; }
+.pair-mode-toggles button:hover{ background:rgba(217,164,65,0.15); color:var(--chalk); }
+.pair-mode-toggles button.active{ background:var(--amber); color:var(--ink); font-weight:700; }
+.overlay.pair-side{ background:rgba(6,15,10,0.45); align-items:stretch; justify-content:flex-end; z-index:80; }
+.overlay.pair-side .modal.pair-modal{ width:min(560px, 50vw); max-width:560px; max-height:100vh; border-radius:16px 0 0 16px; margin:0; box-shadow:-8px 0 32px rgba(0,0,0,0.45); }
+.overlay.pair-side.pair-side-left{ justify-content:flex-start; }
+.overlay.pair-side.pair-side-left .modal.pair-modal{ border-radius:0 16px 16px 0; box-shadow:8px 0 32px rgba(0,0,0,0.45); }
+/* WM body adaptation: niente padding extra del .modal, padding gestito dal wm-body */
+.wm-window .pair-modal{ max-width:none; padding:0; border:none; box-shadow:none; background:transparent; max-height:none; }
+.wm-window .pair-modal .modal-head{ padding:8px 12px; border-bottom:1px solid var(--line); }
+.wm-window .pair-modal .modal-actions{ padding:8px 12px 12px; }
+.wm-window .pair-mode-toggles{ margin-right:0; }
+@media (max-width:520px){
+  .overlay.pair-side{ align-items:flex-end; justify-content:center; }
+  .overlay.pair-side .modal.pair-modal{ width:100vw; max-width:100vw; max-height:90vh; border-radius:16px 16px 0 0; box-shadow:0 -8px 32px rgba(0,0,0,0.45); }
+}
 </style>
 </head>
 <body>
@@ -1049,13 +1172,24 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 <div class="who" id="whoBtn">👤 imposta nome</div>
 </div>
 <div class="status-line"><span class="dot" id="connDot"></span><span id="connText">Connessione...</span></div>
-<div class="header-tools">
-<div class="who" id="importBtn">⬆️ Importa</div>
-<div class="who" id="cleanupBtn">🌍 Fuori rosa</div>
-<div class="who" id="gkPairsBtn">🧤 Portieri</div>
-<div class="who" id="attackerPairsBtn">⚔️ Attaccanti</div>
-<div class="who" id="scoreSimBtn">🧮 Simulatore</div>
-<div class="who" id="settingsBtn">⚙️ AI</div>
+<div class="header-tools-bar">
+  <div class="tool-group" data-group="tools">
+    <span class="tool-group-label">Strumenti</span>
+    <div class="tool-chips">
+      <button type="button" class="tool-chip" id="gkPairsBtn" title="Calcola le migliori coppie di portieri da alternare in base al calendario"><span class="tool-icon">🧤</span><span class="tool-text">Portieri</span></button>
+      <button type="button" class="tool-chip" id="attackerPairsBtn" title="Calcola le migliori coppie di attaccanti complementari in base al calendario"><span class="tool-icon">⚔️</span><span class="tool-text">Attaccanti</span></button>
+      <button type="button" class="tool-chip" id="scoreSimBtn" title="Simula il punteggio della tua formazione"><span class="tool-icon">🧮</span><span class="tool-text">Simulatore</span></button>
+      <button type="button" class="tool-chip" id="dfProjBtn" title="Proiezioni FM: chi salirà, chi scenderà"><span class="tool-icon">🔮</span><span class="tool-text">Proiezioni</span></button>
+    </div>
+  </div>
+  <div class="tool-group" data-group="data">
+    <span class="tool-group-label">Dati</span>
+    <div class="tool-chips">
+      <button type="button" class="tool-chip" id="importBtn" title="Importa in blocco da JSON o file"><span class="tool-icon">⬆️</span><span class="tool-text">Importa</span></button>
+      <button type="button" class="tool-chip" id="cleanupBtn" title="Giocatori segnalati fuori Serie A"><span class="tool-icon">🌍</span><span class="tool-text">Fuori rosa</span><span class="tool-badge" id="cleanupBadge" style="display:none;">0</span></button>
+      <button type="button" class="tool-chip" id="settingsBtn" title="Impostazioni AI (OpenRouter · LM Studio · Ollama)"><span class="tool-icon">⚙️</span><span class="tool-text">AI</span></button>
+    </div>
+  </div>
 </div>
   <div class="tabs">
     <div class="tab active" data-tab="list">Rosa</div>
@@ -1092,6 +1226,15 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 <option value="complete">✅ Completo</option>
 <option value="incomplete">⚠️ Incompleto</option>
 </select>
+<select id="unassignedFilter" title="Mostra solo giocatori non ancora assegnati a nessuna squadra">
+<option value="">Assegnazione: tutti</option>
+<option value="unassigned">♢ Non assegnati</option>
+<option value="assigned">🏷️ Assegnati</option>
+<option value="mine">★ Assegnati a me</option>
+</select>
+<label style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--chalk-dim); cursor:pointer; white-space:nowrap;">
+<input type="checkbox" id="pianoCandidatesFilter"> 🎯 candidati piano
+</label>
 </div>
 <div class="control-group">
 <span class="control-label">Ordina</span>
@@ -1493,104 +1636,524 @@ document.getElementById('gkPairsBtn').onclick = openGkPairsModal;
 document.getElementById('attackerPairsBtn').onclick = openAttackerPairsModal;
 document.getElementById('scoreSimBtn').onclick = openScoreSimModal;
 document.getElementById('cardFieldsBtn').onclick = openCardFieldsModal;
+// Binding globale del pulsante "+ Nuovo giocatore" nella searchbar della tab Rosa.
+// (era precedentemente dentro openImportModal — bug: il pulsante non rispondeva se
+// l'utente non aveva mai aperto il modale Importa almeno una volta)
+(function bindAddPlayerQuick(){
+  const btn = document.getElementById('addPlayerQuickBtn');
+  if(btn) btn.onclick = () => openEditor('player', null);
+})();
 
 // ---------- ABBINAMENTI ATTACCANTI ----------
-function teamFragilitaDifensiva(nomeSquadra){
-const t = teams.find(x => normalize_(x.nome) === normalize_(nomeSquadra));
-return (t && t.fragilitaDifensiva!=null) ? Number(t.fragilitaDifensiva) : 5.5; // default neutro se manca il rating
+// ========== ABBINAMENTI (kit 22 — UI overhaul + bugfix logici) ==========
+// Sostituisce le vecchie funzioni attaccanti/portieri con sistema unificato.
+// Bugfix logici rispetto alla versione precedente:
+//  1. NaN silente in teamFragilitaDifensiva/teamPericolosita: se il campo era testo non numerico,
+//     Number(text) = NaN e NaN veniva usato invece del default neutro 5.5, distorcendo tutti
+//     i punteggi coppia. Ora dfPairTeamRating ritorna null (distinto da 0) se non numerico.
+//  2. Bug "no fixture = conflitto": se una squadra era in pausa/riposo in una giornata (Coppa,
+//     sosta), veniva contato come conflitto e abbassava/alzava la media con fallback ?? 0/10.
+//     Ora le giornate senza fixture per NESSUNO dei due sono saltate del tutto.
+//  3. missingRatings check non allineato: filtrava solo == null ma non stringhe vuote / NaN.
+//     Ora dfPairMissingRatings coglie tutti i casi.
+//  4. pairs.slice(0,25) senza toggle "mostra tutte".
+// Nuovo UI: card coppia con rank, score badge colorato, mini-calendario visuale, dettaglio
+// espandibile con info giocatori + tabella giornata per giornata, stats strip in alto, empty
+// state curato per calendario mancante, warning inline per squadre senza rating + lista.
+
+function dfPairParseNum(v){
+  if(v==null) return null;
+  if(typeof v === 'number') return isNaN(v) ? null : v;
+  const s = String(v).trim();
+  if(s === '') return null;
+  // Estrae il primo numero dal testo (gestisce "5-10", "5.5 cr", "5,5", ecc.)
+  const m = s.match(/-?\d+(?:[.,]\d+)?/);
+  if(!m) return null;
+  const n = Number(m[0].replace(',', '.'));
+  return isNaN(n) ? null : n;
 }
-// Ritorna { [nomeSquadra]: { [giornata]: fragilitaDifensivaAvversario } } per tutte le squadre nel calendario
-function buildDefensiveWeaknessByTeam(){
-const byTeam = {};
-calendario.forEach(fix => {
-if(!fix.giornata) return;
-const casa = fix.squadraCasa, trasf = fix.squadraTrasferta;
-if(!byTeam[casa]) byTeam[casa] = {};
-if(!byTeam[trasf]) byTeam[trasf] = {};
-// facilità per gli attaccanti di una squadra = fragilità difensiva dell'avversario di giornata
-byTeam[casa][fix.giornata] = teamFragilitaDifensiva(trasf);
-byTeam[trasf][fix.giornata] = teamFragilitaDifensiva(casa);
-});
-return byTeam;
+
+function dfPairMissingRatings(type){
+  // type = 'attacker' → fragilitaDifensiva; 'gk' → pericolosita
+  const field = type === 'attacker' ? 'fragilitaDifensiva' : 'pericolosita';
+  return teams.filter(t => {
+    const v = t[field];
+    if(v == null) return true;
+    if(typeof v === 'string' && v.trim() === '') return true;
+    return isNaN(Number(v));
+  });
 }
-function attaccanteRilevanza(p){
-return (Number(p.golPrevisti)||0)*100 + (Number(p.titolaritaVoto)||0)*10 + (Number(p.golAnnoScorso)||0);
+
+function dfPairTeamRating(nomeSquadra, type){
+  // Ritorna null se la squadra non è nel dossier tattici o il rating non è numerico
+  // (distinto da un rating valido di 0, che è raro ma possibile)
+  const field = type === 'attacker' ? 'fragilitaDifensiva' : 'pericolosita';
+  const t = teams.find(x => normalize_(x.nome) === normalize_(nomeSquadra));
+  if(!t) return null;
+  return dfPairParseNum(t[field]);
 }
-function computeAttackerPairScore(a1, a2, weaknessByTeam){
-const d1 = weaknessByTeam[a1.squadra] || {};
-const d2 = weaknessByTeam[a2.squadra] || {};
-const giornate = [...new Set([...Object.keys(d1), ...Object.keys(d2)])];
-if(giornate.length === 0) return null;
-let totale = 0, conflitti = 0, coperte = 0;
-giornate.forEach(g => {
-const v1 = d1[g], v2 = d2[g];
-if(v1==null && v2==null) return;
-const migliore = Math.max(v1 ?? 0, v2 ?? 0);
-totale += migliore;
-coperte++;
-if((v1==null || v1<6) && (v2==null || v2<6)) conflitti++;
-});
-if(coperte === 0) return null;
-return { mediaMigliore: totale/coperte, conflitti, giornateCoperte: coperte };
+
+function dfPairDefaultRating(){ return 5.5; }
+
+function dfPairBuildFixtureMap(type){
+  // Ritorna { squadra: { giornata: rating } }
+  //  - attaccanti: rating = fragilità difensiva dell'avversario (più alto = più facile segnare)
+  //  - portieri: rating = pericolosità offensiva dell'avversario (+1 in trasferta, più alto = più difficile)
+  // Se la squadra avversaria non ha rating valido, si usa il default neutro 5.5
+  const byTeam = {};
+  const def = dfPairDefaultRating();
+  calendario.forEach(fix => {
+    if(!fix.giornata) return;
+    const casa = fix.squadraCasa, trasf = fix.squadraTrasferta;
+    if(!casa || !trasf) return;
+    if(!byTeam[casa]) byTeam[casa] = {};
+    if(!byTeam[trasf]) byTeam[trasf] = {};
+    const ratingCasaVsTrasf = dfPairTeamRating(trasf, type) ?? def;
+    const ratingTrasfVsCasa = dfPairTeamRating(casa, type) ?? def;
+    if(type === 'attacker'){
+      byTeam[casa][fix.giornata] = ratingCasaVsTrasf;
+      byTeam[trasf][fix.giornata] = ratingTrasfVsCasa;
+    } else {
+      // portieri: trasferta più dura (leggero +1)
+      byTeam[casa][fix.giornata] = ratingCasaVsTrasf;
+      byTeam[trasf][fix.giornata] = Math.min(10, ratingTrasfVsCasa + 1);
+    }
+  });
+  return byTeam;
 }
-function computeAllAttackerPairs(){
-const attaccanti = players.filter(p => p.posFanta==='A' && p.squadra);
-// Un solo attaccante per squadra: il più rilevante (gol previsti, poi titolarità, poi gol anno scorso)
-const perSquadra = new Map();
-attaccanti.forEach(p => {
-const key = normalize_(p.squadra);
-const attuale = perSquadra.get(key);
-if(!attuale || attaccanteRilevanza(p) > attaccanteRilevanza(attuale)) perSquadra.set(key, p);
-});
-const titolari = [...perSquadra.values()];
-const weaknessByTeam = buildDefensiveWeaknessByTeam();
-const pairs = [];
-for(let i=0; i<titolari.length; i++){
-for(let j=i+1; j<titolari.length; j++){
-const a = titolari[i], b = titolari[j];
-const score = computeAttackerPairScore(a, b, weaknessByTeam);
-if(score) pairs.push({ a, b, ...score });
+
+function dfPairComputeScore(a1, a2, fixtureMap, type){
+  // type = 'attacker' o 'gk'
+  // Soglia hardcoded (configurabile in futuro): attaccanti "difficile" se < 6, portieri "difficile" se >= 7
+  const THRESHOLD = type === 'attacker' ? 6 : 7;
+  const isHard = v => v != null && (type === 'attacker' ? v < THRESHOLD : v >= THRESHOLD);
+  const d1 = fixtureMap[a1.squadra] || {};
+  const d2 = fixtureMap[a2.squadra] || {};
+  const allGiornate = [...new Set([...Object.keys(d1), ...Object.keys(d2)])];
+  if(allGiornate.length === 0) return null;
+  // Sort per giornata numerica (per dettaglio tabella ordinato)
+  allGiornate.sort((x,y) => Number(x) - Number(y));
+  let totale = 0, conflitti = 0, coperte = 0;
+  let entrambi = 0, soloA = 0, soloB = 0;
+  const dettaglio = [];
+  allGiornate.forEach(g => {
+    const v1 = d1[g], v2 = d2[g];
+    // Se NESSUNO dei due ha fixture in questa giornata (pausa, Coppa, riposo), salta del tutto:
+    // non è un "conflitto" e non abbassa/alza la media con fallback arbitrario. (bugfix)
+    if(v1 == null && v2 == null){
+      dettaglio.push({ g: Number(g), v1: null, v2: null, migliore: null, conflitto: false, neither: true });
+      return;
+    }
+    let migliore, conflitto = false;
+    if(v1 != null && v2 != null){
+      // Entrambi giocano: prendi il più facile dei due (max per attaccanti, min per portieri)
+      migliore = type === 'attacker' ? Math.max(v1, v2) : Math.min(v1, v2);
+      conflitto = isHard(v1) && isHard(v2);
+      entrambi++;
+    } else if(v1 != null){
+      // Solo a1 gioca: usa a1. NON è un "conflitto" vero (a2 semplicemente non gioca),
+      // ma conteggiamo per coerenza con la vecchia logica (se a1 affronta difesa solida → conflitto)
+      migliore = v1;
+      conflitto = isHard(v1);
+      soloA++;
+    } else {
+      // Solo a2 gioca
+      migliore = v2;
+      conflitto = isHard(v2);
+      soloB++;
+    }
+    totale += migliore;
+    if(conflitto) conflitti++;
+    coperte++;
+    // Normalizziamo undefined → null nel dettaglio per consistenza (evita JSON.stringify che omette le key undefined)
+    dettaglio.push({ g: Number(g), v1: v1 ?? null, v2: v2 ?? null, migliore, conflitto, neither: false });
+  });
+  if(coperte === 0) return null;
+  return {
+    mediaMigliore: totale / coperte,
+    conflitti,
+    giornateCoperte: coperte,
+    dettaglio,
+    giornateEntrambi: entrambi,
+    giornateSoloA: soloA,
+    giornateSoloB: soloB,
+    threshold: THRESHOLD,
+    totaleGiornate: allGiornate.length
+  };
 }
+
+function dfPairPlayerRelevance(p, type){
+  // type = 'attacker' o 'gk'
+  if(type === 'attacker'){
+    return (dfPairParseNum(p.golPrevisti) || 0) * 100
+         + (dfPairParseNum(p.titolaritaVoto) || 0) * 10
+         + (dfPairParseNum(p.golAnnoScorso) || 0);
+  }
+  return (dfPairParseNum(p.titolaritaVoto) || 0) * 10000
+       + (dfPairParseNum(p.presenzeAnnoScorso) || 0) * 10
+       + (dfPairParseNum(p.partiteDaTitolareAnnoScorso) || 0);
 }
-return pairs.sort((x,y) => y.mediaMigliore - x.mediaMigliore || x.conflitti - y.conflitti);
+
+function dfPairComputeAll(type){
+  const posFanta = type === 'attacker' ? 'A' : 'P';
+  const allPlayers = players.filter(p => p.posFanta === posFanta && p.squadra);
+  const perSquadra = new Map();
+  allPlayers.forEach(p => {
+    const key = normalize_(p.squadra);
+    const attuale = perSquadra.get(key);
+    if(!attuale || dfPairPlayerRelevance(p, type) > dfPairPlayerRelevance(attuale, type)) perSquadra.set(key, p);
+  });
+  const titolari = [...perSquadra.values()];
+  const fixtureMap = dfPairBuildFixtureMap(type);
+  const pairs = [];
+  for(let i = 0; i < titolari.length; i++){
+    for(let j = i + 1; j < titolari.length; j++){
+      const a = titolari[i], b = titolari[j];
+      const score = dfPairComputeScore(a, b, fixtureMap, type);
+      if(score) pairs.push({ a, b, ...score });
+    }
+  }
+  // Sort:
+  //  - attaccanti: mediaMigliore DESC (più alto = più facile = meglio)
+  //  - portieri: mediaMigliore ASC (più basso = più facile = meglio)
+  // Poi per conflitti ASC (meno = meglio)
+  if(type === 'attacker'){
+    pairs.sort((x, y) => y.mediaMigliore - x.mediaMigliore || x.conflitti - y.conflitti);
+  } else {
+    pairs.sort((x, y) => x.mediaMigliore - y.mediaMigliore || x.conflitti - y.conflitti);
+  }
+  return pairs;
 }
+
+function dfPairMiniCalHtml(dettaglio, type){
+  if(!dettaglio || !dettaglio.length) return '';
+  const cellClass = v => {
+    if(v == null) return 'day-none';
+    if(type === 'attacker'){
+      if(v >= 7) return 'day-easy';
+      if(v >= 5.5) return 'day-mid';
+      return 'day-hard';
+    }
+    if(v <= 5) return 'day-easy';
+    if(v <= 6.5) return 'day-mid';
+    return 'day-hard';
+  };
+  return dettaglio.map(d => {
+    const cls = d.neither ? 'day-none' : cellClass(d.migliore);
+    const conflictCls = d.conflitto ? ' day-conflict' : '';
+    const title = d.neither
+      ? `G${d.g}: nessuno dei due gioca`
+      : `G${d.g}: ${d.v1 == null ? '—' : d.v1.toFixed(1)} / ${d.v2 == null ? '—' : d.v2.toFixed(1)} → ${d.conflitto ? 'difficile per entrambi' : 'ok'}`;
+    return `<div class="day-cell ${cls}${conflictCls}" title="${escapeHtml(title)}">${d.g}</div>`;
+  }).join('');
+}
+
+function dfPairPlayerInfoHtml(p, type){
+  if(!p) return '<div class="pair-player-info empty">—</div>';
+  const fm = dfPairParseNum(p.fmAnnoScorso);
+  const fascia = p.fascia || '—';
+  const fvm = p.custom ? dfPairParseNum(p.custom.fvm) : null;
+  const prezzo = dfPairParseNum(p.prezzoPrevisto);
+  const prezzoStr = prezzo != null ? prezzo : (fvm != null ? fvm + ' (FVM)' : '—');
+  const golPrev = dfPairParseNum(p.golPrevisti);
+  const tit = dfPairParseNum(p.titolaritaVoto);
+  const frag = dfPairParseNum(p.fragilita);
+  const pres = dfPairParseNum(p.presenzeAnnoScorso);
+  return `
+    <div class="pair-player-info">
+      <div class="ppi-name">${escapeHtml(p.nome)}</div>
+      <div class="ppi-team">${escapeHtml(p.squadra || '—')}</div>
+      <div class="ppi-rows">
+        <div class="ppi-row"><span>FM scorso</span><b>${fm != null ? fm.toFixed(1) : '—'}</b></div>
+        <div class="ppi-row"><span>Fascia</span><b>${escapeHtml(fascia)}</b></div>
+        <div class="ppi-row"><span>Prezzo prev.</span><b>${prezzoStr}</b></div>
+        ${type === 'attacker' ? `<div class="ppi-row"><span>Gol prev.</span><b>${golPrev != null ? golPrev : '—'}</b></div>` : `<div class="ppi-row"><span>Presenze</span><b>${pres != null ? pres : '—'}</b></div>`}
+        <div class="ppi-row"><span>Titolarità</span><b>${tit != null ? tit.toFixed(1) : '—'}</b></div>
+        ${frag != null ? `<div class="ppi-row"><span>Fragilità</span><b>${frag}/10</b></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function dfPairScoreBadgeHtml(score, type){
+  const v = score.mediaMigliore;
+  let color, label, arrow;
+  if(type === 'attacker'){
+    if(v >= 7) { color = '#4C9A6A'; label = 'Ottima'; arrow = '▲▲'; }
+    else if(v >= 6) { color = '#7DAA82'; label = 'Buona'; arrow = '▲'; }
+    else if(v >= 5) { color = '#D9A441'; label = 'Media'; arrow = '＝'; }
+    else { color = '#C1543F'; label = 'Debole'; arrow = '▼'; }
+  } else {
+    if(v <= 5) { color = '#4C9A6A'; label = 'Ottima'; arrow = '▲▲'; }
+    else if(v <= 6) { color = '#7DAA82'; label = 'Buona'; arrow = '▲'; }
+    else if(v <= 7) { color = '#D9A441'; label = 'Media'; arrow = '＝'; }
+    else { color = '#C1543F'; label = 'Debole'; arrow = '▼'; }
+  }
+  return `<span class="pair-score-badge" style="border-color:${color}; color:${color};">${arrow} ${label}</span>`;
+}
+
+function dfPairDetailTableHtml(pair, type){
+  const isHard = v => v != null && (type === 'attacker' ? v < 6 : v >= 7);
+  const rows = pair.dettaglio.map(d => {
+    const v1Str = d.v1 == null ? '<span class="cell-na">—</span>' : d.v1.toFixed(1);
+    const v2Str = d.v2 == null ? '<span class="cell-na">—</span>' : d.v2.toFixed(1);
+    const bestStr = d.neither ? '<span class="cell-na">—</span>' : d.migliore.toFixed(1);
+    const conflictMark = d.conflitto ? '<span class="conflict-mark">⚠</span>' : '';
+    const v1Class = isHard(d.v1) ? 'cell-hard' : '';
+    const v2Class = isHard(d.v2) ? 'cell-hard' : '';
+    return `
+      <tr class="${d.conflitto ? 'row-conflict' : ''} ${d.neither ? 'row-none' : ''}">
+        <td class="cell-g">G${d.g}</td>
+        <td class="${v1Class}">${v1Str}</td>
+        <td class="${v2Class}">${v2Str}</td>
+        <td class="cell-best">${bestStr} ${conflictMark}</td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="pair-detail-table-wrap">
+      <table class="pair-detail-table">
+        <thead>
+          <tr>
+            <th>Giornata</th>
+            <th>${escapeHtml(pair.a.squadra || 'A')}</th>
+            <th>${escapeHtml(pair.b.squadra || 'B')}</th>
+            <th>Migliore</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function dfPairRowHtml(pair, idx, type){
+  const score = pair.mediaMigliore.toFixed(1);
+  const copPct = pair.totaleGiornate > 0 ? Math.round((pair.giornateCoperte / pair.totaleGiornate) * 100) : 0;
+  return `
+    <div class="pair-card" data-pair-idx="${idx}">
+      <div class="pair-card-header" data-pair-toggle="${idx}">
+        <div class="pair-rank">#${idx + 1}</div>
+        <div class="pair-players">
+          <div class="pair-player-summary">
+            <span class="pair-player-name" data-pid="${pair.a.id}">${escapeHtml(pair.a.nome)}</span>
+            <span class="pair-player-team">(${escapeHtml(pair.a.squadra || '—')})</span>
+          </div>
+          <span class="pair-plus">+</span>
+          <div class="pair-player-summary">
+            <span class="pair-player-name" data-pid="${pair.b.id}">${escapeHtml(pair.b.nome)}</span>
+            <span class="pair-player-team">(${escapeHtml(pair.b.squadra || '—')})</span>
+          </div>
+        </div>
+        <div class="pair-score-block">
+          ${dfPairScoreBadgeHtml(pair, type)}
+          <div class="pair-score-num">${score}<span class="pair-score-unit">/10</span></div>
+          <div class="pair-score-label">${type === 'attacker' ? 'Facilità' : 'Difficoltà'}</div>
+        </div>
+        <div class="pair-expand-hint">▸</div>
+      </div>
+      <div class="pair-meta-line">
+        <span class="pair-meta-item"><span class="pair-meta-ic">⚡</span> Conflitti: <b>${pair.conflitti}</b></span>
+        <span class="pair-meta-item"><span class="pair-meta-ic">📅</span> Copertura: <b>${pair.giornateCoperte}/${pair.totaleGiornate}</b> (${copPct}%)</span>
+        ${pair.giornateEntrambi ? `<span class="pair-meta-item"><span class="pair-meta-ic">🤝</span> Entrambi: <b>${pair.giornateEntrambi}</b></span>` : ''}
+      </div>
+      <div class="pairs-mini-cal">${dfPairMiniCalHtml(pair.dettaglio, type)}</div>
+      <div class="pair-details">
+        <div class="pair-players-info">
+          ${dfPairPlayerInfoHtml(pair.a, type)}
+          ${dfPairPlayerInfoHtml(pair.b, type)}
+        </div>
+        ${dfPairDetailTableHtml(pair, type)}
+      </div>
+    </div>
+  `;
+}
+
+function dfPairBindRowEvents(overlay, pairs, type){
+  // Click su nome giocatore → apri scheda
+  overlay.querySelectorAll('.pair-player-name[data-pid]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const pid = el.dataset.pid;
+      overlay.remove();
+      if(typeof openEditor === 'function') openEditor('player', pid);
+    };
+  });
+  // Click su header coppia → toggle details
+  overlay.querySelectorAll('.pair-card-header[data-pair-toggle]').forEach(el => {
+    el.onclick = () => {
+      const card = el.closest('.pair-card');
+      if(card) card.classList.toggle('expanded');
+    };
+  });
+}
+
+function dfPairGetModePref(){
+  try{ return localStorage.getItem('dfPairMode') || 'full'; }catch(e){ return 'full'; }
+}
+function dfPairSetModePref(mode){
+  try{ localStorage.setItem('dfPairMode', mode); }catch(e){}
+}
+function dfPairBuildModeToggles(currentMode){
+  return `
+    <div class="pair-mode-toggles" data-mode-group>
+      <button type="button" data-mode="full" class="${currentMode==='full'?'active':''}" title="Schermo intero">⛶</button>
+      <button type="button" data-mode="side" class="${currentMode==='side'?'active':''}" title="Mezzo schermo (lato destro)">▤</button>
+      <button type="button" data-mode="window" class="${currentMode==='window'?'active':''}" title="Finestra flottante (solo desktop, con drag e resize)">▢</button>
+    </div>
+  `;
+}
+function dfPairBuildBodyHtml(opts, pairs, missing, totalGiornate, type, scoreLabel, missingLabel, LIMIT_DEFAULT){
+  if(calendario.length === 0){
+    return `
+      <div class="pair-empty-state">
+        <div class="pair-empty-icon">📅</div>
+        <div class="pair-empty-title">Calendario non importato</div>
+        <div class="pair-empty-text">Per calcolare gli abbinamenti serve il calendario di Serie A. Importalo da <b>⬆️ Importa → Calendario</b> (CSV con colonne squadraCasa, squadraTrasferta, giornata).</div>
+      </div>
+    `;
+  }
+  if(pairs.length === 0){
+    return `
+      <div class="pair-empty-state">
+        <div class="pair-empty-icon">${opts.icon}</div>
+        <div class="pair-empty-title">Nessuna coppia calcolabile</div>
+        <div class="pair-empty-text">Servono almeno 2 ${type === 'attacker' ? 'attaccanti' : 'portieri'} di squadre diverse con squadra assegnata e calendario importato.</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="pair-modal-intro">
+      <div class="pair-intro-text">${opts.hint}</div>
+      ${missing.length ? `
+        <div class="pair-warn-inline">
+          ⚠️ ${missing.length} ${missing.length === 1 ? 'squadra' : 'squadre'} senza <b>${missingLabel}</b> impostata (usato valore neutro 5.5). Completa i dossier in tab Squadre per calcoli più precisi.
+          <details class="pair-warn-list">
+            <summary>Vedi quali</summary>
+            <ul>${missing.map(t => `<li>${escapeHtml(t.nome || '—')}</li>`).join('')}</ul>
+          </details>
+        </div>
+      ` : ''}
+    </div>
+    <div class="pair-stats-strip">
+      <div class="pair-stat"><div class="pair-stat-num">${pairs.length}</div><div class="pair-stat-lbl">Coppie totali</div></div>
+      <div class="pair-stat"><div class="pair-stat-num">${totalGiornate}</div><div class="pair-stat-lbl">Giornate</div></div>
+      <div class="pair-stat"><div class="pair-stat-num">${pairs.filter(p => p.conflitti === 0).length}</div><div class="pair-stat-lbl">Zero conflitti</div></div>
+      <div class="pair-stat"><div class="pair-stat-num">${(pairs.reduce((s, p) => s + p.mediaMigliore, 0) / pairs.length).toFixed(1)}</div><div class="pair-stat-lbl">${scoreLabel}</div></div>
+    </div>
+    <div class="pair-list" id="pairList">
+      ${pairs.slice(0, LIMIT_DEFAULT).map((p, i) => dfPairRowHtml(p, i, type)).join('')}
+    </div>
+    ${pairs.length > LIMIT_DEFAULT ? `
+      <div class="pair-show-all-wrap">
+        <button class="btn small" id="pairShowAll" data-all="0">Mostra tutte le ${pairs.length} coppie</button>
+      </div>
+    ` : ''}
+  `;
+}
+function dfPairBindCommon(container, opts, pairs, type, LIMIT_DEFAULT, closeFn){
+  // Bind mode-toggle buttons (switch modalità + riapre il modale)
+  container.querySelectorAll('[data-mode]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const newMode = b.dataset.mode;
+      dfPairSetModePref(newMode);
+      if(closeFn) closeFn();
+      dfPairModal(opts); // riapri con nuova modalità
+    };
+  });
+  // Bind close buttons (pairClose X, pairClose2 Chiudi)
+  container.querySelectorAll('#pairClose, #pairClose2').forEach(b => {
+    if(closeFn) b.onclick = closeFn;
+  });
+  // Bind "mostra tutte"
+  const allBtn = container.querySelector('#pairShowAll');
+  if(allBtn){
+    allBtn.onclick = () => {
+      const list = container.querySelector('#pairList');
+      if(!list) return;
+      if(allBtn.dataset.all === '0'){
+        list.innerHTML = pairs.map((p, i) => dfPairRowHtml(p, i, type)).join('');
+        allBtn.dataset.all = '1';
+        allBtn.textContent = 'Mostra solo le prime 25';
+      } else {
+        list.innerHTML = pairs.slice(0, LIMIT_DEFAULT).map((p, i) => dfPairRowHtml(p, i, type)).join('');
+        allBtn.dataset.all = '0';
+        allBtn.textContent = `Mostra tutte le ${pairs.length} coppie`;
+      }
+      dfPairBindRowEvents(container, pairs, type);
+    };
+  }
+  // Bind row events (click nomi, toggle card)
+  dfPairBindRowEvents(container, pairs, type);
+}
+function dfPairModal(opts){
+  const type = opts.type;
+  const pairs = calendario.length ? dfPairComputeAll(type) : [];
+  const missing = dfPairMissingRatings(type);
+  const missingLabel = type === 'attacker' ? 'Fragilità difensiva' : 'Pericolosità offensiva';
+  const scoreLabel = type === 'attacker' ? 'Facilità media' : 'Difficoltà media';
+  const totalGiornate = calendario.length ? new Set(calendario.map(f => f.giornata).filter(Boolean)).size : 0;
+  const LIMIT_DEFAULT = 25;
+  const mode = dfPairGetModePref();
+  
+  // Modalità WINDOW: usa WM se desktop, altrimenti fallback a side
+  if(mode === 'window' && typeof WM !== 'undefined' && WM.isDesktop){
+    const winId = WM.create({
+      title: opts.icon + ' ' + opts.title,
+      type: 'pairs-' + type,
+      onClose: () => {}
+    });
+    const win = WM.windows.get(winId);
+    if(win){
+      // wm-body: mode-toggles + body + modal-actions (niente modal-head, c'è già wm-chrome)
+      win.body.innerHTML = `
+        ${dfPairBuildModeToggles(mode)}
+        ${dfPairBuildBodyHtml(opts, pairs, missing, totalGiornate, type, scoreLabel, missingLabel, LIMIT_DEFAULT)}
+        <div class="modal-actions"><button class="btn" id="pairClose2" style="flex:1;">Chiudi</button></div>
+      `;
+      dfPairBindCommon(win.el, opts, pairs, type, LIMIT_DEFAULT, () => WM.close(winId));
+      return;
+    }
+    // Se WM.create fallisce, fallback a full
+  }
+  
+  // Modalità FULL o SIDE: overlay classico
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  if(mode === 'side'){
+    overlay.classList.add('pair-side');
+  }
+  overlay.id = type === 'attacker' ? 'attackerPairsOverlay' : 'gkPairsOverlay';
+  
+  overlay.innerHTML = `
+    <div class="modal pair-modal">
+      <div class="modal-head">
+        <h2>${opts.icon} ${opts.title}</h2>
+        ${dfPairBuildModeToggles(mode)}
+        <button class="close-x" id="pairClose">✕</button>
+      </div>
+      ${dfPairBuildBodyHtml(opts, pairs, missing, totalGiornate, type, scoreLabel, missingLabel, LIMIT_DEFAULT)}
+      <div class="modal-actions"><button class="btn" id="pairClose2" style="flex:1;">Chiudi</button></div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  // Click sullo sfondo chiude solo in modalità full (non in side, dove il click può essere accidentale)
+  if(mode !== 'side'){
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) close(); });
+  }
+  dfPairBindCommon(overlay, opts, pairs, type, LIMIT_DEFAULT, close);
+}
+
 function openAttackerPairsModal(){
-const overlay = document.createElement('div');
-overlay.className = 'overlay';
-overlay.id = 'attackerPairsOverlay';
-const missingRatings = teams.filter(t => t.fragilitaDifensiva == null);
-const pairs = calendario.length ? computeAllAttackerPairs() : [];
-overlay.innerHTML = `
-<div class="modal">
-<div class="modal-head">
-<h2>⚔️ Abbinamenti Attaccanti</h2>
-<button class="close-x" id="closeAttackerPairs">✕</button>
-</div>
-${calendario.length === 0 ? `
-<div class="empty">Importa prima il calendario (⬆️ → "Calendario") per calcolare gli abbinamenti.</div>
-` : `
-<div class="settings-hint">
-Una coppia per ogni combinazione di SQUADRE: per ciascuna squadra viene preso l'attaccante più rilevante (gol previsti, poi titolarità). Facilità = fragilità difensiva dell'avversario di giornata (più alta = difesa più debole = più facile segnare). Punteggio = media della facilità migliore tra i due, giornata per giornata (più alto = coppia più complementare, quasi sempre uno dei due gioca contro una difesa debole). "Conflitti" = giornate in cui entrambi affrontano difese solide insieme.
-${missingRatings.length ? `<br><br>⚠️ ${missingRatings.length} squadre senza "Fragilità difensiva" impostata (usato un valore neutro 5.5 per quelle) — vai su Squadre per completarle e avere calcoli più precisi.` : ''}
-</div>
-<div id="attackerPairsList">
-${pairs.length === 0 ? '<div class="empty">Nessuna coppia calcolabile: servono almeno 2 attaccanti con squadra assegnata e calendario importato.</div>' :
-pairs.slice(0,25).map((p,i) => `
-<div class="asta-team-card" style="cursor:default;">
-<div class="asta-team-top">
-<div class="asta-team-name">#${i+1} ${escapeHtml(p.a.nome)} <span style="color:var(--chalk-dim); font-weight:400;">(${escapeHtml(p.a.squadra)})</span> + ${escapeHtml(p.b.nome)} <span style="color:var(--chalk-dim); font-weight:400;">(${escapeHtml(p.b.squadra)})</span></div>
-</div>
-<div class="asta-budget-line">Facilità media (il migliore dei due): <b>${p.mediaMigliore.toFixed(1)}</b>/10 · Conflitti (entrambi difficili): <b>${p.conflitti}</b> · Giornate coperte: ${p.giornateCoperte}</div>
-</div>
-`).join('')
-}
-</div>
-`}
-<div class="modal-actions"><button class="btn" id="closeAttackerPairs2" style="flex:1;">Chiudi</button></div>
-</div>`;
-document.body.appendChild(overlay);
-document.getElementById('closeAttackerPairs').onclick = () => overlay.remove();
-document.getElementById('closeAttackerPairs2').onclick = () => overlay.remove();
+  dfPairModal({
+    type: 'attacker',
+    title: 'Abbinamenti Attaccanti',
+    icon: '⚔️',
+    hint: 'Calcola le migliori coppie di attaccanti complementari in base al calendario. Per ogni squadra viene preso l\'attaccante più rilevante (gol previsti → titolarità → gol anno scorso). <b>Facilità</b> = fragilità difensiva dell\'avversario (più alta = difesa più debole = più facile segnare). <b>Punteggio</b> = media della facilità migliore tra i due per giornata. <b>Conflitti</b> = giornate in cui entrambi affrontano difese solide. Click sul nome di un giocatore per aprire la sua scheda; click sulla card per espandere il dettaglio giornata per giornata.'
+  });
 }
 // ========== KIT V12 · SIMULATORE PUNTEGGIO + FORMAZIONI SALVATE ==========
 let simSelectedIds = [];
@@ -2271,44 +2834,19 @@ document.querySelectorAll('.tab').forEach(t=>{
     else { dv.style.display='none'; }
   });
 });
-setInterval(()=>{ if(typeof currentTab!=='undefined' && currentTab==='dash' && dashBuilt) updateDash(false); }, 2500);
+// setInterval War Room Dashboard legacy RIMOSSO (bugfix): aggiornava updateDash(false)
+// ogni 2.5s se currentTab==='dash', ma la tab "dash" è stata nascosta dal War Room kit
+// (riga ~7974: if(dashTab) dashTab.style.display='none';) e non è mai selezionabile.
+// Puro overhead: ogni 2.5s controlla una condizione sempre falsa, per sempre.
+// (bug simile a quello già fixato in Update-17-08 punto 14 per renderWarRoom)
+// Funzione openGkPairsModal ricollocata nel blocco unificato "ABBINAMENTI (kit 22)" sopra.
 function openGkPairsModal(){
-  const overlay = document.createElement('div');
-  overlay.className = 'overlay';
-  overlay.id = 'gkPairsOverlay';
-  const missingRatings = teams.filter(t => t.pericolosita == null);
-  const pairs = calendario.length ? computeAllGoalkeeperPairs() : [];
-  overlay.innerHTML = `
-  <div class="modal">
-    <div class="modal-head">
-      <h2>🧤 Accoppiate Portieri</h2>
-      <button class="close-x" id="closeGkPairs">✕</button>
-    </div>
-    ${calendario.length === 0 ? `
-      <div class="empty">Importa prima il calendario (⬆️ → "Calendario") per calcolare le accoppiate.</div>
-    ` : `
-      <div class="settings-hint">
-        Una coppia per ogni combinazione di SQUADRE: per ciascuna squadra viene preso solo il portiere titolare presunto (voto titolarità più alto, poi più presenze — aggiornali nelle schede per correggere la scelta). Punteggio = media della difficoltà migliore tra i due, giornata per giornata (più basso = coppia più "a specchio"). "Conflitti" = giornate in cui entrambi affrontano un avversario difficile insieme.
-        ${missingRatings.length ? `<br><br>⚠️ ${missingRatings.length} squadre senza "Pericolosità offensiva" impostata (usato un valore neutro 5.5 per quelle) — vai su Squadre per completarle e avere calcoli più precisi.` : ''}
-      </div>
-      <div id="gkPairsList">
-        ${pairs.length === 0 ? '<div class="empty">Nessuna coppia calcolabile: servono portieri di almeno 2 squadre diverse (con squadra assegnata) e calendario importato.</div>' :
-          pairs.slice(0,25).map((p,i) => `
-            <div class="asta-team-card" style="cursor:default;">
-              <div class="asta-team-top">
-                <div class="asta-team-name">#${i+1} ${escapeHtml(p.a.nome)} <span style="color:var(--chalk-dim); font-weight:400;">(${escapeHtml(p.a.squadra)})</span> + ${escapeHtml(p.b.nome)} <span style="color:var(--chalk-dim); font-weight:400;">(${escapeHtml(p.b.squadra)})</span></div>
-              </div>
-              <div class="asta-budget-line">Difficoltà media (il migliore dei due): <b>${p.mediaMigliore.toFixed(1)}</b>/10 · Conflitti (entrambi difficili): <b>${p.conflitti}</b> · Giornate coperte: ${p.giornateCoperte}</div>
-            </div>
-          `).join('')
-        }
-      </div>
-    `}
-    <div class="modal-actions"><button class="btn" id="closeGkPairs2" style="flex:1;">Chiudi</button></div>
-  </div>`;
-  document.body.appendChild(overlay);
-  document.getElementById('closeGkPairs').onclick = () => overlay.remove();
-  document.getElementById('closeGkPairs2').onclick = () => overlay.remove();
+  dfPairModal({
+    type: 'gk',
+    title: 'Abbinamenti Portieri',
+    icon: '🧤',
+    hint: 'Calcola le migliori coppie di portieri da alternare in base al calendario. Per ogni squadra viene preso il titolare presunto (voto titolarità → presenze → partite da titolare). <b>Difficoltà</b> = pericolosità offensiva dell\'avversario (+1 in trasferta). <b>Punteggio</b> = media della difficoltà migliore tra i due per giornata (più bassa = coppia più "a specchio"). <b>Conflitti</b> = giornate in cui entrambi affrontano un attacco forte. Click sul nome di un giocatore per aprire la sua scheda; click sulla card per espandere il dettaglio giornata per giornata.'
+  });
 }
 
 function openCleanupModal(){
@@ -2436,7 +2974,6 @@ function openImportModal(){
   document.getElementById('closeImport').onclick = () => overlay.remove();
   document.getElementById('cancelImport').onclick = () => overlay.remove();
   document.getElementById('runImport').onclick = () => runBulkImport(importType);
-  document.getElementById('addPlayerQuickBtn').onclick = () => { openEditor('player', null); };
   document.getElementById('importFileInput').onchange = (e) => {
     const file = e.target.files[0];
     if(!file) return;
@@ -2512,7 +3049,12 @@ async function runBulkImport(type){
   
   // Conferma prima di procedere con import massivi
   if(items.length > 50){
-    const confirmed = confirm(`Stai per importare ${items.length} elementi. Continuare?`);
+    const confirmed = await showConfirmModal({
+      title: 'Importazione massiva',
+      body: `Stai per importare <b>${items.length}</b> elementi. Questa operazione può richiedere qualche secondo. Continuare?`,
+      confirmLabel: 'Importa',
+      cancelLabel: 'Annulla'
+    });
     if(!confirmed){
       statusEl.textContent = 'Importazione annullata.';
       return;
@@ -2773,6 +3315,33 @@ overlay.innerHTML = `
 </div>
 <div id="settingsFields"></div>
 <div class="save-status" id="settingsTestResult" style="word-break:break-word;"></div>
+
+<div class="section-block" open style="margin-top:14px;">
+  <summary>💾 Backup completo dati (disaster recovery)</summary>
+  <div class="section-body">
+    <div class="settings-hint">Esporta TUTTI i dati da Supabase (giocatori, squadre, squadre lega, opinioni creator, video, calendario, piani rosa) in un unico file JSON. Utile come backup prima di modifiche massicce o per disaster recovery. L'import ripristina i dati su un progetto Supabase diverso (es. se cambi progetto).</div>
+    <div class="card-actions" style="margin-top:8px;">
+      <button class="btn" id="backupExportBtn">📥 Esporta backup JSON</button>
+      <button class="btn" id="backupImportBtn">📤 Ripristina da JSON</button>
+    </div>
+    <div id="backupStatus" style="margin-top:8px; font-size:12px; color:var(--chalk-dim);"></div>
+    <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none;">
+  </div>
+</div>
+
+<div class="section-block" open style="margin-top:14px;">
+  <summary>🔔 Notifiche browser</summary>
+  <div class="section-body">
+    <div class="settings-hint">Ricevi una notifica di sistema quando il tuo compagno assegna un giocatore alla tua squadra, modifica una scheda che stai guardando, o attiva/disattiva la Modalità Asta. Utile durante l'asta dal vivo se hai l'app in background. Le notifiche sono locali al tuo dispositivo e non vengono condivise.</div>
+    <div class="card-actions" style="margin-top:8px;">
+      <button class="btn" id="notifEnableBtn">🔔 Abilita notifiche</button>
+      <button class="btn" id="notifTestBtn" style="display:none;">🔔 Test notifica</button>
+      <button class="btn danger" id="notifDisableBtn" style="display:none;">🔕 Disabilita</button>
+    </div>
+    <div id="notifStatus" style="margin-top:8px; font-size:12px; color:var(--chalk-dim);">Stato: non ancora configurato.</div>
+  </div>
+</div>
+
 <div class="modal-actions">
 <button class="btn" id="testSettingsBtn">🔌 Prova connessione</button>
 <button class="btn primary" id="saveSettingsBtn" style="flex:1;">Salva</button>
@@ -2799,7 +3368,276 @@ await saveAiSettings();
 showToast('Impostazioni salvate');
 overlay.remove();
 };
+// Backup completo export/import (kit audit)
+document.getElementById('backupExportBtn').onclick = exportBackupJson;
+document.getElementById('backupImportBtn').onclick = () => document.getElementById('backupFileInput').click();
+document.getElementById('backupFileInput').onchange = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  importBackupJson(file);
+  e.target.value = ''; // reset per permettere reimport dello stesso file
+};
+// Notifiche browser (kit audit)
+refreshNotifButtons();
+document.getElementById('notifEnableBtn').onclick = enableBrowserNotifications;
+document.getElementById('notifDisableBtn').onclick = disableBrowserNotifications;
+document.getElementById('notifTestBtn').onclick = sendTestNotification;
 }
+// ============================================================
+// KIT AUDIT — Backup completo JSON + Notifiche browser
+// ============================================================
+
+// --- Backup completo (export/import tutti i dati Supabase) ---
+const BACKUP_TABLES = ['players', 'teams', 'league_teams', 'creator_opinions', 'player_videos', 'calendario_serie_a', 'roster_plans'];
+
+async function exportBackupJson(){
+  const statusEl = document.getElementById('backupStatus');
+  const btn = document.getElementById('backupExportBtn');
+  if(btn) btn.disabled = true;
+  if(statusEl) statusEl.textContent = 'Esportazione in corso...';
+  
+  const backup = {
+    meta: {
+      app: 'DossierFanta',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      exportedBy: myName || 'anonimo',
+      tables: BACKUP_TABLES.slice(),
+    },
+    data: {}
+  };
+  
+  let totalRecords = 0;
+  try{
+    for(const table of BACKUP_TABLES){
+      if(statusEl) statusEl.textContent = `Esportazione ${table}...`;
+      const r = await sb.from(table).select('*');
+      if(r.error) throw r.error;
+      backup.data[table] = r.data || [];
+      totalRecords += backup.data[table].length;
+    }
+    
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.download = `dossierfanta-backup-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    if(statusEl) statusEl.textContent = `✅ Backup completato: ${totalRecords} record totali esportati su ${BACKUP_TABLES.length} tabelle.`;
+    showToast(`Backup esportato (${totalRecords} record)`);
+  }catch(e){
+    console.error('Errore export backup:', e);
+    if(statusEl) statusEl.textContent = '❌ Errore: ' + (e.message || e);
+    showToast('Errore export backup');
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function importBackupJson(file){
+  const statusEl = document.getElementById('backupStatus');
+  if(statusEl) statusEl.textContent = 'Lettura file...';
+  
+  let backup;
+  try{
+    const text = await file.text();
+    backup = JSON.parse(text);
+  }catch(e){
+    if(statusEl) statusEl.textContent = '❌ File JSON non valido: ' + e.message;
+    showToast('File non valido');
+    return;
+  }
+  
+  if(!backup.meta || backup.meta.app !== 'DossierFanta' || !backup.data){
+    if(statusEl) statusEl.textContent = '❌ Il file non è un backup DossierFanta valido.';
+    showToast('Formato backup non riconosciuto');
+    return;
+  }
+  
+  const tablesInBackup = Object.keys(backup.data);
+  const totalRecords = tablesInBackup.reduce((sum, t) => sum + (backup.data[t] ? backup.data[t].length : 0), 0);
+  
+  const confirmed = await showConfirmModal({
+    title: 'Ripristina backup?',
+    body: `Stai per importare <b>${totalRecords} record</b> da <b>${tablesInBackup.length} tabelle</b> (${tablesInBackup.join(', ')}).<br><br>⚠️ <b>Attenzione</b>: i record con lo stesso ID verranno sovrascritti. I record con ID diverso verranno aggiunti. Nessun record verrà cancellato.<br><br>Backup esportato il ${new Date(backup.meta.exportedAt).toLocaleString('it-IT')} da ${escapeHtml(backup.meta.exportedBy)}.<br><br>Continuare?`,
+    confirmLabel: 'Ripristina',
+    cancelLabel: 'Annulla'
+  });
+  if(!confirmed){
+    if(statusEl) statusEl.textContent = 'Ripristino annullato.';
+    return;
+  }
+  
+  if(statusEl) statusEl.textContent = 'Ripristino in corso...';
+  
+  let importedCount = 0;
+  let errorCount = 0;
+  try{
+    for(const table of tablesInBackup){
+      const rows = backup.data[table];
+      if(!Array.isArray(rows) || rows.length === 0) continue;
+      if(statusEl) statusEl.textContent = `Ripristino ${table} (${rows.length} record)...`;
+      // Upsert in chunk da 150 per non sovraccaricare Supabase
+      const CHUNK = 150;
+      for(let i = 0; i < rows.length; i += CHUNK){
+        const batch = rows.slice(i, i + CHUNK);
+        const { error } = await sb.from(table).upsert(batch);
+        if(error){
+          console.error(`Errore upsert ${table} chunk ${i}:`, error);
+          errorCount += batch.length;
+        }else{
+          importedCount += batch.length;
+        }
+      }
+    }
+    
+    if(statusEl) statusEl.textContent = `✅ Ripristino completato: ${importedCount} record importati${errorCount > 0 ? `, ${errorCount} errori` : ''}. Ricarico i dati...`;
+    showToast(`Backup ripristinato (${importedCount} record)`);
+    
+    // Ricarica tutti i dati dal server
+    await loadAll();
+    await loadRosterPlans();
+    render();
+    if(currentTab === 'teams') renderTeams();
+    if(currentTab === 'compare') renderCompare();
+    if(currentTab === 'asta' || currentTab === 'warroom') renderAsta();
+  }catch(e){
+    console.error('Errore import backup:', e);
+    if(statusEl) statusEl.textContent = '❌ Errore: ' + (e.message || e);
+    showToast('Errore ripristino backup');
+  }
+}
+
+// --- Notifiche browser ---
+function notifSupported(){
+  return typeof Notification !== 'undefined';
+}
+function notifCurrentPermission(){
+  if(!notifSupported()) return 'unsupported';
+  return Notification.permission; // 'default', 'granted', 'denied'
+}
+function refreshNotifButtons(){
+  const enableBtn = document.getElementById('notifEnableBtn');
+  const disableBtn = document.getElementById('notifDisableBtn');
+  const testBtn = document.getElementById('notifTestBtn');
+  const statusEl = document.getElementById('notifStatus');
+  if(!enableBtn || !disableBtn || !testBtn || !statusEl) return;
+  
+  if(!notifSupported()){
+    enableBtn.style.display = 'none';
+    disableBtn.style.display = 'none';
+    testBtn.style.display = 'none';
+    statusEl.textContent = 'Stato: notifiche non supportate da questo browser.';
+    statusEl.style.color = 'var(--chalk-dim)';
+    return;
+  }
+  
+  const perm = notifCurrentPermission();
+  if(perm === 'granted'){
+    enableBtn.style.display = 'none';
+    disableBtn.style.display = '';
+    testBtn.style.display = '';
+    statusEl.textContent = 'Stato: ✅ abilitate. Riceverai notifiche per eventi realtime importanti.';
+    statusEl.style.color = 'var(--grass)';
+  }else if(perm === 'denied'){
+    enableBtn.style.display = '';
+    enableBtn.disabled = true;
+    enableBtn.title = 'Le notifiche sono state bloccate nelle impostazioni del browser. Abilitale manualmente.';
+    disableBtn.style.display = 'none';
+    testBtn.style.display = 'none';
+    statusEl.textContent = 'Stato: 🚫 bloccate dal browser. Abilitale dalle impostazioni del sito.';
+    statusEl.style.color = 'var(--red)';
+  }else{
+    // default
+    enableBtn.style.display = '';
+    enableBtn.disabled = false;
+    disableBtn.style.display = 'none';
+    testBtn.style.display = 'none';
+    statusEl.textContent = 'Stato: non ancora configurate. Clicca "Abilita notifiche" per attivarle.';
+    statusEl.style.color = 'var(--chalk-dim)';
+  }
+}
+async function enableBrowserNotifications(){
+  if(!notifSupported()){
+    showToast('Notifiche non supportate da questo browser');
+    return;
+  }
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm === 'granted'){
+      showToast('Notifiche abilitate');
+      // Notifica di benvenuto
+      try{
+        new Notification('DossierFanta', {
+          body: 'Notifiche attivate! Riceverai avvisi per eventi importanti (assegnazioni, modifiche, modalità asta).',
+          icon: '/icon-192.png'
+        });
+      }catch(e){ /* icon fallback non critico */ }
+    }else if(perm === 'denied'){
+      showToast('Notifiche bloccate dal browser');
+    }else{
+      showToast('Permesso notifiche non concesso');
+    }
+  }catch(e){
+    console.error('Errore richiesta permesso notifiche:', e);
+    showToast('Errore abilitazione notifiche');
+  }
+  refreshNotifButtons();
+}
+function disableBrowserNotifications(){
+  // Le notifiche browser non possono essere revocate programmaticamente — l'utente deve farlo
+  // dalle impostazioni del sito. Mostriamo un avviso chiaro.
+  showToast('Per disabilitare: impostazioni browser → permessi sito → notifiche → blocca');
+  alert('Le notifiche browser non possono essere disabilitate programmaticamente per motivi di sicurezza.\n\nPer disabilitarle:\n1. Chrome/Edge: clicca l\'icona lucchetto a sinistra della URL → Notifiche → Blocca\n2. Firefox: impostazioni → Privacy e sicurezza → Permessi → Notifiche → Impostazioni\n3. Safari: Preferenze → Siti web → Notifiche\n\nTrova "DossierFanta" o l\'URL del sito e blocca le notifiche.');
+  refreshNotifButtons();
+}
+function sendTestNotification(){
+  if(!notifSupported() || notifCurrentPermission() !== 'granted'){
+    showToast('Notifiche non abilitate');
+    return;
+  }
+  try{
+    new Notification('DossierFanta · Test', {
+      body: '✅ Le notifiche funzionano! Questa è una notifica di test.',
+      icon: '/icon-192.png'
+    });
+  }catch(e){
+    console.error('Errore test notifica:', e);
+    showToast('Errore invio notifica di test');
+  }
+}
+// Invia una notifica (se abilitate). Sicura da chiamare ovunque: se le notifiche
+// non sono supportate/abilitate, è no-op silenzioso.
+function notifyBrowser(title, body, opts){
+  try{
+    if(!notifSupported() || notifCurrentPermission() !== 'granted') return;
+    // Non disturbare se l'app è in foreground e l'utente è attivo (document.hasFocus)
+    // eccezione: durante l'asta (modalitaAsta ON) notifichiamo anche in foreground
+    // perché il compagno potrebbe star facendo modifiche che l'utente deve vedere
+    if(document.hasFocus() && !auctionSettings.modalitaAsta) return;
+    const n = new Notification(title, Object.assign({
+      body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'dossierfanta', // sostituisce notifiche precedenti dello stesso tag
+    }, opts || {}));
+    // Auto-close dopo 8 secondi (eccetto se l'utente ci clicca)
+    setTimeout(() => { try { n.close(); } catch(e){} }, 8000);
+    n.onclick = () => { window.focus(); n.close(); };
+  }catch(e){
+    console.warn('Errore invio notifica browser:', e.message);
+  }
+}
+
+// ============================================================
+// FINE KIT AUDIT — Backup + Notifiche
+// ============================================================
 function readSettingsFieldsIntoState(){
 const orKey = document.getElementById('f_openrouterKey');
 if(orKey){
@@ -2824,16 +3662,305 @@ function renderSettingsFields(){
   if(aiSettings.mode==='openrouter'){
     area.innerHTML = `
       <div class="field"><label>Chiave API OpenRouter</label><input id="f_openrouterKey" type="password" value="${escapeHtml(aiSettings.openrouterKey)}" placeholder="sk-or-..."></div>
-      <div class="field"><label>Modello</label><input id="f_openrouterModel" value="${escapeHtml(aiSettings.openrouterModel)}" placeholder="es. meta-llama/llama-3.1-8b-instruct:free"></div>
+      <div class="field"><label>Modello</label>
+        <select id="f_openrouterModelPreset" onchange="if(this.value){document.getElementById('f_openrouterModel').value=this.value;}">
+          <option value="">— Personalizzato (scrivi sotto) —</option>
+          ${AI_PRESET_MODELS.openrouter.map(m => `<option value="${escapeHtml(m.id)}" ${aiSettings.openrouterModel===m.id?'selected':''}>${escapeHtml(m.label)}</option>`).join('')}
+        </select>
+        <input id="f_openrouterModel" value="${escapeHtml(aiSettings.openrouterModel)}" placeholder="es. meta-llama/llama-3.1-8b-instruct:free" style="margin-top:6px;">
+      </div>
       <div class="settings-hint">Crea una chiave gratuita su openrouter.ai → Keys. I modelli con suffisso ":free" non costano nulla.</div>
     `;
+  } else if(aiSettings.mode==='ollama'){
+    // Bugfix (kit audit): la vecchia versione cadeva nell'else mostrando i campi LM Studio anche per Ollama
+    area.innerHTML = `
+      <div class="field"><label>URL server Ollama</label><input id="f_ollamaUrl" value="${escapeHtml(aiSettings.ollamaUrl)}" placeholder="http://localhost:11434/v1"></div>
+      <div class="field"><label>Nome modello</label>
+        <select id="f_ollamaModelPreset" onchange="if(this.value){document.getElementById('f_ollamaModel').value=this.value;}">
+          <option value="">— Personalizzato (scrivi sotto) —</option>
+          ${AI_PRESET_MODELS.ollama.map(m => `<option value="${escapeHtml(m.id)}" ${aiSettings.ollamaModel===m.id?'selected':''}>${escapeHtml(m.label)}</option>`).join('')}
+        </select>
+        <input id="f_ollamaModel" value="${escapeHtml(aiSettings.ollamaModel)}" placeholder="es. llama3.1:8b" style="margin-top:6px;">
+      </div>
+      <div class="settings-hint">Avvia Ollama con <code>ollama serve</code> o <code>ollama run &lt;modello&gt;</code>. Per accessi da altri dispositivi, configura OLLAMA_HOST=0.0.0.0.</div>
+    `;
   } else {
+    // LM Studio
     area.innerHTML = `
       <div class="field"><label>URL server locale LM Studio</label><input id="f_lmstudioUrl" value="${escapeHtml(aiSettings.lmstudioUrl)}" placeholder="http://localhost:1234/v1"></div>
-      <div class="field"><label>Nome modello (opzionale)</label><input id="f_lmstudioModel" value="${escapeHtml(aiSettings.lmstudioModel)}" placeholder="lascia vuoto per usare il modello caricato"></div>
+      <div class="field"><label>Nome modello (opzionale)</label>
+        <select id="f_lmstudioModelPreset" onchange="if(this.value){document.getElementById('f_lmstudioModel').value=this.value;}">
+          <option value="">— Personalizzato (scrivi sotto) —</option>
+          ${AI_PRESET_MODELS.lmstudio.map(m => `<option value="${escapeHtml(m.id)}" ${aiSettings.lmstudioModel===m.id?'selected':''}>${escapeHtml(m.label)}</option>`).join('')}
+        </select>
+        <input id="f_lmstudioModel" value="${escapeHtml(aiSettings.lmstudioModel)}" placeholder="lascia vuoto per usare il modello caricato" style="margin-top:6px;">
+      </div>
       <div class="settings-hint">In LM Studio: tab Developer → Start Server. Se le richieste falliscono, controlla che nelle impostazioni del server sia attivo "Enable CORS".</div>
     `;
   }
+  // Sezione Batch AI (comune a tutte le modalità)
+  area.innerHTML += `
+    <div class="section-block" open style="margin-top:14px;">
+      <summary>✨ Generazione batch riassunti AI</summary>
+      <div class="section-body">
+        <div class="settings-hint">Genera riassunti AI per più giocatori in un colpo solo, invece di aprirli uno per uno. Utile per preparare tutta la rosa prima dell'asta. La generazione avviene in background: puoi chiudere le impostazioni e continuare a usare l'app.</div>
+        <div class="card-actions" style="margin-top:8px;">
+          <button class="btn" id="aiBatchAllBtn">📋 Tutti i giocatori con note</button>
+          <button class="btn" id="aiBatchMissingBtn">❓ Solo senza riassunto</button>
+          <button class="btn" id="aiBatchStaleBtn">🔄 Solo riassunti obsoleti</button>
+          <button class="btn danger" id="aiBatchCancelBtn" style="display:none;">⛔ Ferma batch</button>
+        </div>
+        <div id="aiBatchStatus" style="margin-top:10px; font-size:12px; color:var(--chalk-dim);"></div>
+        <div id="aiBatchProgress" style="display:none; margin-top:8px;">
+          <div class="budget-bar"><div class="budget-bar-fill" id="aiBatchProgressBar" style="width:0%; transition:width .3s;"></div></div>
+          <div style="font-size:11px; color:var(--chalk-dim); margin-top:4px; display:flex; justify-content:space-between;">
+            <span id="aiBatchProgressText">0 / 0</span>
+            <span id="aiBatchProgressEta"></span>
+          </div>
+        </div>
+        <details class="pair-warn-list" style="margin-top:10px;">
+          <summary>Vedi coda async attuale</summary>
+          <div id="aiQueueList" style="margin-top:6px;"></div>
+        </details>
+      </div>
+    </div>
+  `;
+  // Bind bottoni batch
+  const aiBatchAllBtn = document.getElementById('aiBatchAllBtn');
+  if(aiBatchAllBtn) aiBatchAllBtn.onclick = () => startAiBatch('all');
+  const aiBatchMissingBtn = document.getElementById('aiBatchMissingBtn');
+  if(aiBatchMissingBtn) aiBatchMissingBtn.onclick = () => startAiBatch('missing');
+  const aiBatchStaleBtn = document.getElementById('aiBatchStaleBtn');
+  if(aiBatchStaleBtn) aiBatchStaleBtn.onclick = () => startAiBatch('stale');
+  const aiBatchCancelBtn = document.getElementById('aiBatchCancelBtn');
+  if(aiBatchCancelBtn) aiBatchCancelBtn.onclick = cancelAiBatch;
+  renderAiQueueList();
+}
+
+// Modelli AI predefiniti consigliati (kit audit)
+const AI_PRESET_MODELS = {
+  openrouter: [
+    { id: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (gratis, veloce)' },
+    { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (gratis, più capace, lento)' },
+    { id: 'google/gemini-flash-1.5:free', label: 'Gemini Flash 1.5 (gratis, veloce)' },
+    { id: 'qwen/qwen-2.5-7b-instruct:free', label: 'Qwen 2.5 7B (gratis)' },
+    { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (gratis)' },
+    { id: 'deepseek/deepseek-chat:free', label: 'DeepSeek Chat (gratis)' },
+  ],
+  lmstudio: [
+    { id: '', label: '(auto: usa modello caricato in LM Studio)' },
+    { id: 'gemma-2-9b-it', label: 'Gemma 2 9B IT (consigliato per tool-calling)' },
+    { id: 'llama-3.1-8b-instruct', label: 'Llama 3.1 8B Instruct' },
+    { id: 'qwen2.5-7b-instruct', label: 'Qwen 2.5 7B Instruct' },
+    { id: 'mistral-7b-instruct-v0.3', label: 'Mistral 7B Instruct v0.3' },
+    { id: 'phi-3.5-mini-instruct', label: 'Phi 3.5 Mini (leggero)' },
+  ],
+  ollama: [
+    { id: 'llama3.1:8b', label: 'Llama 3.1 8B (consigliato)' },
+    { id: 'qwen2.5:7b', label: 'Qwen 2.5 7B' },
+    { id: 'mistral:7b', label: 'Mistral 7B' },
+    { id: 'gemma2:9b', label: 'Gemma 2 9B' },
+    { id: 'phi3:mini', label: 'Phi 3 Mini (leggero)' },
+  ],
+};
+
+// Stato batch AI (kit audit)
+let aiBatchState = {
+  running: false,
+  queue: [], // [{id, nome}, ...]
+  processed: 0,
+  errors: 0,
+  startTime: null,
+  cancelRequested: false,
+};
+
+async function startAiBatch(mode){
+  if(aiBatchState.running){
+    showToast('Batch già in corso. Ferma quello attuale prima di avviarne un nuovo.');
+    return;
+  }
+  // Seleziona giocatori in base alla modalità
+  let queue;
+  if(mode === 'all'){
+    // Tutti i giocatori con almeno un campo nota compilato
+    queue = players.filter(p => {
+      const hasNotes = (p.noteAnnoScorso || p.titolaritaNote || p.valutazioneSquadraNote || p.noteVarie || p.noteFisico || p.prezzoPrevisto);
+      return hasNotes && (typeof p.nome === 'string' && p.nome.trim() !== '');
+    }).map(p => ({ id: p.id, nome: p.nome }));
+  } else if(mode === 'missing'){
+    // Giocatori con note MA senza riassunto AI (o con errore)
+    queue = players.filter(p => {
+      const hasNotes = (p.noteAnnoScorso || p.titolaritaNote || p.valutazioneSquadraNote || p.noteVarie || p.noteFisico || p.prezzoPrevisto);
+      const hasSummary = p.aiSummary && !p.aiSummary.parseFailed;
+      return hasNotes && !hasSummary && (typeof p.nome === 'string' && p.nome.trim() !== '');
+    }).map(p => ({ id: p.id, nome: p.nome }));
+  } else if(mode === 'stale'){
+    // Giocatori con riassunto obsoleto (note modificate dopo l'ultimo riassunto)
+    queue = players.filter(p => {
+      if(!p.aiSummary || p.aiSummary.parseFailed) return false;
+      const currentHash = computeNotesSignature(p);
+      return p.aiSummary.sourceHash !== currentHash && (typeof p.nome === 'string' && p.nome.trim() !== '');
+    }).map(p => ({ id: p.id, nome: p.nome }));
+  } else {
+    return;
+  }
+  
+  if(queue.length === 0){
+    showToast('Nessun giocatore da processare con questa modalità');
+    return;
+  }
+  
+  const modeLabel = mode === 'all' ? 'tutti i giocatori con note' : mode === 'missing' ? 'solo senza riassunto' : 'solo riassunti obsoleti';
+  const confirmed = await showConfirmModal({
+    title: 'Avviare generazione batch?',
+    body: `Stai per generare ${queue.length} riassunti AI in modalità <b>${modeLabel}</b>.<br><br>Modalità attiva: <b>${aiSettings.mode}</b>. ${aiSettings.mode === 'lmstudio' ? '⚠️ Assicurati che LM Studio sia acceso e il server sia in esecuzione.' : aiSettings.mode === 'ollama' ? '⚠️ Assicurati che Ollama sia in esecuzione.' : aiSettings.mode === 'openrouter' ? '⚠️ Verifica di avere crediti sufficienti su OpenRouter.' : ''}<br><br>La generazione avviene in background. Puoi chiudere le impostazioni e continuare a usare l'app. Tempo stimato: ~${Math.max(1, Math.round(queue.length * 3))}s (${queue.length} × ~3s per giocatore).<br><br>Continuare?`,
+    confirmLabel: 'Avvia batch',
+    cancelLabel: 'Annulla'
+  });
+  if(!confirmed) return;
+  
+  // Avvia batch
+  aiBatchState.running = true;
+  aiBatchState.queue = queue;
+  aiBatchState.processed = 0;
+  aiBatchState.errors = 0;
+  aiBatchState.startTime = Date.now();
+  aiBatchState.cancelRequested = false;
+  
+  updateAiBatchUI();
+  showToast(`Batch avviato: ${queue.length} giocatori da processare`);
+  
+  // Processa in sequenza (non in parallelo per non sovraccaricare il modello locale / rate limit OpenRouter)
+  for(let i = 0; i < queue.length; i++){
+    if(aiBatchState.cancelRequested) break;
+    const item = queue[i];
+    try{
+      await generateAiSummaryForPlayer(item.id);
+      aiBatchState.processed++;
+    }catch(e){
+      console.error(`Errore batch AI per ${item.nome}:`, e);
+      aiBatchState.errors++;
+    }
+    updateAiBatchUI();
+    // Pausa di 500ms tra giocatori per non sovraccaricare
+    if(!aiBatchState.cancelRequested && i < queue.length - 1){
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  
+  aiBatchState.running = false;
+  updateAiBatchUI();
+  
+  const elapsed = Math.round((Date.now() - aiBatchState.startTime) / 1000);
+  if(aiBatchState.cancelRequested){
+    showToast(`Batch fermato: ${aiBatchState.processed} completati, ${aiBatchState.errors} errori in ${elapsed}s`);
+  }else{
+    showToast(`Batch completato: ${aiBatchState.processed} riassunti generati, ${aiBatchState.errors} errori in ${elapsed}s`);
+  }
+}
+
+async function generateAiSummaryForPlayer(playerId){
+  // Versione di generateAiSummary che non dipende da editingId (per batch)
+  const p = players.find(x => x.id === playerId);
+  if(!p) throw new Error('Giocatore non trovato');
+  const userPrompt = buildUserPrompt(p);
+  const activeMode = aiSettings.mode;
+  const rawText = activeMode === 'lmstudio' ? await callLmStudio(userPrompt)
+    : activeMode === 'ollama' ? await callOllama(userPrompt)
+    : await callOpenRouter(userPrompt);
+  const parsed = parseAiResponse(rawText);
+  const aiSummary = {
+    ...parsed,
+    generatedAt: new Date().toISOString(),
+    generatedBy: myName || 'anonimo (batch)',
+    sourceHash: computeNotesSignature(p),
+    mode: activeMode,
+    model: activeMode==='lmstudio' ? (aiSettings.lmstudioModel||'modello locale') : activeMode==='ollama' ? (aiSettings.ollamaModel||'Ollama') : aiSettings.openrouterModel
+  };
+  p.aiSummary = aiSummary;
+  p.aiRequest = null;
+  await persistPlayer(p, ['aiSummary','aiRequest']);
+  // Aggiorna la UI se questo giocatore è aperto in editor
+  refreshAiSummaryAreaIfEditing(p);
+}
+
+function cancelAiBatch(){
+  if(!aiBatchState.running) return;
+  aiBatchState.cancelRequested = true;
+  showToast('Fermando batch al giocatore corrente...');
+  updateAiBatchUI();
+}
+
+function updateAiBatchUI(){
+  const statusEl = document.getElementById('aiBatchStatus');
+  const progressWrap = document.getElementById('aiBatchProgress');
+  const progressBar = document.getElementById('aiBatchProgressBar');
+  const progressText = document.getElementById('aiBatchProgressText');
+  const progressEta = document.getElementById('aiBatchProgressEta');
+  const cancelBtn = document.getElementById('aiBatchCancelBtn');
+  const allBtn = document.getElementById('aiBatchAllBtn');
+  const missingBtn = document.getElementById('aiBatchMissingBtn');
+  const staleBtn = document.getElementById('aiBatchStaleBtn');
+  
+  if(!statusEl) return;
+  
+  if(aiBatchState.running){
+    if(cancelBtn) cancelBtn.style.display = '';
+    if(allBtn) allBtn.disabled = true;
+    if(missingBtn) missingBtn.disabled = true;
+    if(staleBtn) staleBtn.disabled = true;
+    if(progressWrap) progressWrap.style.display = '';
+    
+    const total = aiBatchState.queue.length;
+    const done = aiBatchState.processed + aiBatchState.errors;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if(progressBar) progressBar.style.width = pct + '%';
+    if(progressText) progressText.textContent = `${done} / ${total}`;
+    
+    // ETA
+    const elapsed = (Date.now() - aiBatchState.startTime) / 1000;
+    if(done > 0 && done < total){
+      const etaSec = Math.round((elapsed / done) * (total - done));
+      if(progressEta) progressEta.textContent = `~${etaSec}s rimanenti`;
+    }else{
+      if(progressEta) progressEta.textContent = '';
+    }
+    
+    statusEl.textContent = `🔄 In corso: ${aiBatchState.processed} completati, ${aiBatchState.errors} errori${aiBatchState.cancelRequested ? ' · fermo in corso...' : ''}`;
+    statusEl.style.color = 'var(--amber)';
+  }else{
+    if(cancelBtn) cancelBtn.style.display = 'none';
+    if(allBtn) allBtn.disabled = false;
+    if(missingBtn) missingBtn.disabled = false;
+    if(staleBtn) staleBtn.disabled = false;
+    if(progressWrap) progressWrap.style.display = 'none';
+    
+    if(aiBatchState.processed > 0 || aiBatchState.errors > 0){
+      const elapsed = Math.round((Date.now() - aiBatchState.startTime) / 1000);
+      statusEl.textContent = `✅ Ultimo batch: ${aiBatchState.processed} riassunti generati, ${aiBatchState.errors} errori in ${elapsed}s.`;
+      statusEl.style.color = aiBatchState.errors > 0 ? 'var(--amber)' : 'var(--grass)';
+    }else{
+      statusEl.textContent = 'Nessun batch eseguito in questa sessione.';
+      statusEl.style.color = 'var(--chalk-dim)';
+    }
+  }
+}
+
+function renderAiQueueList(){
+  // Mostra la coda async attuale (richieste pending per LM Studio worker)
+  const listEl = document.getElementById('aiQueueList');
+  if(!listEl) return;
+  const pending = players.filter(p => p.aiRequest && p.aiRequest.status === 'pending');
+  if(pending.length === 0){
+    listEl.innerHTML = '<div style="font-size:11.5px; color:var(--chalk-dim);">Coda vuota. Nessuna richiesta async in attesa.</div>';
+    return;
+  }
+  listEl.innerHTML = `
+    <div style="font-size:11.5px; color:var(--chalk-dim); margin-bottom:6px;">${pending.length} ${pending.length === 1 ? 'richiesta' : 'richieste'} in coda async (per LM Studio worker sul PC):</div>
+    <ul style="margin:0; padding-left:18px; font-size:11.5px; color:var(--chalk-dim);">
+      ${pending.map(p => `<li>${escapeHtml(p.nome || 'Senza nome')} · richiesta da ${escapeHtml(p.aiRequest.requestedBy || '?')} · ${formatRelative(p.aiRequest.requestedAt)}</li>`).join('')}
+    </ul>
+  `;
 }
 
 document.getElementById('whoBtn').onclick = async () => {
@@ -2966,8 +4093,16 @@ function handleLeagueTeamsChange(payload){
   } else {
     const rec = { id: payload.new.id, ...payload.new.data };
     if(rec.id === '_settings'){
+      const prevMode = auctionSettings.modalitaAsta;
       auctionSettings = { budgetTotale: rec.budgetTotale, slots: rec.slots, modalitaAsta: !!rec.modalitaAsta, tempSogliaCalda: rec.tempSogliaCalda!=null?rec.tempSogliaCalda:1.15, tempSogliaFredda: rec.tempSogliaFredda!=null?rec.tempSogliaFredda:0.85 };
-    applyAuctionModeVisibility();
+      applyAuctionModeVisibility();
+      // Notifica browser se il compagno ha attivato/disattivato la Modalità Asta
+      if(prevMode !== auctionSettings.modalitaAsta && rec.updatedBy !== myName){
+        notifyBrowser(
+          auctionSettings.modalitaAsta ? '🟢 Modalità Asta ATTIVATA' : '🔴 Modalità Asta DISATTIVATA',
+          `${rec.updatedBy || 'Il tuo compagno'} ha ${auctionSettings.modalitaAsta ? 'attivato' : 'disattivato'} la Modalità Asta.`
+        );
+      }
     } else {
       const idx = leagueTeams.findIndex(t => t.id === rec.id);
       if(idx>-1) leagueTeams[idx] = rec; else leagueTeams.push(rec);
@@ -3016,6 +4151,24 @@ function handleRemoteChange(type, payload){
 document.getElementById('conflictWarning') && (document.getElementById('conflictWarning').style.display='block');
 }
 window._remoteFlash = { type: type, id: rec.id, by: rec.updatedBy };
+// Notifica browser per eventi rilevanti del compagno (NON notifichiamo le nostre modifiche)
+if(rec.updatedBy && myName && rec.updatedBy !== myName){
+  // Solo per giocatori: notifica se è stato assegnato alla mia squadra o rimosso dalla mia squadra
+  if(type === 'player'){
+    const myTeamName = (leagueTeams.find(t=>t.isMine)||{}).nome;
+    if(myTeamName && rec.asta && rec.asta.team === myTeamName){
+      // Trova il record precedente per vedere se era già assegnato alla mia squadra
+      const prev = idx>-1 ? arr[idx] : null; // arr[idx] è già stato aggiornato a rec, quindi non possiamo
+      // verificare il "precedente" facilmente. Per semplicità, notifichiamo ogni assegnazione alla mia squadra.
+      // (Se il giocatore era già mio e viene solo aggiornato il prezzo, è ancora una notifica utile.)
+      notifyBrowser(
+        '🏷️ ' + (rec.nome || 'Giocatore') + ' → ' + myTeamName,
+        `${rec.updatedBy} ha assegnato questo giocatore alla tua squadra per ${rec.asta.prezzo || 0} crediti.`,
+        { tag: 'assign-' + rec.id }
+      );
+    }
+  }
+}
 }
 if(type==='team') renderTeamDatalist();
 if(type==='team') renderAllTeamTagsDatalist();
@@ -3053,6 +4206,9 @@ document.getElementById('searchInput').oninput = () => {
 document.getElementById('roleFilter').onchange = render;
 document.getElementById('scoutingFilter').onchange = render;
 document.getElementById('fasciaFilter').onchange = render;
+// Kit audit: nuovi filtri
+document.getElementById('unassignedFilter').onchange = render;
+document.getElementById('pianoCandidatesFilter').onchange = render;
 document.getElementById('sortBy').onchange = () => { 
   try{ 
     localStorage.setItem('df_sort_by', document.getElementById('sortBy').value); 
@@ -3063,6 +4219,15 @@ document.getElementById('sortBy').onchange = () => {
 };
 document.getElementById('sortDirBtn').onclick = toggleSortDir;
 document.getElementById('posRealeFilter').onchange = render;
+// Kit audit: carica filtri da URL hash al primo caricamento
+try{ loadFiltersFromHash(); }catch(e){ console.warn('Errore caricamento filtri da hash:', e.message); }
+// Ascolta cambi di hash (back/forward browser)
+window.addEventListener('hashchange', () => {
+  try{
+    loadFiltersFromHash();
+    render();
+  }catch(e){ console.warn('Errore hashchange:', e.message); }
+});
 
 // ---------- RENDER: PLAYER LIST ----------
 function playerSearchBlob(p){
@@ -3105,6 +4270,10 @@ const scouting = document.getElementById('scoutingFilter').value;
 const fasciaF = document.getElementById('fasciaFilter').value;
 const sortBy = document.getElementById('sortBy').value;
 const posRealeF = document.getElementById('posRealeFilter').value;
+// Kit audit: nuovi filtri
+const unassignedF = document.getElementById('unassignedFilter') ? document.getElementById('unassignedFilter').value : '';
+const pianoCandF = document.getElementById('pianoCandidatesFilter') ? document.getElementById('pianoCandidatesFilter').checked : false;
+const myTeamName = (leagueTeams.find(t=>t.isMine)||{}).nome;
   players.forEach(p => { delete p._searchBlobCache; });
   return players.filter(p => {
 if(role && p.posFanta !== role) return false;
@@ -3120,10 +4289,105 @@ if(posRealeF && (p.posReale||'').trim() !== posRealeF) return false;
       if(scouting==='complete' && !c.isComplete) return false;
       if(scouting==='incomplete' && c.isComplete) return false;
     }
-    if(q && !playerSearchBlob(p).includes(q)) return false;
+    // Kit audit: filtro assegnazione
+    if(unassignedF === 'unassigned' && p.asta) return false;
+    if(unassignedF === 'assigned' && !p.asta) return false;
+    if(unassignedF === 'mine' && (!p.asta || p.asta.team !== myTeamName)) return false;
+    // Kit audit: filtro candidati piano attivo
+    if(pianoCandF){
+      const ap = getActivePlanForReparto(p.posFanta);
+      const pm = checkPianoMatch(p, ap);
+      if(!pm) return false;
+    }
+    if(q && !playerSearchMatchesQuery(p, q)) return false;
     return true;
   }).sort(comparePlayersForSort);
 }
+
+// Kit audit: ricerca con OR. Supporta "pupillo OR rigorista" → match se il giocatore
+// contiene almeno uno dei termini (OR logico). Senza OR si comporta come prima (AND implicito).
+function playerSearchMatchesQuery(p, q){
+  // Normalizza la query: se contiene " OR " (case-insensitive), splitta e matcha se ALMENO UN termine è presente
+  // Altrimenti comportamento tradizionale: l'intera stringa deve essere nel blob
+  if(q.toUpperCase().includes(' OR ')){
+    const terms = q.split(/\s+OR\s+/i).map(t => t.trim().toLowerCase()).filter(t => t);
+    if(terms.length === 0) return true;
+    const blob = playerSearchBlob(p);
+    return terms.some(term => blob.includes(term));
+  }
+  return playerSearchBlob(p).includes(q);
+}
+
+// ============================================================
+// KIT AUDIT — Filtri persistenti in URL (hash)
+// ============================================================
+// Salva lo stato dei filtri nell'URL (hash) così è bookmarkable/shareable.
+// Esempio: #ruolo=A&fascia=Top&unassigned=mine&q=vlaovic
+// Al caricamento, legge l'hash e ripristina i filtri.
+function saveFiltersToHash(){
+  const params = new URLSearchParams();
+  const role = document.getElementById('roleFilter')?.value;
+  const fascia = document.getElementById('fasciaFilter')?.value;
+  const posReale = document.getElementById('posRealeFilter')?.value;
+  const scouting = document.getElementById('scoutingFilter')?.value;
+  const unassigned = document.getElementById('unassignedFilter')?.value;
+  const pianoCand = document.getElementById('pianoCandidatesFilter')?.checked;
+  const sortBy = document.getElementById('sortBy')?.value;
+  const q = document.getElementById('searchInput')?.value.trim();
+  const tag = activeTagFilter;
+  if(role) params.set('ruolo', role);
+  if(fascia) params.set('fascia', fascia);
+  if(posReale) params.set('posReale', posReale);
+  if(scouting) params.set('scouting', scouting);
+  if(unassigned) params.set('assegnazione', unassigned);
+  if(pianoCand) params.set('candidati', '1');
+  if(sortBy && sortBy !== 'priorita') params.set('ordina', sortBy);
+  if(q) params.set('q', q);
+  if(tag) params.set('tag', tag);
+  // Aggiorna l'hash senza triggerare hashchange (replaceState)
+  const newHash = params.toString();
+  if(newHash){
+    history.replaceState(null, '', '#' + newHash);
+  }else{
+    // Se non ci sono filtri, rimuovi l'hash
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
+
+function loadFiltersFromHash(){
+  const hash = window.location.hash.slice(1);
+  if(!hash) return;
+  const params = new URLSearchParams(hash);
+  const setSelect = (id, key) => {
+    const val = params.get(key);
+    if(val !== null){
+      const el = document.getElementById(id);
+      if(el) el.value = val;
+    }
+  };
+  setSelect('roleFilter', 'ruolo');
+  setSelect('fasciaFilter', 'fascia');
+  setSelect('posRealeFilter', 'posReale');
+  setSelect('scoutingFilter', 'scouting');
+  setSelect('unassignedFilter', 'assegnazione');
+  setSelect('sortBy', 'ordina');
+  const q = params.get('q');
+  if(q !== null){
+    const el = document.getElementById('searchInput');
+    if(el) el.value = q;
+  }
+  const pianoCand = params.get('candidati');
+  if(pianoCand === '1'){
+    const el = document.getElementById('pianoCandidatesFilter');
+    if(el) el.checked = true;
+  }
+  const tag = params.get('tag');
+  if(tag) activeTagFilter = tag;
+}
+
+// ============================================================
+// FINE KIT AUDIT — Filtri URL
+// ============================================================
 
 function render(){
 renderFasciaFilter();
@@ -3131,6 +4395,9 @@ renderTagFilterBar();
 renderTeamTagFilterBarRosa();
 renderPosRealeFilter();
 renderQuickStatusPill();
+  updateToolBadges();
+  // Kit audit: salva filtri in URL hash (per bookmark/share)
+  try{ saveFiltersToHash(); }catch(e){ /* non critico */ }
   const list = document.getElementById('playerList');
   const items = filteredPlayers();
   if(items.length === 0){
@@ -3331,7 +4598,13 @@ if(key==='nome') return (p.nome||'').toLowerCase();
 if(key==='priorita') return getPlayerPriority(p);
 if(key==='fascia') return p.fascia ? (FASCIA_SORT_RANK[p.fascia]||0) : -Infinity;
 const v = p[key];
-return (v==null || String(v).trim()==='') ? -Infinity : Number(v);
+// Bugfix: se v è una stringa non numerica (es. prezzoPrevisto = "60-80 cr"), Number(v) = NaN.
+// NaN NON è gestito come -Infinity dal comparePlayersForSort, e Array.sort con NaN ritorna
+// undefined behavior (ordinamento instabile, dipende dal browser). Ora NaN viene trattato
+// come valore mancante → -Infinity → in fondo all'ordinamento crescente, in cima al decrescente.
+if(v==null || String(v).trim()==='') return -Infinity;
+const n = Number(v);
+return isNaN(n) ? -Infinity : n;
 }
 let sortDir = 'desc';
 function comparePlayersForSort(a,b){
@@ -3677,68 +4950,10 @@ function computeRivalsActiveInReparto(reparto){
 }
 
 // ---------- ACCOPPIATE PORTIERI ----------
-function teamPericolosita(nomeSquadra){
-  const t = teams.find(x => normalize_(x.nome) === normalize_(nomeSquadra));
-  return (t && t.pericolosita!=null) ? Number(t.pericolosita) : 5.5; // default neutro se manca il rating
-}
-
-// Ritorna { [nomeSquadra]: { [giornata]: difficolta } } per tutte le squadre nel calendario
-function buildFixtureDifficultyByTeam(){
-  const byTeam = {};
-  calendario.forEach(fix => {
-    if(!fix.giornata) return;
-    const casa = fix.squadraCasa, trasf = fix.squadraTrasferta;
-    if(!byTeam[casa]) byTeam[casa] = {};
-    if(!byTeam[trasf]) byTeam[trasf] = {};
-    // difficoltà per chi gioca in casa = pericolosità avversario (trasferta più dura: +1)
-    byTeam[casa][fix.giornata] = teamPericolosita(trasf);
-    byTeam[trasf][fix.giornata] = Math.min(10, teamPericolosita(casa) + 1);
-  });
-  return byTeam;
-}
-
-function computeGoalkeeperPairScore(gk1, gk2, fixtureByTeam){
-  const d1 = fixtureByTeam[gk1.squadra] || {};
-  const d2 = fixtureByTeam[gk2.squadra] || {};
-  const giornate = [...new Set([...Object.keys(d1), ...Object.keys(d2)])];
-  if(giornate.length === 0) return null;
-  let totale = 0, conflitti = 0, coperte = 0;
-  giornate.forEach(g => {
-    const v1 = d1[g], v2 = d2[g];
-    if(v1==null && v2==null) return;
-    const migliore = Math.min(v1 ?? 10, v2 ?? 10);
-    totale += migliore;
-    coperte++;
-    if((v1==null || v1>=7) && (v2==null || v2>=7)) conflitti++;
-  });
-  if(coperte === 0) return null;
-  return { mediaMigliore: totale/coperte, conflitti, giornateCoperte: coperte };
-}
-
-function gkTitolareScore(p){
-return (Number(p.titolaritaVoto)||0)*10000 + (Number(p.presenzeAnnoScorso)||0)*10 + (Number(p.partiteDaTitolareAnnoScorso)||0);
-}
-function computeAllGoalkeeperPairs(){
-const portieri = players.filter(p => p.posFanta==='P' && p.squadra);
-// Un solo portiere per squadra: il titolare presunto (voto titolarità, poi presenze)
-const perSquadra = new Map();
-portieri.forEach(p => {
-const key = normalize_(p.squadra);
-const attuale = perSquadra.get(key);
-if(!attuale || gkTitolareScore(p) > gkTitolareScore(attuale)) perSquadra.set(key, p);
-});
-const titolari = [...perSquadra.values()];
-const fixtureByTeam = buildFixtureDifficultyByTeam();
-const pairs = [];
-for(let i=0; i<titolari.length; i++){
-for(let j=i+1; j<titolari.length; j++){
-const a = titolari[i], b = titolari[j];
-const score = computeGoalkeeperPairScore(a, b, fixtureByTeam);
-if(score) pairs.push({ a, b, ...score });
-}
-}
-return pairs.sort((x,y) => x.mediaMigliore - y.mediaMigliore || x.conflitti - y.conflitti);
-}
+// Funzioni portieri (teamPericolosita, buildFixtureDifficultyByTeam, computeGoalkeeperPairScore,
+// gkTitolareScore, computeAllGoalkeeperPairs) rimosse — assimilate nel blocco unificato
+// "ABBINAMENTI (kit 22)" sopra (dfPairTeamRating, dfPairBuildFixtureMap, dfPairComputeScore,
+// dfPairPlayerRelevance, dfPairComputeAll).
 
 const TEMP_LABELS = {
   caldo: { icon:'🔴', label:'Caldo', hint:'Si sta pagando più del previsto: se puoi, aspetta o punta su un\'altra fascia.' },
@@ -4160,21 +5375,157 @@ function renderLeagueTeamsManage(){
   if(!area) return;
   const sorted = leagueTeams.slice().sort((a,b)=> (a.nome||'').localeCompare(b.nome||''));
   area.innerHTML = sorted.map(t => `
-    <div class="team-manage-row">
-      <span style="flex:1;">${escapeHtml(t.nome)}${t.isMine?' <span class="mine-badge" style="color:var(--amber);">★ mia</span>':''}</span>
-      <button class="btn small danger" data-id="${t.id}">Elimina</button>
+    <div class="team-manage-row" data-team-id="${escapeHtml(t.id)}">
+      <input type="text" class="team-name-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.nome||'')}" placeholder="Nome squadra" style="flex:1; min-width:120px; background:var(--pitch); border:1px solid var(--line); color:var(--chalk); padding:6px 9px; border-radius:7px; font-size:13px;">
+      <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; color:var(--chalk-dim); white-space:nowrap; cursor:pointer;">
+        <input type="checkbox" class="team-mine-chk" data-id="${escapeHtml(t.id)}" ${t.isMine?'checked':''}> mia
+      </label>
+      <button class="btn small" data-action="save" data-id="${escapeHtml(t.id)}" title="Salva modifiche">💾</button>
+      <button class="btn small danger" data-action="delete" data-id="${escapeHtml(t.id)}">Elimina</button>
     </div>
-  `).join('') || '<div class="ai-empty">Nessuna squadra ancora.</div>';
-  area.querySelectorAll('button').forEach(btn => {
-    btn.onclick = async () => {
-      if(!confirm('Eliminare questa squadra? Le assegnazioni dei giocatori a questa squadra resteranno ma il nome non comparirà più tra le squadre della lega.')) return;
-      const id = btn.dataset.id;
-      leagueTeams = leagueTeams.filter(t=>t.id!==id);
-      await sb.from('league_teams').delete().eq('id', id);
-      renderLeagueTeamsManage();
-      renderAsta();
-    };
+  `).join('') || '<div class="ai-empty">Nessuna squadra ancora. Aggiungine una sotto.</div>';
+  // Bind handlers per ogni riga
+  area.querySelectorAll('[data-action="save"]').forEach(btn => {
+    btn.onclick = () => saveLeagueTeamRow(btn.dataset.id);
   });
+  area.querySelectorAll('[data-action="delete"]').forEach(btn => {
+    btn.onclick = () => deleteLeagueTeamRow(btn.dataset.id);
+  });
+  // Autosave su Enter (nel campo nome) o change del checkbox "mia"
+  area.querySelectorAll('.team-name-input').forEach(inp => {
+    inp.addEventListener('keydown', (e) => { if(e.key === 'Enter') saveLeagueTeamRow(inp.dataset.id); });
+  });
+  area.querySelectorAll('.team-mine-chk').forEach(chk => {
+    chk.onchange = () => saveLeagueTeamRow(chk.dataset.id);
+  });
+}
+
+// Helper: salva una riga squadra (nome + flag isMine) con propagazione del rename ai giocatori assegnati.
+// Bugfix rispetto alla versione precedente:
+//  1. Il nome era solo <span> read-only → impossibile da modificare. Ora è un input editabile.
+//  2. Quando si rinomina una squadra, i giocatori con p.asta.team === oldName devono essere
+//     aggiornati col nuovo nome, altrimenti le loro assegnazioni diventano "orfane"
+//     (computeTeamStats(newName) restituirebbe 0 giocatori anche se la squadra ne aveva 5).
+//  3. Il flag "isMine" è mutualmente esclusivo: solo una squadra può averlo alla volta.
+//     Se l'utente marca una nuova squadra come "mia", viene tolto a tutte le altre.
+//  4. Error handling: se persistLeagueTeam fallisce (network/RLS), si mostra un toast e
+//     si ripristina lo stato precedente, invece di fallire silenziosamente.
+async function saveLeagueTeamRow(teamId){
+  const row = leagueTeams.find(t => t.id === teamId);
+  if(!row) return;
+  const nameInput = document.querySelector(`.team-name-input[data-id="${CSS.escape(teamId)}"]`);
+  const mineChk = document.querySelector(`.team-mine-chk[data-id="${CSS.escape(teamId)}"]`);
+  if(!nameInput || !mineChk) return;
+  const newName = nameInput.value.trim();
+  const newMine = mineChk.checked;
+  if(!newName){
+    showToast('Il nome squadra non può essere vuoto');
+    nameInput.value = row.nome || '';
+    nameInput.focus();
+    return;
+  }
+  // Verifica duplicati (case-insensitive), escludendo la riga stessa
+  if(leagueTeams.some(t => t.id !== teamId && (t.nome||'').toLowerCase() === newName.toLowerCase())){
+    showToast(`Esiste già una squadra chiamata "${newName}"`);
+    nameInput.value = row.nome || '';
+    nameInput.focus();
+    return;
+  }
+  const oldName = row.nome;
+  const oldMine = row.isMine;
+  const nameChanged = newName !== oldName;
+  const mineChanged = newMine !== oldMine;
+  if(!nameChanged && !mineChanged){
+    // Nessuna modifica, esci silenziosamente
+    return;
+  }
+  // Salva lo stato completo di leagueTeams per rollback in caso di fallimento
+  // (serve perché se newMine=true, togliamo isMine a tutte le altre — dobbiamo poter
+  // ripristinare anche quelle, non solo la riga corrente)
+  const prevLeagueTeams = leagueTeams.map(t => ({ ...t }));
+  // Applica le modifiche localmente
+  row.nome = newName;
+  row.isMine = newMine;
+  // Se questa è ora "la mia", togli il flag a tutte le altre (mutualmente esclusivo)
+  if(newMine){
+    leagueTeams.forEach(t => { if(t.id !== teamId) t.isMine = false; });
+  }
+  // Propaga il rename ai giocatori assegnati a questa squadra
+  const affectedPlayers = [];
+  const prevPlayersAsta = new Map();
+  if(nameChanged){
+    players.forEach(p => {
+      if(p.asta && p.asta.team === oldName){
+        prevPlayersAsta.set(p.id, p.asta);
+        p.asta = { ...p.asta, team: newName };
+        affectedPlayers.push(p);
+      }
+    });
+  }
+  // Persisti la squadra
+  try{
+    await persistLeagueTeam(row);
+  }catch(e){
+    console.error('Errore salvataggio squadra:', e);
+    showToast('Errore di salvataggio squadra, ripristinato');
+    // Rollback completo: ripristina leagueTeams e players ai valori precedenti
+    leagueTeams.forEach((t, i) => { Object.assign(t, prevLeagueTeams[i]); });
+    players.forEach(p => {
+      if(prevPlayersAsta.has(p.id)) p.asta = prevPlayersAsta.get(p.id);
+    });
+    renderLeagueTeamsManage();
+    return;
+  }
+  // Persisti i giocatori aggiornati (batch)
+  if(affectedPlayers.length > 0){
+    try{
+      await Promise.all(affectedPlayers.map(p => persistPlayer(p, ['asta'])));
+    }catch(e){
+      console.error('Errore propagazione rename ai giocatori:', e);
+      showToast(`Squadra salvata, ma ${affectedPlayers.length} assegnazioni giocatori non aggiornate. Riprova.`);
+      return; // Bugfix: non mostrare il toast di successo qui sotto (sovrascriverebbe quello di errore)
+    }
+  }
+  showToast(`Squadra "${newName}" salvata${affectedPlayers.length > 0 ? ` · ${affectedPlayers.length} assegnazioni aggiornate` : ''}`);
+  renderLeagueTeamsManage();
+  renderAsta();
+}
+
+// Helper: elimina una riga squadra con conferma + error handling.
+// Bugfix rispetto alla versione precedente:
+//  1. Usa showConfirmModal (modale custom) invece di confirm() nativo — consistente col resto
+//     dell'app, funziona anche in PWA standalone dove confirm() può essere bloccato.
+//  2. Error handling: se la delete Supabase fallisce, mostra toast e NON rimuove la squadra
+//     da leagueTeams (così al refresh la squadra è ancora lì, invece di sparire e riapparire).
+//  3. L'utente può scegliere se "staccare" i giocatori assegnati (setta p.asta.team = null)
+//     o lasciarli come orfani (p.asta.team resta col vecchio nome, che non corrisponde più
+//     a nessuna squadra della lega — verrebbero contati da computeTeamStats solo se una
+//     nuova squadra viene creata con lo stesso nome).
+async function deleteLeagueTeamRow(teamId){
+  const row = leagueTeams.find(t => t.id === teamId);
+  if(!row) return;
+  const assignedCount = players.filter(p => p.asta && p.asta.team === row.nome).length;
+  const confirmed = await showConfirmModal({
+    title: `Eliminare "${row.nome}"?`,
+    body: `La squadra verrà rimossa dalla lega.${assignedCount > 0 ? `<br><br>⚠️ <b>${assignedCount}</b> ${assignedCount === 1 ? 'giocatore assegnato' : 'giocatori assegnati'} a questa squadra resteranno in rosa ma con assegnazione "orfana" (il nome squadra non corrisponderà più a nessuna lega). Puoi riassegnarli a mano.` : '<br><br>Nessun giocatore assegnato a questa squadra.'}<br><br>Questa azione non si può annullare.`,
+    confirmLabel: 'Elimina squadra',
+    cancelLabel: 'Annulla'
+  });
+  if(!confirmed) return;
+  // Prova prima la delete su Supabase, poi rimuovi localmente (così se fallisce lo stato resta consistente)
+  try{
+    const result = await sb.from('league_teams').delete().eq('id', teamId);
+    if(result.error) throw result.error;
+  }catch(e){
+    console.error('Errore eliminazione squadra:', e);
+    showToast('Errore di eliminazione: ' + (e.message || 'riprova'));
+    return;
+  }
+  // Delete riuscita: rimuovi localmente
+  leagueTeams = leagueTeams.filter(t => t.id !== teamId);
+  showToast(`Squadra "${row.nome}" eliminata`);
+  renderLeagueTeamsManage();
+  renderAsta();
 }
 
 document.getElementById('astaSettingsBtn').onclick = openAstaSettings;
@@ -4270,10 +5621,28 @@ const el = document.getElementById('quickStatusPill');
 
 function anyModalOpen(){
   if(WM.activeId) return true;
-  return !!(document.getElementById('editorOverlay') || document.getElementById('astaSettingsOverlay') ||
-    document.getElementById('assignFormOverlay') || document.getElementById('assignPickerOverlay') ||
-    document.getElementById('rosterOverlay') || document.getElementById('settingsOverlay') ||
-    document.getElementById('importOverlay') || document.getElementById('cardFieldsOverlay'));
+  // Bugfix (kit audit): la lista non includeva i nuovi overlay aggiunti nelle sessioni recenti
+  // (abbinamenti attaccanti/portieri, proiezioni Oracolo, cleanup Fuori Serie A, scoreSim, cardFields,
+  // astaSettings, confirm modale). Risultato: se uno di questi era aperto, le scorciatoie globali
+  // (Alt+1-9 / Ctrl+Z della Modalità Rapida) scattavano lo stesso, con side effect indesiderati
+  // (es. cambio squadra attiva mentre stai guardando le coppie di portieri).
+  // Ora controlla anche:
+  //   - overlay generici con classe .overlay che hanno un id (catch-all per modali futuri)
+  //   - gli overlay specifici noti
+  const known = ['editorOverlay','astaSettingsOverlay','assignFormOverlay','assignPickerOverlay',
+    'rosterOverlay','settingsOverlay','importOverlay','cardFieldsOverlay',
+    'attackerPairsOverlay','gkPairsOverlay','cleanupOverlay','scoreSimOverlay',
+    'dfProjOverlay','dfProjOverview','confirmOverlay'];
+  for(const id of known){
+    if(document.getElementById(id)) return true;
+  }
+  // Catch-all: qualsiasi overlay .overlay visibile sul body (es. modali creati dinamicamente
+  // senza id specifico, o il modale di conferma showConfirmModal)
+  const overlays = document.querySelectorAll('body > .overlay');
+  for(const el of overlays){
+    if(el.style.display !== 'none' && el.offsetParent !== null) return true;
+  }
+  return false;
 }
 
 function renderQuickMode(){
@@ -4294,6 +5663,7 @@ function renderQuickMode(){
       </div>
       <div class="quick-inputs">
         <input type="number" id="quickPrezzoInput" placeholder="Cr" inputmode="numeric">
+        <button class="btn small" id="quickSuggestedBtn" title="Usa prezzo suggerito (FVM + temperatura mercato + budget rimanente)">💰</button>
         <input type="text" id="quickSearchInput" placeholder="Digita il nome..." autocomplete="off">
       </div>
       <div class="quick-toggle-row">
@@ -4317,6 +5687,24 @@ function renderQuickMode(){
   document.getElementById('quickPrezzoInput').addEventListener('keydown', (e) => {
     if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('quickSearchInput').focus(); }
   });
+  // Kit audit: pulsante 💰 per usare il prezzo suggerito del giocatore evidenziato
+  const suggBtn = document.getElementById('quickSuggestedBtn');
+  if(suggBtn){
+    suggBtn.onclick = () => {
+      const items = getQuickFiltered();
+      let target = null;
+      if(quickHighlightIndex >= 0 && items[quickHighlightIndex]) target = items[quickHighlightIndex];
+      else if(items.length === 1) target = items[0];
+      if(!target){ showToast('Seleziona un giocatore prima (↑↓ o clicca)'); return; }
+      const suggested = computeSuggestedPrice(target, quickActiveTeam);
+      if(!suggested){ showToast('Nessun prezzo di riferimento (FVM o stima manuale) per questo giocatore'); return; }
+      document.getElementById('quickPrezzoInput').value = suggested.value;
+      document.getElementById('quickPrezzoInput').focus();
+      const sourceLabel = suggested.source === 'manuale' ? 'tua stima' : 'FVM';
+      const factorStr = suggested.factors.length > 0 ? ' · ' + suggested.factors.map(f => f.label).join(' · ') : '';
+      showToast(`💰 ${target.nome}: ${suggested.value}cr (da ${sourceLabel}${factorStr})`);
+    };
+  }
   renderQuickList();
   renderQuickLastAssigned();
   document.getElementById('quickSearchInput').focus();
@@ -4417,6 +5805,81 @@ function renderQuickBudgetLine(){
   el.innerHTML = `Budget: <b class="${low?'low':''}">${remaining}</b>/${budgetTot}cr rimasti · Slot: P <b>${slotsFilled.P}/${slots.P}</b> · D <b>${slotsFilled.D}/${slots.D}</b> · C <b>${slotsFilled.C}/${slots.C}</b> · A <b>${slotsFilled.A}/${slots.A}</b>`;
 }
 
+// ============================================================
+// KIT AUDIT — Prezzo suggerito in tempo reale (quick panel)
+// ============================================================
+// Calcola un prezzo suggerito per un giocatore considerando:
+//  1. La tua stima manuale (prezzoPrevisto) — ha sempre priorità (come Oracolo)
+//  2. L'FVM di fantacalcio.it (custom.fvm) — fallback se la stima manuale manca
+//  3. Il budget rimanente della squadra attiva + slot rimanenti per quel reparto
+//  4. La temperatura di mercato (se calda: aumenta il prezzo; se fredda: diminuisce)
+//  5. Le vendite reali nella stessa fascia (se disponibili)
+// Ritorna {value, source, factors} o null se nessun riferimento disponibile.
+function computeSuggestedPrice(p, teamName){
+  if(!p) return null;
+  // 1. Riferimento base: stima manuale o FVM (stessa logica di referencePrice)
+  const ref = referencePrice(p);
+  if(!ref) return null; // niente FVM né stima → non possiamo suggerire
+  let value = ref.value;
+  let source = ref.source;
+  const factors = [];
+  
+  // 2. Temperatura di mercato: se calda (+15% rispetto al riferimento), se fredda (-15%)
+  if(p.posFanta && p.fascia && auctionSettings.modalitaAsta){
+    const temp = computeMarketTemperature(p.posFanta, p.fascia);
+    const sogliaCalda = auctionSettings.tempSogliaCalda || 1.15;
+    const sogliaFredda = auctionSettings.tempSogliaFredda || 0.85;
+    if(temp.level === 'caldo' && temp.count >= 2){
+      // Caldo: il mercato sta pagando più del previsto → alziamo il suggerimento
+      const adjust = 1 + (sogliaCalda - 1) * 0.6; // 60% dell'effetto caldo
+      value = Math.round(value * adjust);
+      factors.push({label: 'mercato caldo +' + Math.round((adjust-1)*100) + '%', impact: Math.round(value * (adjust-1))});
+    }else if(temp.level === 'freddo' && temp.count >= 2){
+      // Freddo: il mercato sta pagando meno del previsto → abbassiamo
+      const adjust = 1 - (1 - sogliaFredda) * 0.6;
+      value = Math.round(value * adjust);
+      factors.push({label: 'mercato freddo ' + Math.round((adjust-1)*100) + '%', impact: Math.round(value * (adjust-1))});
+    }
+  }
+  
+  // 3. Budget/slot check: se la squadra ha pochi slot rimasti per questo reparto e molto budget,
+  // può permettersi di pagare di più. Se ha poco budget e tanti slot, deve stare attenta.
+  if(teamName){
+    const teamRow = leagueTeams.find(t => t.nome === teamName);
+    const budgetTot = teamRow && teamRow.budgetTotale!=null ? teamRow.budgetTotale : auctionSettings.budgetTotale;
+    const {spent, slotsFilled} = computeTeamStats(teamName);
+    const remaining = budgetTot - spent;
+    const rep = p.posFanta;
+    if(rep && auctionSettings.slots[rep] != null){
+      const slotsLeft = auctionSettings.slots[rep] - (slotsFilled[rep] || 0);
+      const totalSlotsLeft = Object.values(auctionSettings.slots).reduce((a,b)=>a+b,0) - Object.values(slotsFilled).reduce((a,b)=>a+b,0);
+      // Se questo reparto ha 1 slot rimanente e budget rimanente è alto, suggerisci fino al 90% del budget rimanente / slot
+      if(slotsLeft === 1 && totalSlotsLeft > 0 && remaining > 0){
+        const maxForThisSlot = Math.floor(remaining * 0.85 / Math.max(1, totalSlotsLeft));
+        if(maxForThisSlot < value){
+          // Il budget è limitato → abbassa il suggerimento al massimo che la squadra può pagare
+          factors.push({label: 'budget limitato a ' + maxForThisSlot + 'cr', impact: maxForThisSlot - value});
+          value = maxForThisSlot;
+        }
+      }
+      // Warning se il suggerimento supera il budget rimanente
+      if(value > remaining && remaining > 0){
+        factors.push({label: '⚠️ supera il budget rimanente (' + remaining + 'cr)', impact: 0});
+      }
+    }
+  }
+  
+  // 4. Clamp: mai suggerire meno di 1 o più del budget totale
+  if(value < 1) value = 1;
+  const budgetCap = (teamName && leagueTeams.find(t => t.nome === teamName)?.budgetTotale) || auctionSettings.budgetTotale || 500;
+  if(value > budgetCap) value = budgetCap;
+  
+  return {value, source, factors};
+}
+
+// ============================================================
+// FINE KIT AUDIT — Prezzo suggerito
+// ============================================================
 function renderQuickList(){
   renderQuickBudgetLine();
   const listEl = document.getElementById('quickPlayerList');
@@ -4430,6 +5893,11 @@ function renderQuickList(){
       const t = TEMP_LABELS[temp.level];
       const parts = [`${t.icon} ${p.fascia}`];
       if(p.valoreEffettivo!=null) parts.push(`tetto ${p.valoreEffettivo}cr`);
+      // Prezzo suggerito (kit audit): FVM o prezzo previsto manuale
+      const suggested = computeSuggestedPrice(p, quickActiveTeam);
+      if(suggested){
+        parts.push(`sugg. ${suggested.value}cr`);
+      }
       hint = `<span class="qtaken-label">${parts.join(' · ')}</span>`;
     }
     return `
@@ -6963,77 +8431,204 @@ async function removeRecord(type, id){
 }
 
 // ---------- COMPARE (table, sections collapsible) ----------
-function renderCompare(){
-  const picker = document.getElementById('comparePicker');
-  picker.innerHTML = players.slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')).map(p => `
-    <span class="pill ${compareIds.includes(p.id)?'selected':''}" data-id="${p.id}">${escapeHtml(p.nome)}</span>
-  `).join('');
-  picker.querySelectorAll('.pill').forEach(el => { el.onclick = () => { toggleCompare(el.dataset.id); }; });
+// Kit audit: ricerca nel picker + confronta con profilo medio + export + highlight diff
+// Bugfix (post-sessione): il picker veniva riconstruito ad ogni keystroke (renderCompare → picker.innerHTML = ...),
+// distruggendo l'input → perdi il focus → si inserisce una lettera alla volta. Le pill si overlappavano
+// perché .pill era display:inline-block di default. Fix:
+//  1. Struttura stabile del picker creata UNA volta sola (ensureComparePickerStructure)
+//  2. Solo i sotto-elementi dinamici (selected pills, search results) si aggiornano via innerHTML
+//  3. L'input resta vivo, focus e cursore si mantengono
+//  4. .pill ora ha display:inline-flex + flex-wrap → niente overlap
+let compareSearchQuery = '';
+let compareToAverage = false; // se true, mostra una colonna "Media ruolo" invece di selezionare giocatori
 
+function ensureComparePickerStructure(){
+  const picker = document.getElementById('comparePicker');
+  if(!picker) return false;
+  if(picker.dataset.structured === '1') return true; // già strutturato
+  picker.innerHTML = `
+    <div id="compareSelectedPills" class="pill-list" style="margin-bottom:8px;"></div>
+    <div class="compare-search-row" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+      <input type="text" id="compareSearchInput" placeholder="Cerca giocatore da aggiungere..." style="flex:1; min-width:200px; background:var(--pitch); border:1px solid var(--line); color:var(--chalk); padding:8px 10px; border-radius:8px; font-size:13px;" autocomplete="off">
+      <button class="btn small" id="compareClearBtn" title="Rimuovi tutti i selezionati">Rimuovi tutti</button>
+      <button class="btn small" id="compareAvgBtn" title="Confronta con la media del ruolo">vs media ruolo</button>
+      <button class="btn small" id="compareExportBtn" title="Esporta confronto come JSON">📤 Esporta</button>
+    </div>
+    <div id="compareSearchResults"></div>
+  `;
+  picker.dataset.structured = '1';
+  // Bind eventi UNA volta sola (l'input non viene mai distrutto)
+  const searchInput = document.getElementById('compareSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', () => {
+      compareSearchQuery = searchInput.value;
+      renderCompareSearchResults(); // aggiorna SOLO i risultati, non l'input
+    });
+  }
+  const clearBtn = document.getElementById('compareClearBtn');
+  if(clearBtn) clearBtn.onclick = () => { compareIds = []; compareSearchQuery = ''; if(searchInput) searchInput.value = ''; renderCompare(); };
+  const avgBtn = document.getElementById('compareAvgBtn');
+  if(avgBtn) avgBtn.onclick = () => { compareToAverage = !compareToAverage; renderCompare(); };
+  const expBtn = document.getElementById('compareExportBtn');
+  if(expBtn) expBtn.onclick = exportCompare;
+  return true;
+}
+
+function renderCompareSelectedPills(){
+  const el = document.getElementById('compareSelectedPills');
+  if(!el) return;
+  if(compareIds.length === 0){
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = compareIds.map(id => {
+    const p = players.find(x => x.id === id);
+    if(!p) return '';
+    return `<span class="pill selected" data-id="${p.id}" title="Clicca per rimuovere">${escapeHtml(p.nome)} <span style="opacity:0.6;">✕</span></span>`;
+  }).join('');
+  el.querySelectorAll('.pill').forEach(pill => {
+    pill.onclick = () => {
+      const id = pill.dataset.id;
+      compareIds = compareIds.filter(x => x !== id);
+      renderCompare(); // re-render completo (cambia la tabella)
+    };
+  });
+}
+
+function renderCompareSearchResults(){
+  const el = document.getElementById('compareSearchResults');
+  if(!el) return;
+  if(compareToAverage){
+    el.innerHTML = '';
+    return;
+  }
+  if(!compareSearchQuery || !compareSearchQuery.trim()){
+    el.innerHTML = '';
+    return;
+  }
+  const q = compareSearchQuery.trim().toLowerCase();
+  const results = players.filter(p => (p.nome||'').toLowerCase().includes(q) && !compareIds.includes(p.id)).slice(0, 20);
+  if(results.length === 0){
+    el.innerHTML = `<div class="ai-empty">Nessun giocatore trovato per "${escapeHtml(compareSearchQuery)}".</div>`;
+    return;
+  }
+  el.innerHTML = results.map(p => {
+    return `<span class="pill" data-id="${p.id}" title="Clicca per aggiungere">${escapeHtml(p.nome)} <span style="opacity:0.6; font-size:10px;">${escapeHtml(p.squadra||'')}</span></span>`;
+  }).join('');
+  el.querySelectorAll('.pill').forEach(pill => {
+    pill.onclick = () => {
+      const id = pill.dataset.id;
+      if(compareIds.includes(id)) return;
+      if(compareIds.length >= 3){ showToast('Massimo 3 giocatori a confronto'); return; }
+      compareIds.push(id);
+      // Pulisci la ricerca dopo aggiunta
+      compareSearchQuery = '';
+      const searchInput = document.getElementById('compareSearchInput');
+      if(searchInput){ searchInput.value = ''; searchInput.focus(); }
+      renderCompare(); // re-render completo (cambia selected pills + tabella)
+    };
+  });
+}
+
+function renderCompare(){
+  // 1. Assicurati che la struttura stabile del picker esista
+  ensureComparePickerStructure();
+  // 2. Aggiorna le pill selezionate (dynamic)
+  renderCompareSelectedPills();
+  // 3. Aggiorna i risultati della ricerca (dynamic)
+  renderCompareSearchResults();
+  // 4. Aggiorna stato dei bottoni (avg toggle, export disabled)
+  const avgBtn = document.getElementById('compareAvgBtn');
+  if(avgBtn) avgBtn.classList.toggle('mode-active', compareToAverage);
+  const expBtn = document.getElementById('compareExportBtn');
+  if(expBtn) expBtn.disabled = compareIds.length === 0;
+  const clearBtn = document.getElementById('compareClearBtn');
+  if(clearBtn) clearBtn.style.display = compareIds.length > 0 ? '' : 'none';
+  // 5. Aggiorna contatore e details
   const countEl = document.getElementById('comparePickerCount');
   if(countEl) countEl.textContent = `(${compareIds.length}/3)`;
   const details = document.getElementById('comparePickerDetails');
-  if(details) details.open = compareIds.length < 2;
-
+  if(details) details.open = compareIds.length < 2 && !compareToAverage;
+  // 6. Renderizza la tabella di confronto
   const area = document.getElementById('compareArea');
-  if(compareIds.length === 0){
-    area.innerHTML = '<div class="compare-empty">Seleziona 2 o 3 giocatori qui sopra per il confronto affiancato.</div>';
+  if(compareIds.length === 0 && !compareToAverage){
+    area.innerHTML = '<div class="compare-empty">Seleziona 2 o 3 giocatori qui sopra, oppure attiva "vs media ruolo" per confrontare un giocatore con la media del suo reparto.</div>';
     return;
   }
   const selected = compareIds.map(id => players.find(p=>p.id===id)).filter(Boolean);
 
+  // Modalità "vs media ruolo": se attiva e c'è 1 giocatore selezionato, aggiungi una colonna "Media <ruolo>"
+  let compareCols = selected.slice();
+  let avgPlayer = null;
+  if(compareToAverage && selected.length > 0){
+    const rep = selected[0].posFanta || 'C';
+    avgPlayer = computeAveragePlayerForRole(rep);
+    if(avgPlayer){
+      avgPlayer._isAverage = true;
+      avgPlayer.nome = 'Media ' + (ROLE_LABEL[rep] || rep);
+      avgPlayer.squadra = '(calcolata)';
+      compareCols.push(avgPlayer);
+    }
+  }
+
   const allCustomKeys = new Set();
-  selected.forEach(p => Object.keys(p.custom||{}).forEach(k => allCustomKeys.add(k)));
+  compareCols.forEach(p => { if(!p._isAverage) Object.keys(p.custom||{}).forEach(k => allCustomKeys.add(k)); });
 
   let rowsHtml = '';
   PLAYER_SECTIONS.forEach(sec => {
     const open = expandedCompareSections.has(sec.key);
-    rowsHtml += `<tr class="section-header-row" data-sec="${sec.key}"><td colspan="${selected.length+1}">${open?'▾':'▸'} ${sec.label}</td></tr>`;
+    rowsHtml += `<tr class="section-header-row" data-sec="${sec.key}"><td colspan="${compareCols.length+1}">${open?'▾':'▸'} ${sec.label}</td></tr>`;
     if(open){
       sectionFields(sec).forEach(f => {
-        rowsHtml += `<tr><td>${f.label}</td>` + selected.map(p => `<td>${formatCompareValue(f, p[f.k])}</td>`).join('') + `</tr>`;
+        rowsHtml += `<tr><td>${f.label}</td>` + compareCols.map(p => `<td>${formatCompareValueHighlighted(f, p[f.k], compareCols, p)}</td>`).join('') + `</tr>`;
       });
       if(sec.key === 'previsioni'){
-        rowsHtml += `<tr><td>Tag</td>` + selected.map(p => `<td>${(p.tag&&p.tag.length) ? escapeHtml(p.tag.join(', ')) : '-'}</td>`).join('') + `</tr>`;
+        rowsHtml += `<tr><td>Tag</td>` + compareCols.map(p => `<td>${(p.tag&&p.tag.length) ? escapeHtml(p.tag.join(', ')) : '-'}</td>`).join('') + `</tr>`;
       }
     }
   });
   if(allCustomKeys.size){
     const open = expandedCompareSections.has('custom');
-    rowsHtml += `<tr class="section-header-row" data-sec="custom"><td colspan="${selected.length+1}">${open?'▾':'▸'} Campi personalizzati</td></tr>`;
+    rowsHtml += `<tr class="section-header-row" data-sec="custom"><td colspan="${compareCols.length+1}">${open?'▾':'▸'} Campi personalizzati</td></tr>`;
     if(open){
       [...allCustomKeys].forEach(k => {
-        rowsHtml += `<tr><td>${escapeHtml(k)}</td>` + selected.map(p => `<td>${escapeHtml((p.custom&&p.custom[k])||'-')}</td>`).join('') + `</tr>`;
+        rowsHtml += `<tr><td>${escapeHtml(k)}</td>` + compareCols.map(p => `<td>${escapeHtml((p.custom&&p.custom[k])||'-')}</td>`).join('') + `</tr>`;
       });
     }
   }
 
   const aiOpen = expandedCompareSections.has('aiSummary');
-  rowsHtml += `<tr class="section-header-row" data-sec="aiSummary"><td colspan="${selected.length+1}">${aiOpen?'▾':'▸'} Riassunto AI <span class="section-toggle-original" data-action="toggleOriginal">${compareShowOriginalNotes?'mostra riassunto':'mostra note originali'}</span></td></tr>`;
+  rowsHtml += `<tr class="section-header-row" data-sec="aiSummary"><td colspan="${compareCols.length+1}">${aiOpen?'▾':'▸'} Riassunto AI <span class="section-toggle-original" data-action="toggleOriginal">${compareShowOriginalNotes?'mostra riassunto':'mostra note originali'}</span></td></tr>`;
   if(aiOpen){
     if(compareShowOriginalNotes){
-      rowsHtml += `<tr><td>Note originali</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Note originali</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const blob = [p.noteAnnoScorso, p.titolaritaNote, p.valutazioneSquadraNote, p.noteVarie].filter(Boolean).join('\n\n') || '-';
         return `<td><div class="orig-note-block">${escapeHtml(blob)}</div></td>`;
       }).join('') + `</tr>`;
     } else {
-      rowsHtml += `<tr><td>Parole chiave</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Parole chiave</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const s = p.aiSummary;
         return `<td>${s&&s.keywords&&s.keywords.length ? `<div class="ai-kw-td">${s.keywords.map(k=>`<span class="ai-kw">${escapeHtml(k)}</span>`).join('')}</div>` : '-'}</td>`;
       }).join('') + `</tr>`;
-      rowsHtml += `<tr><td>Punti giocatore</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Punti giocatore</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const s = p.aiSummary;
         return `<td>${s&&s.punti_giocatore&&s.punti_giocatore.length ? `<ul class="ai-list">${s.punti_giocatore.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '-'}</td>`;
       }).join('') + `</tr>`;
-      rowsHtml += `<tr><td>Punti squadra</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Punti squadra</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const s = p.aiSummary;
         return `<td>${s&&s.punti_squadra&&s.punti_squadra.length ? `<ul class="ai-list">${s.punti_squadra.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '-'}</td>`;
       }).join('') + `</tr>`;
-      rowsHtml += `<tr><td>Rischi</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Rischi</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const s = p.aiSummary;
         return `<td>${s&&s.flag_rischio&&s.flag_rischio.length ? `<ul class="ai-list risk">${s.flag_rischio.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '-'}</td>`;
       }).join('') + `</tr>`;
-      rowsHtml += `<tr><td>Generato</td>` + selected.map(p => {
+      rowsHtml += `<tr><td>Generato</td>` + compareCols.map(p => {
+        if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
         const s = p.aiSummary;
         if(!s) return '<td>-</td>';
         const stale = s.sourceHash !== computeNotesSignature(p);
@@ -7043,7 +8638,7 @@ function renderCompare(){
   }
 
   area.innerHTML = `<div class="compare-scroll"><table class="compare-table">
-    <thead><tr><th>Campo</th>${selected.map(p=>`<th>${escapeHtml(p.nome)}</th>`).join('')}</tr></thead>
+    <thead><tr><th>Campo</th>${compareCols.map(p=>`<th${p._isAverage?' style="color:var(--amber); font-style:italic;"':''}>${escapeHtml(p.nome)}</th>`).join('')}</tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table></div>`;
 
@@ -7055,6 +8650,120 @@ function renderCompare(){
       renderCompare();
     };
   });
+}
+
+// Calcola un giocatore "medio" per un ruolo (media di tutti i giocatori di quel ruolo con dati)
+function computeAveragePlayerForRole(role){
+  const sameRole = players.filter(p => p.posFanta === role);
+  if(sameRole.length === 0) return null;
+  const avg = { _isAverage: true, posFanta: role };
+  // Campi numerici di cui calcolare la media
+  const numericFields = ['eta','fmAnnoScorso','golAnnoScorso','assistAnnoScorso','xgAnnoScorso','spesaAnnoScorso','titolaritaVoto','fragilita','golPrevisti','presenzeAnnoScorso','tiriPartita','tocchiArea','mediaVotoUltime5'];
+  numericFields.forEach(k => {
+    const values = sameRole.map(p => {
+      const v = p[k];
+      if(v == null || v === '') return null;
+      const n = Number(v);
+      return isNaN(n) ? null : n;
+    }).filter(v => v !== null);
+    if(values.length > 0){
+      avg[k] = (values.reduce((a,b)=>a+b,0) / values.length).toFixed(2);
+    }
+  });
+  avg.fascia = sameRole[0].fascia || ''; // non ha molto senso ma per coerenza
+  return avg;
+}
+
+// Format con highlight differenze: se il valore è il migliore/migliore tra le colonne, evidenziarlo verde;
+// se il peggiore, rosso. Solo per campi numerici.
+function formatCompareValueHighlighted(f, val, allCols, currentP){
+  if(currentP._isAverage){
+    // Per la colonna media, evidenzia in ambra (riferimento)
+    const formatted = formatCompareValue(f, val);
+    return `<span style="color:var(--amber); font-style:italic;">${formatted}</span>`;
+  }
+  // Per campi non numerici, usa formatCompareValue normale
+  const numVal = (val == null || val === '') ? null : Number(val);
+  if(numVal === null || isNaN(numVal)){
+    return formatCompareValue(f, val);
+  }
+  // Trova il valore migliore e peggiore tra le colonne (escludendo la media)
+  const otherNums = allCols.filter(p => !p._isAverage).map(p => {
+    const v = p[f.k];
+    if(v == null || v === '') return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  }).filter(v => v !== null);
+  if(otherNums.length < 2) return formatCompareValue(f, val);
+  const max = Math.max(...otherNums);
+  const min = Math.min(...otherNums);
+  if(max === min) return formatCompareValue(f, val); // tutti uguali, niente highlight
+  // Per alcuni campi "più alto = meglio" (gol, assist, xg, fm, titolarita), per altri "più basso = meglio" (fragilita, eta per attaccanti)
+  const higherBetter = ['golAnnoScorso','assistAnnoScorso','xgAnnoScorso','fmAnnoScorso','titolaritaVoto','golPrevisti','presenzeAnnoScorso','tiriPartita','tocchiArea','mediaVotoUltime5'];
+  const lowerBetter = ['fragilita','eta'];
+  const isHigherBetter = higherBetter.includes(f.k);
+  const isLowerBetter = lowerBetter.includes(f.k);
+  let cls = '';
+  if(isHigherBetter){
+    if(numVal === max) cls = 'cell-best';
+    else if(numVal === min) cls = 'cell-hard';
+  }else if(isLowerBetter){
+    if(numVal === min) cls = 'cell-best';
+    else if(numVal === max) cls = 'cell-hard';
+  }
+  if(cls){
+    return `<span class="${cls}">${formatCompareValue(f, val)}</span>`;
+  }
+  return formatCompareValue(f, val);
+}
+
+// Export confronto come JSON (kit audit)
+function exportCompare(){
+  if(compareIds.length === 0){
+    showToast('Seleziona almeno un giocatore da esportare');
+    return;
+  }
+  const selected = compareIds.map(id => players.find(p => p.id === id)).filter(Boolean);
+  const exportData = {
+    meta: {
+      app: 'DossierFanta',
+      type: 'confronto',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      exportedBy: myName || 'anonimo',
+    },
+    players: selected.map(p => ({
+      id: p.id,
+      nome: p.nome,
+      squadra: p.squadra,
+      posFanta: p.posFanta,
+      fascia: p.fascia,
+      fmAnnoScorso: p.fmAnnoScorso,
+      golAnnoScorso: p.golAnnoScorso,
+      assistAnnoScorso: p.assistAnnoScorso,
+      xgAnnoScorso: p.xgAnnoScorso,
+      titolaritaVoto: p.titolaritaVoto,
+      fragilita: p.fragilita,
+      golPrevisti: p.golPrevisti,
+      prezzoPrevisto: p.prezzoPrevisto,
+      tag: p.tag || [],
+      noteAnnoScorso: p.noteAnnoScorso,
+      valutazioneSquadraNote: p.valutazioneSquadraNote,
+      aiSummary: p.aiSummary || null,
+    }))
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.download = `dossierfanta-confronto-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Confronto esportato: ${selected.length} giocatori`);
 }
 
 function formatCompareValue(f, val){
@@ -7246,6 +8955,126 @@ function wrWarTableHtml(){
     </div>`).join('')+'</div>';
 }
 
+// ============================================================
+// KIT AUDIT — Classifica lega live + FM previsto squadra (idea utente)
+// ============================================================
+// Mostra per ogni squadra della lega: budget rimasto, slot riempiti, FM media (da fmAnnoScorso),
+// FM proiettata (Oracolo — dfFinalFm), e spesa media per giocatore.
+// La mia squadra è evidenziata. Click su una riga apre il dettaglio roster.
+// Per la mia squadra (isMine), mostriamo anche il "potenziale squadra" (somma FM proiettate / 11 titolari)
+// per capire quanto vale la rosa che stai costruendo.
+// Accorpato (post-feedback utente): il vecchio "Tavolo di guerra" (wrWarTableHtml) era separato e
+// ridondante — ora la mini-bar di progress budget è integrata come colonna della classifica.
+function wrLeagueStandingsHtml(){
+  if(leagueTeams.length === 0){
+    return '<div class="wr-card"><div class="wr-empty">Nessuna squadra della lega. Configurale in ⚙️ Impostazioni asta.</div></div>';
+  }
+  const totalSlots = Object.values(auctionSettings.slots).reduce((a,b)=>a+(b||0),0);
+  
+  const rows = leagueTeams.map(t => {
+    const st = computeTeamStats(t.nome);
+    const budgetTot = t.budgetTotale!=null ? t.budgetTotale : auctionSettings.budgetTotale;
+    const filled = Object.values(st.slotsFilled).reduce((a,b)=>a+b,0);
+    const remaining = budgetTot - st.spent;
+    
+    // FM media squadra (da fmAnnoScorso dei giocatori assegnati)
+    const playersWithFm = st.assigned.filter(p => p.fmAnnoScorso != null && String(p.fmAnnoScorso).trim() !== '');
+    const fmSum = playersWithFm.reduce((sum, p) => sum + (Number(p.fmAnnoScorso) || 0), 0);
+    const fmMedia = playersWithFm.length > 0 ? fmSum / playersWithFm.length : null;
+    
+    // FM proiettata (Oracolo — dfFinalFm se disponibile)
+    let projSum = 0, projCount = 0;
+    if(typeof dfFinalFm === 'function'){
+      st.assigned.forEach(p => {
+        const f = dfFinalFm(p);
+        if(f != null && !isNaN(f)){ projSum += f; projCount++; }
+      });
+    }
+    const fmProjMedia = projCount > 0 ? projSum / projCount : null;
+    
+    // Spesa media per giocatore
+    const avgSpent = st.assigned.length > 0 ? st.spent / st.assigned.length : 0;
+    
+    // Slot vuoti
+    const slotsLeft = totalSlots - filled;
+    
+    // Progress budget speso (mini-bar come nel vecchio Tavolo di guerra)
+    const pctSpent = budgetTot > 0 ? Math.min(100, (st.spent / budgetTot) * 100) : 0;
+    
+    return {
+      t, st, budgetTot, filled, remaining, fmMedia, fmProjMedia, avgSpent, slotsLeft,
+      playersWithFm: playersWithFm.length, projCount, pctSpent
+    };
+  });
+  
+  // Ordina per FM proiettata DESC (se disponibile), altrimenti per FM media DESC,
+  // altrimenti per slot riempiti DESC
+  rows.sort((a, b) => {
+    if(b.fmProjMedia != null && a.fmProjMedia != null){
+      if(b.fmProjMedia !== a.fmProjMedia) return b.fmProjMedia - a.fmProjMedia;
+    }
+    if(b.fmMedia != null && a.fmMedia != null){
+      if(b.fmMedia !== a.fmMedia) return b.fmMedia - a.fmMedia;
+    }
+    return b.filled - a.filled;
+  });
+  
+  const fmtFm = (v) => v != null ? v.toFixed(2) : '—';
+  
+  let html = '<div class="wr-card"><div class="wr-card-title">🏆 Classifica lega live</div>';
+  html += '<div class="settings-hint" style="margin-bottom:8px;">FM = media fantamedia dei giocatori assegnati. 🔮 = proiezione Oracolo (se impostata). Barra = % budget speso. Ordinamento: 🔮 proiettata → FM → slot. Click su una riga per il dettaglio.</div>';
+  html += '<table class="pair-detail-table"><thead><tr>';
+  html += '<th>#</th><th>Squadra</th><th>FM</th><th>🔮 Proiettata</th><th>Slot</th><th>Spesi / Budget</th><th>Rimasti</th>';
+  html += '</tr></thead><tbody>';
+  rows.forEach((r, i) => {
+    const isMine = r.t.isMine;
+    const fmClass = r.fmMedia != null ? (r.fmMedia >= 6.5 ? 'cell-best' : r.fmMedia >= 6 ? '' : 'cell-hard') : '';
+    const projClass = r.fmProjMedia != null ? (r.fmProjMedia >= 6.5 ? 'cell-best' : r.fmProjMedia >= 6 ? '' : 'cell-hard') : '';
+    const lowClass = r.pctSpent > 90 ? 'low' : '';
+    html += `<tr class="wr-war-row ${isMine?'mine':''}" data-team="${escapeHtml(r.t.nome)}" style="cursor:pointer;">`;
+    html += `<td class="cell-g">#${i+1}</td>`;
+    html += `<td><b>${escapeHtml(r.t.nome)}</b>${isMine?' <span style="color:var(--amber);">★</span>':''}</td>`;
+    html += `<td class="${fmClass}">${fmtFm(r.fmMedia)}${r.playersWithFm > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(${r.playersWithFm})</span>` : ''}</td>`;
+    html += `<td class="${projClass}">${fmtFm(r.fmProjMedia)}${r.projCount > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(${r.projCount})</span>` : ''}</td>`;
+    html += `<td>${r.filled}/${totalSlots}${r.slotsLeft > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(-${r.slotsLeft})</span>` : ''}</td>`;
+    // Mini-bar budget speso (accorpata dal vecchio Tavolo di guerra)
+    html += `<td style="min-width:140px;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <div class="wr-war-minibar" style="flex:1; min-width:60px;"><div class="wr-war-minibar-fill ${lowClass}" style="width:${r.pctSpent}%;"></div></div>
+        <span style="font-size:11px; color:var(--chalk-dim); white-space:nowrap;">${r.st.spent}/${r.budgetTot}</span>
+      </div>
+    </td>`;
+    html += `<td><b style="color:${r.remaining < r.budgetTot*0.15 ? 'var(--red)' : 'var(--chalk)'};">${r.remaining}cr</b></td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  
+  // Statistiche extra per la mia squadra (potenziale rosa)
+  const mine = rows.find(r => r.t.isMine);
+  if(mine && mine.fmProjMedia != null){
+    const potenziale = mine.fmProjMedia;
+    html += `<div style="margin-top:12px; padding:10px; background:rgba(217,164,65,0.08); border:1px solid rgba(217,164,65,0.3); border-radius:8px;">`;
+    html += `<div style="font-size:11px; color:var(--amber); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">🎯 La tua squadra · potenziale rosa</div>`;
+    html += `<div style="font-size:13px; color:var(--chalk);">`;
+    html += `FM media proiettata attuale: <b style="color:var(--amber);">${potenziale.toFixed(2)}</b>`;
+    if(mine.filled > 0){
+      html += ` · ${mine.filled} giocatori presi · spesa media ${mine.avgSpent.toFixed(0)}cr/giocatore`;
+      if(mine.slotsLeft > 0){
+        const budgetPerSlot = mine.remaining / mine.slotsLeft;
+        html += `<br><span style="font-size:11.5px; color:var(--chalk-dim);">Ti restano <b>${mine.remaining}cr</b> per <b>${mine.slotsLeft} slot</b> · ~${budgetPerSlot.toFixed(0)}cr per slot rimanenti.</span>`;
+      }
+    }
+    html += `</div></div>`;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+// ============================================================
+// FINE KIT AUDIT — Classifica lega live
+// ============================================================
+
 function wrMarketHtml(){
   const fasce=FASCE_PER_RUOLO.P;
   let grid='<div class="wr-mkt-corner"></div>'+fasce.map(f=>`<div class="wr-mkt-hd">${escapeHtml(f)}</div>`).join('');
@@ -7301,7 +9130,7 @@ function wrRenderPlancia(sec){
   } else {
     html+='<div class="wr-card"><div class="wr-empty">Imposta la tua squadra in ⚙️ Impostazioni asta per la plancia personale.</div></div>';
   }
-  html+=wrWarTableHtml();
+  html+=wrLeagueStandingsHtml();
   html+=wrMarketHtml();
   sec.innerHTML=html;
   sec.querySelectorAll('.wr-war-row').forEach(el=>{ el.onclick=()=>openTeamRosterDetail(el.dataset.team); });
@@ -7549,7 +9378,21 @@ function dfApplyCorrectFasce(){
 }
 
 // ---- 2) MOTORE PROIEZIONE MEDIA VOTO ----
-function dfNum(v){ return (v!=null && String(v).trim()!=='') ? Number(v) : null; }
+function dfNum(v){
+  // Bugfix (kit audit): se v è una stringa non numerica (es. "circa 5.8", "n/a"), Number(v) = NaN.
+  // NaN != null è true, quindi il chiamante entra nella logica e delta += NaN → tutta la proiezione
+  // diventa NaN. Questo è lo STESSO bug già fixato in dfPairParseNum (kit 22 abbinamenti), ma dfNum
+  // non era stato aggiornato. Ora NaN viene trattato come valore mancante → null.
+  if(v==null) return null;
+  if(typeof v === 'number') return isNaN(v) ? null : v;
+  const s = String(v).trim();
+  if(s === '') return null;
+  // Estrae il primo numero dal testo (gestisce "5-10", "5.5 cr", "5,5", ecc.) — consistente con dfPairParseNum
+  const m = s.match(/-?\d+(?:[.,]\d+)?/);
+  if(!m) return null;
+  const n = Number(m[0].replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
 function dfClamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
 function dfVerdetto(delta){
   if(delta>=0.35)  return {label:'Forte crescita', arrow:'▲▲', cls:'up2',   color:'#4C9A6A'};
@@ -7558,107 +9401,19 @@ function dfVerdetto(delta){
   if(delta>-0.35)  return {label:'Calo',           arrow:'▼',  cls:'down',  color:'#C1543F'};
   return {label:'Forte calo', arrow:'▼▼', cls:'down2', color:'#C1543F'};
 }
-function dfProiezione(p){
-  const fm=dfNum(p.fmAnnoScorso); if(fm==null) return null;
-  const factors=[]; let delta=0, dataPoints=0;
-  const recent=dfNum(p.mediaVotoUltime5);
-  if(recent!=null){ const gap=recent-fm; const imp=dfClamp(gap*0.45,-0.6,0.6); delta+=imp; dataPoints++;
-    factors.push({label:'Forma recente', impact:imp, note: gap>=0?'ultime gare sopra la media':'ultime gare sotto la media'}); }
-  const xg=dfNum(p.xgAnnoScorso), gol=dfNum(p.golAnnoScorso);
-  if(xg!=null && gol!=null && xg>0){ const over=gol-xg; const imp=dfClamp(-over*0.1,-0.5,0.5); delta+=imp; dataPoints++;
-    factors.push({label:'Rendimento vs xG', impact:imp, note: over>0.5?'ha reso più del previsto (possibile regressione)':(over<-0.5?'ha reso meno del previsto (possibile rimbalzo)':'in linea con le attese')}); }
-  const eta=dfNum(p.eta);
-  if(eta!=null){ let imp=0; if(eta<=22)imp=0.18; else if(eta<=25)imp=0.10; else if(eta<=28)imp=0.03; else if(eta<=31)imp=-0.06; else if(eta<=33)imp=-0.14; else imp=-0.25;
-    delta+=imp; dataPoints++; factors.push({label:'Curva età ('+eta+' anni)', impact:imp, note: imp>=0?'fase di crescita/prime':'fase di declino'}); }
-  const tit=dfNum(p.titolaritaVoto);
-  if(tit!=null){ const imp=dfClamp((tit-6)*0.05,-0.3,0.3); delta+=imp; dataPoints++;
-    factors.push({label:'Titolarità', impact:imp, note: tit>=7?'titolare solido':(tit<=4?'rischio panchina':'ballottaggio')}); }
-  const frag=dfNum(p.fragilita);
-  if(frag!=null){ let imp=dfClamp(-(frag-5)*0.05,-0.35,0.2); const gg=dfNum(p.infortuniGiorniTotali); if(gg!=null&&gg>30)imp-=0.08; imp=dfClamp(imp,-0.4,0.2);
-    delta+=imp; dataPoints++; factors.push({label:'Fragilità fisica', impact:imp, note: frag>=7?'fragile, rischio stop':'fisico affidabile'}); }
-  const golPrev=dfNum(p.golPrevisti);
-  if(golPrev!=null && gol!=null){ const diff=golPrev-gol; const imp=dfClamp(diff*0.06,-0.5,0.5); delta+=imp; dataPoints++;
-    factors.push({label:'Gol previsti vs scorsi', impact:imp, note: diff>0?'ti aspetti più gol':'ti aspetti meno gol'}); }
-  const team=getTeamByName(p.squadra);
-  if(team && (p.posFanta==='A'||p.posFanta==='C')){ const off=dfNum(team.offensivita);
-    if(off!=null){ const imp=dfClamp((off-6)*0.03,-0.15,0.15); if(Math.abs(imp)>0.02){ delta+=imp; dataPoints++;
-      factors.push({label:'Contesto offensivo squadra', impact:imp, note: off>=7?'squadra molto offensiva':'squadra poco offensiva'}); } } }
-  delta=dfClamp(delta,-1.5,1.5);
-  const fmPrevista=fm+delta;
-  return {baseline:fm, delta, fmPrevista, verdict:dfVerdetto(delta), factors, dataPoints,
-          affidabilita: dataPoints>=5?'alta':(dataPoints>=3?'media':'bassa')};
-}
-function dfFinalFm(p){ const pr=dfProiezione(p); if(!pr) return null; const tw=(p.proiezione&&dfNum(p.proiezione.twist))||0; return pr.fmPrevista+tw; }
 
-// ---- 3) UI: badge sulle card + ordinamenti ----
-function dfDecorateCards(){
-  document.querySelectorAll('#playerList .card[data-pid]').forEach(card=>{
-    const pid=card.getAttribute('data-pid'); const p=players.find(x=>x.id===pid);
-    if(!p || card.querySelector('.df-proj-chip')) return;
-    const pr=dfProiezione(p); if(!pr) return;
-    const fin=dfFinalFm(p);
-    const chip=document.createElement('div'); chip.className='df-proj-chip df-'+pr.verdict.cls;
-    chip.innerHTML='🔮 '+fin.toFixed(2)+' '+pr.verdict.arrow;
-    chip.title='Proiezione: '+pr.verdict.label+' (da '+pr.baseline.toFixed(2)+') · clicca per i dettagli';
-    chip.addEventListener('click',(e)=>{ e.stopPropagation(); dfOpenProjectionModal(p.id); });
-    const top=card.querySelector('.card-top'); if(top) top.insertAdjacentElement('afterend',chip); else card.prepend(chip);
-  });
-}
-const _dfOrigRender=render;
-render=function(){ _dfOrigRender(); dfDecorateCards(); };
-const _dfOrigSortValueFor=sortValueFor;
-sortValueFor=function(p,key){
-  if(key==='dfProiezione'){ const f=dfFinalFm(p); return f==null?-Infinity:f; }
-  if(key==='dfDelta'){ const pr=dfProiezione(p); return pr?pr.delta:-Infinity; }
-  return _dfOrigSortValueFor(p,key);
-};
+// ---- 3) UI: badge sulle card + ordinamenti (PULITO: vecchie versioni rimosse kit audit) ----
+// Le vecchie definizioni di dfProiezione, dfFinalFm, dfDecorateCards, render override, sortValueFor
+// override, dfOpenProjectionModal (v15) sono state rimosse in questa sessione di audit.
+// Erano codice morto: il kit v16 (più sotto) ridefinisce dfProiezione, dfFinalFm, dfOpenProjectionModal
+// con priorità al giudizio umano. Anche render/sortValueFor erano wrappati 2 volte (v15 qui + v16 sotto);
+// la versione v16 prevale perché ridefinisce le funzioni DOPO. Manteniamo qui solo dfInjectSortOptions
+// perché il v16 non la ridefinisce — altrimenti il selettore "🔮 Media prevista" sparirebbe.
 function dfInjectSortOptions(){
   const sel=document.getElementById('sortBy'); if(!sel||sel.querySelector('option[value="dfProiezione"]'))return;
   const o1=document.createElement('option'); o1.value='dfProiezione'; o1.textContent='🔮 Media prevista';
   const o2=document.createElement('option'); o2.value='dfDelta'; o2.textContent='🔮 Miglioramento atteso';
   sel.appendChild(o1); sel.appendChild(o2);
-}
-
-// ---- 4) MODALE proiezione singola (con nota sincronizzata) ----
-function dfOpenProjectionModal(pid){
-  const p=players.find(x=>x.id===pid); if(!p) return;
-  const pr=dfProiezione(p); const saved=p.proiezione||{}; const twist=dfNum(saved.twist)||0;
-  const overlay=document.createElement('div'); overlay.className='overlay'; overlay.id='dfProjOverlay';
-  const maxBar=0.6;
-  const factorRows=pr? pr.factors.map(f=>{
-    const pct=Math.min(100, Math.abs(f.impact)/maxBar*100); const pos=f.impact>=0;
-    return '<div class="df-factor-row"><span class="df-factor-label">'+escapeHtml(f.label)+'</span>'+
-      '<div class="df-factor-barwrap"><div class="df-factor-bar '+(pos?'pos':'neg')+'" style="width:'+pct+'%"></div></div>'+
-      '<span class="df-factor-val '+(pos?'pos':'neg')+'">'+(pos?'+':'')+f.impact.toFixed(2)+'</span></div>'+
-      (f.note?'<div class="df-factor-note">'+escapeHtml(f.note)+'</div>':'');
-  }).join('') : '<div class="ai-empty">Serve la FM dell\u2019anno scorso per proiettare questo giocatore.</div>';
-  overlay.innerHTML='<div class="modal">'+
-    '<div class="modal-head"><h2>🔮 Proiezione · '+escapeHtml(p.nome)+'</h2><button class="close-x" id="dfProjClose">✕</button></div>'+
-    (pr?('<div class="df-proj-hero">'+
-      '<div class="df-proj-cell"><div class="df-proj-num">'+pr.baseline.toFixed(2)+'</div><div class="df-proj-lbl">media anno scorso</div></div>'+
-      '<div class="df-proj-arrow">'+(pr.delta>=0?'+':'')+pr.delta.toFixed(2)+'</div>'+
-      '<div class="df-proj-cell"><div class="df-proj-num" style="color:'+pr.verdict.color+'">'+(pr.fmPrevista+twist).toFixed(2)+'</div><div class="df-proj-lbl">media prevista</div></div>'+
-      '<div class="df-proj-verdict" style="color:'+pr.verdict.color+'">'+pr.verdict.arrow+' '+pr.verdict.label+'</div></div>'+
-      '<div class="ai-empty" style="text-align:center;">Affidabilità: <b>'+pr.affidabilita+'</b> ('+pr.dataPoints+' indicatori) · stima euristica, non una certezza.</div>'+
-      '<div class="section-block" open><summary>Cosa guida la proiezione</summary><div class="section-body no-grid">'+factorRows+'</div></div>'):'')+
-    '<div class="section-block" open><summary>La tua lettura (sincronizzata)</summary><div class="section-body no-grid">'+
-      '<div class="field"><label>Aggiustamento manuale (± sulla media prevista)</label><input type="number" id="dfProjTwist" step="0.05" min="-1.5" max="1.5" value="'+twist+'"></div>'+
-      '<div class="field"><label>Osservazioni sulla prossima stagione</label><textarea id="dfProjNota" placeholder="Es. cambia allenatore, diventa rigorista, rientra dall\u2019infortunio...">'+escapeHtml(saved.nota||'')+'</textarea></div>'+
-      '<div class="ai-empty">Queste note vengono salvate su Supabase e le vede anche il tuo compagno.</div>'+
-    '</div></div>'+
-    '<div class="modal-actions"><button class="btn" id="dfProjCancel">Chiudi</button><button class="btn primary" id="dfProjSave">Salva & sincronizza</button></div>'+
-  '</div>';
-  document.body.appendChild(overlay);
-  const close=()=>overlay.remove();
-  document.getElementById('dfProjClose').onclick=close;
-  document.getElementById('dfProjCancel').onclick=close;
-  document.getElementById('dfProjSave').onclick=async()=>{
-    const nota=document.getElementById('dfProjNota').value;
-    const tw=parseFloat(document.getElementById('dfProjTwist').value)||0;
-    p.proiezione={ nota, twist:tw, by:myName||'anonimo', at:new Date().toISOString() };
-    try{ await persistPlayer(p, ['proiezione']); render(); showToast('Proiezione salvata e sincronizzata'); close(); }
-    catch(e){ console.error(e); showToast('Errore di salvataggio'); }
-  };
 }
 
 // ---- 5) OVERVIEW Top10 crescita/calo + bottone header ----
@@ -7682,9 +9437,29 @@ function dfOpenProjectionOverview(){
   document.getElementById('dfOvCancel').onclick=close;
   overlay.querySelectorAll('.quick-row[data-pid]').forEach(el=>{ el.onclick=()=>{ close(); dfOpenProjectionModal(el.dataset.pid); }; });
 }
+function updateToolBadges(){
+  try{
+    var cb=document.getElementById('cleanupBadge');
+    if(cb){
+      var n=players.filter(function(p){return isFuoriSerieA(p);}).length;
+      if(n>0){ cb.textContent=n>99?'99+':String(n); cb.style.display=''; cb.parentElement.setAttribute('data-attention','true'); }
+      else{ cb.style.display='none'; cb.textContent='0'; cb.parentElement.removeAttribute('data-attention'); }
+    }
+  }catch(e){ /* badge non critico, silent fail */ }
+}
 function dfAddHeaderButton(){
-  const tools=document.querySelector('.header-tools'); if(!tools||document.getElementById('dfProjBtn'))return;
-  const b=document.createElement('div'); b.className='who'; b.id='dfProjBtn'; b.textContent='🔮 Proiezioni';
+  var tools=document.querySelector('.header-tools-bar .tool-group[data-group="tools"] .tool-chips') || document.querySelector('.header-tools');
+  if(!tools) return;
+  // Bugfix (post-punto-2): dfProjBtn ora è nel markup statico (aggiunto nella riorganizzazione della top bar),
+  // quindi la vecchia guardia "if(document.getElementById('dfProjBtn'))return;" usciva SENZA bindare onclick.
+  // Ora: se il pulsante esiste già, binda solo l'onclick; se non esiste, lo crea e lo appende.
+  var existing = document.getElementById('dfProjBtn');
+  if(existing){
+    existing.onclick = dfOpenProjectionOverview;
+    return;
+  }
+  var b=document.createElement('button'); b.type='button'; b.className='tool-chip'; b.id='dfProjBtn'; b.title='Proiezioni FM · chi salirà, chi scenderà';
+  b.innerHTML='<span class="tool-icon">🔮</span><span class="tool-text">Proiezioni</span>';
   b.onclick=dfOpenProjectionOverview; tools.appendChild(b);
 }
 
@@ -7876,241 +9651,21 @@ dfOpenProjectionModal = function(pid){
     };
   }
 };
-// ========== PIANO ROSA (v17) — ricostruito da zero ==========
-let prFormations=[];
-let prHighlightScheduled=false;
-function prLoadFromSupabase(){
-var myTeam=leagueTeams.find(function(t){return t.isMine;});
-if(myTeam&&Array.isArray(myTeam.pianoRosa)){prFormations=myTeam.pianoRosa;}
-else{prFormations=[];}
-}
-async function prSaveToSupabase(){
-var myTeam=leagueTeams.find(function(t){return t.isMine;});
-if(!myTeam){showToast('Segna prima la tua squadra in Impostazioni asta');return;}
-myTeam.pianoRosa=prFormations;
-try{await persistLeagueTeam(myTeam);showToast('Piano Rosa salvato e sincronizzato');}
-catch(e){console.error(e);showToast('Errore nel salvataggio del Piano Rosa');}
-}
-function prPlayerProj(p){
-if(typeof dfProiezione==='function'){return dfProiezione(p);}
-var fm=(p.fmAnnoScorso!=null&&String(p.fmAnnoScorso).trim()!=='')?Number(p.fmAnnoScorso):null;
-if(fm==null){return null;}
-return{baseline:fm,delta:0,fmPrevista:fm,verdict:{label:'N/D',arrow:'',cls:'flat',color:'#C9C7B8'},factors:[],dataPoints:0,affidabilita:'bassa'};
-}
-function prApplyHighlights(){
-if(!prFormations.length){return;}
-var wantedIds=new Set();
-prFormations.forEach(function(f){
-if(f.titolari&&Array.isArray(f.titolari)){f.titolari.forEach(function(pid){wantedIds.add(pid);});}
-});
-if(!wantedIds.size){return;}
-var cards=document.querySelectorAll('#playerList .card[data-pid]');
-cards.forEach(function(card){
-var pid=card.getAttribute('data-pid');
-if(wantedIds.has(pid)){
-if(!card.classList.contains('pr-wanted')){card.classList.add('pr-wanted');}
-if(!card.querySelector('.pr-badge')){
-var badge=document.createElement('div');
-badge.className='pr-badge';
-badge.textContent='🎯 Piano';
-var top=card.querySelector('.card-top');
-if(top){top.insertAdjacentElement('afterend',badge);}
-else{card.prepend(badge);}
-}
-}else{
-card.classList.remove('pr-wanted');
-var badge=card.querySelector('.pr-badge');
-if(badge){badge.remove();}
-}
-});
-}
-function prRenderPitch(containerId,titolari){
-var container=document.getElementById(containerId);
-if(!container){return;}
-var svg='<svg viewBox="0 0 100 150">'+pitchBackgroundSVG();
-if(titolari&&titolari.length){
-titolari.forEach(function(pid){
-var p=players.find(function(x){return x.id===pid;});
-if(!p){return;}
-var pos=prPositionFor(p);
-var v=toVB(pos);
-svg+='<g transform="translate('+v.x+','+v.y+')"><circle r="4.2" fill="rgba(11,25,19,0.85)" stroke="#E9BC5F" stroke-width="0.6"/>';
-svg+='<text class="role-label" y="1.1" fill="#E9BC5F" font-size="3.2" font-weight="800" text-anchor="middle">'+escapeHtml(p.posFanta||'?')+'</text>';
-svg+='<text y="7.5" fill="#F3F1E7" font-size="3" text-anchor="middle">'+escapeHtml((p.nome||'').slice(0,12))+'</text></g>';
-});
-}
-svg+='</svg>';
-container.innerHTML=svg;
-}
-function prPositionFor(p){
-var role=p.posFanta||'C';
-var positions={P:{x:50,y:92},D:{x:50,y:75},C:{x:50,y:50},A:{x:50,y:20}};
-return positions[role]||{x:50,y:50};
-}
-function prRenderSim(containerId,titolari){
-var container=document.getElementById(containerId);
-if(!container){return;}
-if(!titolari||!titolari.length){
-container.innerHTML='<div style="font-size:13px;color:#C9C7B8;">Nessun giocatore in formazione. Aggiungi giocatori nella lavagnetta.</div>';
-return;
-}
-var playersList=[];
-titolari.forEach(function(pid){
-var p=players.find(function(x){return x.id===pid;});
-if(p){playersList.push(p);}
-});
-if(!playersList.length){
-container.innerHTML='<div style="font-size:13px;color:#C9C7B8;">Nessun giocatore trovato.</div>';
-return;
-}
-var totale=0;
-var perRep={P:[],D:[],C:[],A:[]};
-playersList.forEach(function(p){
-var proj=prPlayerProj(p);
-if(proj){totale+=proj.fmPrevista;}
-else{totale+=6;}
-var rep=p.posFanta||'C';
-if(perRep[rep]){perRep[rep].push(p);}
-});
-var media=playersList.length?(totale/playersList.length):0;
-var projMedia=media;
-if(typeof wrSimTeam==='function'){
-try{
-var wrResult=wrSimTeam();
-if(wrResult&&wrResult.mediaBase){projMedia=wrResult.mediaBase;}
-}catch(e){ console.warn('Errore simulazione War Room:', e.message); }
-}
-var html='<div class="pr-sim-grid">';
-html+='<div class="pr-sim-stat"><div class="num">'+projMedia.toFixed(2)+'</div><div class="lbl">Media squadra</div></div>';
-html+='<div class="pr-sim-stat"><div class="num">'+playersList.length+'</div><div class="lbl">Giocatori</div></div>';
-html+='<div class="pr-sim-stat"><div class="num">'+totale.toFixed(1)+'</div><div class="lbl">Punti giornata</div></div>';
-html+='</div>';
-var repNames={P:'Portieri',D:'Difensori',C:'Centrocampisti',A:'Attaccanti'};
-Object.keys(perRep).forEach(function(rep){
-if(!perRep[rep].length){return;}
-html+='<div class="pr-rep"><div class="pr-rep-title">'+repNames[rep]+' ('+perRep[rep].length+')</div>';
-perRep[rep].forEach(function(p){
-var proj=prPlayerProj(p);
-var fmStr=(proj&&proj.fmPrevista)?proj.fmPrevista.toFixed(2):'N/D';
-html+='<div class="pr-rep-item"><span>'+escapeHtml(p.nome||'?')+'</span><span style="margin-left:auto;color:#E9BC5F;">'+fmStr+'</span></div>';
-});
-html+='</div>';
-});
-container.innerHTML=html;
-}
-function prShowTab(){
-prLoadFromSupabase();
-prRenderView();
-}
-function prRenderView(){
-var view=document.getElementById('pianoView');
-if(!view){return;}
-var myTeam=leagueTeams.find(function(t){return t.isMine;});
-if(!myTeam){
-view.innerHTML='<div class="empty">Segna prima la tua squadra in ⚙️ Impostazioni asta.</div>';
-return;
-}
-var html='';
-html+='<div class="pr-header">';
-html+='<h2>🎯 Piano Rosa</h2>';
-html+='<button class="btn small primary" id="prNewFormation">+ Nuova formazione</button>';
-html+='<button class="btn small" id="prSave">💾 Salva e sincronizza</button>';
-html+='</div>';
-html+='<div class="pr-formations">';
-if(prFormations.length===0){
-html+='<div style="font-size:13px;color:#C9C7B8;">Nessuna formazione salvata. Creane una nuova.</div>';
-}else{
-prFormations.forEach(function(f,i){
-html+='<div class="pr-formation">';
-html+='<span>'+escapeHtml(f.nome||('Formazione '+(i+1)))+'</span>';
-html+='<button class="btn small" data-action="load" data-idx="'+i+'">Carica</button>';
-html+='<button class="btn small danger" data-action="delete" data-idx="'+i+'">Elimina</button>';
-html+='</div>';
-});
-}
-html+='</div>';
-html+='<div class="pr-pitch" id="prPitch"></div>';
-html+='<div class="pr-sim" id="prSim"></div>';
-view.innerHTML=html;
-var newBtn=document.getElementById('prNewFormation');
-if(newBtn){
-newBtn.onclick=function(){
-var nome=prompt('Nome della formazione:');
-if(nome){
-prFormations.push({nome:nome,titolari:[],modulo:'4-3-3',note:''});
-prRenderView();
-}
-};
-}
-var saveBtn=document.getElementById('prSave');
-if(saveBtn){saveBtn.onclick=prSaveToSupabase;}
-view.querySelectorAll('.pr-formation [data-action="load"]').forEach(function(btn){
-btn.onclick=function(){
-var idx=parseInt(btn.getAttribute('data-idx'));
-if(prFormations[idx]){
-prRenderPitch('prPitch',prFormations[idx].titolari);
-prRenderSim('prSim',prFormations[idx].titolari);
-}
-};
-});
-view.querySelectorAll('.pr-formation [data-action="delete"]').forEach(function(btn){
-btn.onclick=function(){
-var idx=parseInt(btn.getAttribute('data-idx'));
-prFormations.splice(idx,1);
-prRenderView();
-};
-});
-if(prFormations.length){
-prRenderPitch('prPitch',prFormations[0].titolari);
-prRenderSim('prSim',prFormations[0].titolari);
-}
-}
-// Aggiungi la tab "piano"
-//var prTabs=document.querySelector('.tabs');
-//if(prTabs&&!prTabs.querySelector('[data-tab="piano"]')){
-//var t=document.createElement('div');
-//t.className='tab';
-//t.dataset.tab='piano';
-//t.textContent='🎯 Piano';
-//prTabs.appendChild(t);
-//}
-// Aggiungi il div pianoView
-if(!document.getElementById('pianoView')){
-var pv=document.createElement('div');
-pv.id='pianoView';
-pv.style.display='none';
-var mainEl=document.querySelector('main');
-if(mainEl){mainEl.appendChild(pv);}
-}
-// Listener per nascondere/mostrare il pianoView
-document.querySelectorAll('.tab').forEach(function(tab){
-tab.addEventListener('click',function(){
-var pv=document.getElementById('pianoView');
-if(!pv){return;}
-if(tab.dataset.tab==='piano'){pv.style.display='';prShowTab();}
-else{pv.style.display='none';}
-});
-});
-// MutationObserver per le evidenziazioni sulla Rosa
-var prObserver=new MutationObserver(function(){
-if(currentTab==='list'&&!prHighlightScheduled){
-prHighlightScheduled=true;
-requestAnimationFrame(function(){
-prHighlightScheduled=false;
-prApplyHighlights();
-});
-}
-});
-var prPlayerList=document.getElementById('playerList');
-if(prPlayerList){
-prObserver.observe(prPlayerList,{childList:true});
-}
-// Fallback: applica le evidenziazioni periodicamente
-setInterval(function(){
-if(currentTab==='list'){
-prApplyHighlights();
-}
-},2000);
+// ========== PIANO ROSA (v17) legacy — RIMOSSO (bugfix codice morto) ==========
+// Blocco legacy di ~235 righe rimosso in questa sessione. Conteneva:
+//   - prFormations, prLoadFromSupabase, prSaveToSupabase, prPlayerProj,
+//     prApplyHighlights, prRenderPitch, prPositionFor, prRenderSim,
+//     prShowTab, prRenderView — tutte funzioni del VECCHIO Piano Rosa
+//     (formato myTeam.pianoRosa, ante-v17) MAI chiamate da altre parti del codice.
+//   - Creazione dinamica di un <div id="pianoView"> MAI mostrato (nessuna tab
+//     data-tab="piano" nel markup — la tab era commentata nel blocco originale).
+//   - MutationObserver + setInterval(2000) che richiamava prApplyHighlights()
+//     su ogni cambiamento del playerList + ogni 2s — puro overhead, perché
+//     prFormations era SEMPRE vuoto se non avevi il vecchio formato myTeam.pianoRosa.
+//     Il NUOVO Piano Rosa (kit v17+) usa rosterPlans + checkPianoMatch (v20 wrappato).
+// Codice morto confermato da: nessuna chiamata esterna a funzioni pr* in tutto il file.
+// (Update-17-08 punto "Verificato ma NON toccato" menzionava questo blocco come
+//  ~250 righe di codice inutile — ora rimosso in questa sessione.)
 WM.initResponsive();
 init();
 
@@ -8286,8 +9841,14 @@ function wrRenderPiano(sec){
   h+="</select><button class=\"btn small\" id=\"pianoNewBtn\">+ Nuovo piano "+PIANO_REP_LABEL[rep]+"</button>";
   if(plan){
     h+="<button class=\"btn small danger\" id=\"pianoDelBtn\">Elimina</button><input type=\"text\" id=\"pianoNameInput\" value=\""+escapeHtml(plan.name||"")+"\" placeholder=\"Nome piano\" style=\"width:180px\">";
+    h+="<button class=\"btn small\" id=\"pianoDupBtn\" title=\"Duplica questo piano\">📋 Duplica</button>";
+    h+="<button class=\"btn small\" id=\"pianoExportBtn\" title=\"Esporta questo piano come JSON\">📤 Esporta</button>";
   }
+  h+="<button class=\"btn small\" id=\"pianoImportBtn\" title=\"Importa piano da JSON\">📥 Importa</button>";
+  h+="<button class=\"btn small\" id=\"pianoCompareBtn\" title=\"Confronta due piani affiancati\">⚖️ Confronta</button>";
   h+="</div>";
+  // Hidden file input for piano import
+  h+="<input type=\"file\" id=\"pianoImportFile\" accept=\".json,application/json\" style=\"display:none;\">";
 
   if(!plan){
     h+="<div class=\"wr-piano-empty\">Nessun piano per "+PIANO_REP_LABEL[rep]+". Crea un nuovo piano.</div></div>";
@@ -8317,6 +9878,204 @@ function wrRenderPiano(sec){
   sec.innerHTML=h;
   bindPianoEvents(sec);
 }
+// ============================================================
+// KIT AUDIT — Piano: duplica, export/import, confronto side-by-side
+// ============================================================
+
+async function duplicatePlan(srcPlan){
+  if(!srcPlan) return;
+  var newId = 'plan_' + Date.now();
+  var newName = (srcPlan.name || 'Piano') + ' (copia)';
+  // Deep clone degli slot
+  var slotsCopy = {};
+  if(srcPlan.slots){
+    for(var rep in srcPlan.slots){
+      if(!srcPlan.slots[rep]) continue;
+      slotsCopy[rep] = srcPlan.slots[rep].map(function(s){
+        return Object.assign({fascia:'',archetipo:'',budget:'',note:''}, s || {});
+      });
+    }
+  }
+  var newPlan = {
+    id: newId,
+    name: newName,
+    reparto: srcPlan.reparto || null,
+    slots: slotsCopy
+  };
+  rosterPlans.push(newPlan);
+  if(newPlan.reparto){
+    activePlanIdByReparto[newPlan.reparto] = newId;
+  } else {
+    // Piano generico: attivalo per ogni reparto che ha slot
+    PIANO_REP_ORDER.forEach(function(rep){
+      if(slotsCopy[rep] && slotsCopy[rep].length){
+        activePlanIdByReparto[rep] = newId;
+      }
+    });
+  }
+  await savePlan(newPlan);
+  showToast('Piano duplicato: ' + newName);
+}
+
+function exportPlanJson(plan){
+  if(!plan) return;
+  var exportData = {
+    meta: {
+      app: 'DossierFanta',
+      type: 'piano_rosa',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      exportedBy: myName || 'anonimo',
+    },
+    plan: {
+      name: plan.name || 'Piano senza nome',
+      reparto: plan.reparto || null,
+      slots: plan.slots || {}
+    }
+  };
+  var json = JSON.stringify(exportData, null, 2);
+  var blob = new Blob([json], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  var safeName = (plan.name || 'piano').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  a.download = 'piano-' + safeName + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Piano esportato: ' + (plan.name || 'Piano'));
+}
+
+async function importPlanJson(file){
+  try{
+    var text = await file.text();
+    var data = JSON.parse(text);
+  }catch(e){
+    showToast('File JSON non valido: ' + e.message);
+    return false;
+  }
+  if(!data.meta || data.meta.app !== 'DossierFanta' || data.meta.type !== 'piano_rosa' || !data.plan){
+    showToast('Il file non è un piano DossierFanta valido');
+    return false;
+  }
+  var plan = data.plan;
+  var newId = 'plan_' + Date.now();
+  var newName = (plan.name || 'Piano importato') + ' (importato)';
+  var newPlan = {
+    id: newId,
+    name: newName,
+    reparto: plan.reparto || null,
+    slots: plan.slots || {}
+  };
+  rosterPlans.push(newPlan);
+  if(newPlan.reparto){
+    activePlanIdByReparto[newPlan.reparto] = newId;
+  } else {
+    PIANO_REP_ORDER.forEach(function(rep){
+      if(newPlan.slots[rep] && newPlan.slots[rep].length){
+        activePlanIdByReparto[rep] = newId;
+      }
+    });
+  }
+  await savePlan(newPlan);
+  showToast('Piano importato: ' + newName);
+  return true;
+}
+
+function openComparePlansModal(){
+  if(rosterPlans.length < 2){
+    showToast('Servono almeno 2 piani per il confronto. Ora ne hai ' + rosterPlans.length + '.');
+    return;
+  }
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'comparePlansOverlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:1100px;">
+      <div class="modal-head">
+        <h2>⚖️ Confronta piani</h2>
+        <button class="close-x" id="cmpPlansClose">✕</button>
+      </div>
+      <div class="settings-hint">Seleziona due piani per vederli affiancati, reparto per reparto. Le differenze di budget e fascia sono evidenziate per capire rapidamente come cambiano le strategie.</div>
+      <div class="field-row" style="margin:14px 0;">
+        <div class="field"><label>Piano A</label><select id="cmpPlanA"></select></div>
+        <div class="field"><label>Piano B</label><select id="cmpPlanB"></select></div>
+      </div>
+      <div id="cmpPlansArea"></div>
+      <div class="modal-actions"><button class="btn" id="cmpPlansClose2" style="flex:1;">Chiudi</button></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  var closeFn = function(){ overlay.remove(); };
+  document.getElementById('cmpPlansClose').onclick = closeFn;
+  document.getElementById('cmpPlansClose2').onclick = closeFn;
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeFn(); });
+
+  // Popola select
+  var selA = document.getElementById('cmpPlanA');
+  var selB = document.getElementById('cmpPlanB');
+  var opts = rosterPlans.map(function(p, i){
+    return '<option value="' + p.id + '"' + (i===0?' selected':'') + '>' + escapeHtml(p.name || 'Senza nome') + (p.reparto ? ' (' + PIANO_REP_LABEL[p.reparto] + ')' : ' (generico)') + '</option>';
+  }).join('');
+  selA.innerHTML = opts;
+  // Default Piano B al secondo
+  var optsB = rosterPlans.map(function(p, i){
+    return '<option value="' + p.id + '"' + (i===1?' selected':'') + '>' + escapeHtml(p.name || 'Senza nome') + (p.reparto ? ' (' + PIANO_REP_LABEL[p.reparto] + ')' : ' (generico)') + '</option>';
+  }).join('');
+  selB.innerHTML = optsB;
+
+  var renderCmp = function(){
+    var a = rosterPlans.find(function(p){ return p.id === selA.value; });
+    var b = rosterPlans.find(function(p){ return p.id === selB.value; });
+    document.getElementById('cmpPlansArea').innerHTML = renderComparePlansTable(a, b);
+  };
+  selA.onchange = renderCmp;
+  selB.onchange = renderCmp;
+  renderCmp();
+}
+
+function renderComparePlansTable(planA, planB){
+  if(!planA || !planB) return '<div class="empty">Seleziona due piani validi.</div>';
+  var rowsHtml = '';
+  PIANO_REP_ORDER.forEach(function(rep){
+    var slotsA = (planA.slots && planA.slots[rep]) || [];
+    var slotsB = (planB.slots && planB.slots[rep]) || [];
+    var maxSlots = Math.max(slotsA.length, slotsB.length, 0);
+    if(maxSlots === 0) return; // salta reparti senza slot in entrambi
+    var allocA = calculatePlanBudget(planA, rep);
+    var allocB = calculatePlanBudget(planB, rep);
+    var budget = auctionSettings.budgetTotale || 500;
+    rowsHtml += '<div class="section-block" open style="margin-bottom:10px;">';
+    rowsHtml += '<summary>' + (PIANO_REP_LABEL[rep] || rep) + ' · Budget: <b style="color:var(--amber);">' + allocA + ' cr</b> vs <b style="color:var(--amber);">' + allocB + ' cr</b> · Δ ' + (allocA - allocB >= 0 ? '+' : '') + (allocA - allocB) + ' cr</summary>';
+    rowsHtml += '<div class="section-body no-grid">';
+    rowsHtml += '<table class="pair-detail-table"><thead><tr><th style="width:60px;">Slot</th><th>' + escapeHtml(planA.name) + '</th><th>' + escapeHtml(planB.name) + '</th></tr></thead><tbody>';
+    for(var i = 0; i < maxSlots; i++){
+      var sA = slotsA[i] || {fascia:'',archetipo:'',budget:'',note:''};
+      var sB = slotsB[i] || {fascia:'',archetipo:'',budget:'',note:''};
+      var diff = (Number(sA.budget)||0) - (Number(sB.budget)||0);
+      var diffClass = diff === 0 ? '' : (diff > 0 ? 'cell-hard' : 'cell-best');
+      var diffStr = diff === 0 ? '＝' : (diff > 0 ? '+' + diff : '' + diff);
+      var fasciaDiff = sA.fascia !== sB.fascia ? ' style="color:var(--amber);"' : '';
+      rowsHtml += '<tr>';
+      rowsHtml += '<td class="cell-g">Slot ' + (i+1) + '</td>';
+      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sA.fascia || '—') + '</b> ' + escapeHtml(sA.archetipo || '') + ' · <span style="color:var(--amber);">' + (sA.budget || '0') + ' cr</span></td>';
+      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sB.fascia || '—') + '</b> ' + escapeHtml(sB.archetipo || '') + ' · <span style="color:var(--amber);">' + (sB.budget || '0') + ' cr</span></td>';
+      rowsHtml += '</tr>';
+      if(diff !== 0){
+        rowsHtml += '<tr style="background:rgba(217,164,65,0.06);"><td colspan="3" class="' + diffClass + '" style="text-align:right; font-size:11px;">Δ budget slot: ' + diffStr + ' cr</td></tr>';
+      }
+    }
+    rowsHtml += '</tbody></table>';
+    rowsHtml += '</div></div>';
+  });
+  if(!rowsHtml) return '<div class="empty">Nessuno slot compilato in nessuno dei due piani.</div>';
+  return rowsHtml;
+}
+
+// ============================================================
+// FINE KIT AUDIT — Piano
+// ============================================================
 function bindPianoEvents(sec){
   var tabs=sec.querySelectorAll(".wr-piano-reptab");
   tabs.forEach(function(btn){
@@ -8366,6 +10125,42 @@ function bindPianoEvents(sec){
   if(ni)ni.onchange=async function(){
     var p=getActivePlan();
     if(p){p.name=ni.value;await savePlan(p);}
+  };
+
+  // Kit audit — Duplica / Esporta / Importa / Confronta piani
+  var dupBtn=sec.querySelector("#pianoDupBtn");
+  if(dupBtn)dupBtn.onclick=async function(){
+    var p=getActivePlan();
+    if(!p){showToast('Seleziona prima un piano da duplicare');return;}
+    await duplicatePlan(p);
+    wrRenderPiano(sec);
+  };
+
+  var expBtn=sec.querySelector("#pianoExportBtn");
+  if(expBtn)expBtn.onclick=function(){
+    var p=getActivePlan();
+    if(!p){showToast('Seleziona prima un piano da esportare');return;}
+    exportPlanJson(p);
+  };
+
+  var impBtn=sec.querySelector("#pianoImportBtn");
+  if(impBtn)impBtn.onclick=function(){
+    sec.querySelector("#pianoImportFile").click();
+  };
+
+  var impFile=sec.querySelector("#pianoImportFile");
+  if(impFile)impFile.onchange=function(e){
+    var file=e.target.files[0];
+    if(!file)return;
+    importPlanJson(file).then(function(ok){
+      if(ok) wrRenderPiano(sec);
+    });
+    e.target.value=''; // reset
+  };
+
+  var cmpBtn=sec.querySelector("#pianoCompareBtn");
+  if(cmpBtn)cmpBtn.onclick=function(){
+    openComparePlansModal();
   };
 
   var fields=sec.querySelectorAll("[data-field]");
