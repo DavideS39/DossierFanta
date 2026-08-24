@@ -141,6 +141,12 @@
      o squadra (Rosa, Asta/Acquisti, dettaglio roster). */
   body.expand-notes .note-preview{ -webkit-line-clamp: unset; line-clamp: unset; max-height: none; }
   body.expand-notes #playerList .note-preview{ -webkit-line-clamp: unset; line-clamp: unset; max-height: none; }
+  /* Kit audit: editing simultaneo — evidenzia il campo che il compagno sta editando */
+  .field-being-edited-by-other{ position:relative; }
+  .field-being-edited-by-other::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--amber); border-radius:2px; animation:typingPulse 1.4s ease-in-out infinite; }
+  @keyframes typingPulse{ 0%,100%{ opacity:0.6; } 50%{ opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .field-being-edited-by-other::after{ animation:none; opacity:1; } }
+  #saveStatus{ transition:color .15s; }
   .meta-line{ margin-top:8px; font-size:10.5px; color:var(--chalk-dim); opacity:0.8; }
   .card-actions{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
   .btn{ border:1px solid var(--line); background:transparent; color:var(--chalk); padding:6px 12px; border-radius:7px; font-size:12px; cursor:pointer; }
@@ -4092,7 +4098,142 @@ function subscribeRealtime(){
       if(idx>-1) calendario[idx] = rec; else calendario.push(rec);
     }
   }).subscribe();
+  // Kit audit: canale broadcast "typing" per editing simultaneo in tempo reale.
+  // Non tocca il DB — solo messaggi in-memory tra i due utenti. Quando uno scrive,
+  // l'altro vede "✍️ [nome] sta scrivendo in questa scheda" + i campi non-editati si aggiornano live.
+  setupTypingChannel();
 }
+
+// ============================================================
+// KIT AUDIT — Editing simultaneo in tempo reale (typing broadcast)
+// ============================================================
+// Stato typing: { [playerId]: { user, ts } }
+let typingState = {};
+let typingChannel = null;
+let typingCleanupTimers = {};
+
+function setupTypingChannel(){
+  if(typingChannel) return; // già setup
+  try{
+    typingChannel = sb.channel('df-typing', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'typing' }, (msg) => {
+        handleTypingBroadcast(msg.payload);
+      })
+      .on('broadcast', { event: 'stop-typing' }, (msg) => {
+        handleStopTypingBroadcast(msg.payload);
+      })
+      .subscribe();
+  }catch(e){
+    console.warn('Errore setup typing channel:', e.message);
+  }
+}
+
+function broadcastTyping(playerId){
+  if(!typingChannel || !playerId) return;
+  try{
+    typingChannel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { playerId, user: myName || 'anonimo', ts: Date.now() }
+    });
+  }catch(e){ /* non critico */ }
+}
+
+function broadcastStopTyping(playerId){
+  if(!typingChannel || !playerId) return;
+  try{
+    typingChannel.send({
+      type: 'broadcast',
+      event: 'stop-typing',
+      payload: { playerId, user: myName || 'anonimo', ts: Date.now() }
+    });
+  }catch(e){ /* non critico */ }
+}
+
+function handleTypingBroadcast(payload){
+  if(!payload || !payload.playerId) return;
+  // Ignora i miei stessi messaggi (broadcast self:false dovrebbe già filtrarli, ma doppia sicurezza)
+  if(payload.user === myName) return;
+  typingState[payload.playerId] = payload;
+  // Se sto editando questo giocatore, mostra l'indicatore
+  if(editingId === payload.playerId && editingType === 'player'){
+    showTypingIndicator(payload.user);
+  }
+  // Pulisci dopo 3s di inattività
+  if(typingCleanupTimers[payload.playerId]) clearTimeout(typingCleanupTimers[payload.playerId]);
+  typingCleanupTimers[payload.playerId] = setTimeout(() => {
+    delete typingState[payload.playerId];
+    if(editingId === payload.playerId) hideTypingIndicator();
+  }, 3000);
+}
+
+function handleStopTypingBroadcast(payload){
+  if(!payload || !payload.playerId) return;
+  if(typingState[payload.playerId] && typingState[payload.playerId].user === payload.user){
+    delete typingState[payload.playerId];
+    if(editingId === payload.playerId) hideTypingIndicator();
+  }
+}
+
+function showTypingIndicator(user){
+  const statusEl = document.getElementById('saveStatus');
+  if(statusEl){
+    statusEl.textContent = `✍️ ${user} sta scrivendo in questa scheda...`;
+    statusEl.style.color = 'var(--amber)';
+    statusEl.style.fontWeight = '700';
+  }
+}
+
+function hideTypingIndicator(){
+  const statusEl = document.getElementById('saveStatus');
+  if(statusEl){
+    statusEl.textContent = 'Salvataggio automatico attivo';
+    statusEl.style.color = '';
+    statusEl.style.fontWeight = '';
+  }
+}
+
+// Aggiornamento live dei campi quando il compagno salva.
+// Chiamata da handleRemoteChange quando arriva un update di un giocatore che sto editando.
+// Aggiorna SOLO i campi che NON sto attualmente editando (per non sovrascivere il mio typing).
+function refreshPlayerEditorLive(rec){
+  if(!rec || editingId !== rec.id || editingType !== 'player') return;
+  // Trova il campo attualmente focalizzato (se è un input del form)
+  const activeEl = document.activeElement;
+  const activeFieldId = (activeEl && activeEl.id && activeEl.id.startsWith('f_')) ? activeEl.id : null;
+  // Per ogni campo del form, se non è quello attivo, aggiorna il valore
+  const sections = PLAYER_SECTIONS;
+  sections.forEach(sec => {
+    sectionFields(sec).forEach(f => {
+      const fieldId = 'f_' + f.k;
+      if(fieldId === activeFieldId) return; // non toccare il campo che sto editando
+      const el = document.getElementById(fieldId);
+      if(!el) return;
+      const newVal = rec[f.k];
+      const newValStr = (newVal == null || newVal === '') ? '' : String(newVal);
+      if(el.value !== newValStr){
+        el.value = newValStr;
+      }
+    });
+  });
+  // Aggiorna anche i tag se il compagno ne ha aggiunti/rimossi
+  if(rec.tag && Array.isArray(rec.tag)){
+    const newTags = rec.tag.slice();
+    // Solo se non sto editando il campo tag (controllo approssimato)
+    const tagInput = document.getElementById('tagInput');
+    const isEditingTags = tagInput && activeEl === tagInput;
+    if(!isEditingTags && JSON.stringify(editingTags) !== JSON.stringify(newTags)){
+      editingTags = newTags;
+      renderTagPicker();
+    }
+  }
+  // Aggiorna asta valutazione se il compagno ha cambiato fascia/prezzo
+  renderAstaValutazione(rec, true);
+}
+
+// ============================================================
+// FINE KIT AUDIT — Editing simultaneo
+// ============================================================
 
 function handleLeagueTeamsChange(payload){
   if(payload.eventType === 'DELETE'){
@@ -4189,7 +4330,11 @@ applyRemoteFlash();
   renderQuickStatusPill();
   refreshQuickPanelIfOpen();
   // Propagate to WM windows (solo per update/insert: su un DELETE non c'è un record da propagare)
-  if(rec && type==='player') refreshPlayerWindowsForRecord(rec);
+  if(rec && type==='player'){
+    refreshPlayerWindowsForRecord(rec);
+    // Kit audit: aggiorna live i campi del modale mobile se sto editando questo giocatore
+    refreshPlayerEditorLive(rec);
+  }
   if(rec && type==='team') refreshTeamWindowsForRecord(rec);
 }
 document.querySelectorAll('.tab').forEach(t => {
@@ -8342,9 +8487,12 @@ function bindAiSummaryHandlers(){
 
 function scheduleAutosave(){
   const statusEl = document.getElementById('saveStatus');
-  if(statusEl) statusEl.textContent = 'Modifiche in corso...';
+  if(statusEl && !typingState[editingId]) statusEl.textContent = 'Modifiche in corso...';
+  // Kit audit: broadcast "sta scrivendo" al compagno (editing simultaneo real-time)
+  if(editingId) broadcastTyping(editingId);
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(doAutosave, 1200);
+  // Kit audit: debounce ridotto da 1200ms a 800ms per editing più reattivo tra compagni
+  autosaveTimer = setTimeout(doAutosave, 800);
 }
 
 async function doAutosave(){
@@ -8399,7 +8547,10 @@ data.custom = custom;
       if (idx2>-1) arr[idx2] = mergedRec; else arr.push(mergedRec);
     }
     const statusEl = document.getElementById('saveStatus');
-    if(statusEl) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    if(statusEl && !typingState[editingId]) statusEl.textContent = 'Salvato ✓ · ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    // Kit audit: broadcast "stop typing" al compagno — l'aggiornamento è ora sul DB,
+    // arriverà via postgres_changes e aggiornerà i campi live dal lato del compagno
+    if(editingId) broadcastStopTyping(editingId);
   }catch(e){
     console.error('Errore persistenza giocatore:', e);
     const statusEl = document.getElementById('saveStatus');
