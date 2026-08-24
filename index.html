@@ -136,6 +136,11 @@
   .tag-picker-input input{ flex:1; background:var(--pitch); border:1px solid var(--line); color:var(--chalk); padding:9px 10px; border-radius:8px; font-size:14px; }
   .tag-picker-hint{ font-size:11px; color:var(--chalk-dim); margin-top:6px; }
   .note-preview{ margin-top:8px; font-size:12.5px; color:var(--chalk-dim); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  /* Kit audit: toggle 'Espandi note' — quando attivo (classe su body), tutte le note-preview
+     perdono il troncamento e mostrano il testo completo. Vale ovunque ci sia una card giocatore
+     o squadra (Rosa, Asta/Acquisti, dettaglio roster). */
+  body.expand-notes .note-preview{ -webkit-line-clamp: unset; line-clamp: unset; max-height: none; }
+  body.expand-notes #playerList .note-preview{ -webkit-line-clamp: unset; line-clamp: unset; max-height: none; }
   .meta-line{ margin-top:8px; font-size:10.5px; color:var(--chalk-dim); opacity:0.8; }
   .card-actions{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
   .btn{ border:1px solid var(--line); background:transparent; color:var(--chalk); padding:6px 12px; border-radius:7px; font-size:12px; cursor:pointer; }
@@ -1234,6 +1239,9 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 </select>
 <label style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--chalk-dim); cursor:pointer; white-space:nowrap;">
 <input type="checkbox" id="pianoCandidatesFilter"> 🎯 candidati piano
+</label>
+<label style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--chalk-dim); cursor:pointer; white-space:nowrap;" title="Mostra il testo completo delle note invece dei puntini di sospensione (vale per tutte le card ovunque)">
+<input type="checkbox" id="expandNotesFilter"> 📝 espandi note
 </label>
 </div>
 <div class="control-group">
@@ -4209,6 +4217,19 @@ document.getElementById('fasciaFilter').onchange = render;
 // Kit audit: nuovi filtri
 document.getElementById('unassignedFilter').onchange = render;
 document.getElementById('pianoCandidatesFilter').onchange = render;
+// Kit audit: toggle 'Espandi note' — applicato come classe su body, vale per tutte le card ovunque
+(function bindExpandNotes(){
+  try{ const saved = localStorage.getItem('df_expand_notes'); if(saved === '1') document.body.classList.add('expand-notes'); }catch(e){}
+  const chk = document.getElementById('expandNotesFilter');
+  if(chk){
+    chk.checked = document.body.classList.contains('expand-notes');
+    chk.onchange = () => {
+      document.body.classList.toggle('expand-notes', chk.checked);
+      try{ localStorage.setItem('df_expand_notes', chk.checked ? '1' : '0'); }catch(e){}
+      // Non serve render(): il CSS applica l'override subito via classe sul body
+    };
+  }
+})();
 document.getElementById('sortBy').onchange = () => { 
   try{ 
     localStorage.setItem('df_sort_by', document.getElementById('sortBy').value); 
