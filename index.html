@@ -1360,8 +1360,14 @@ function computeChangedFields(baseline, current){
   const keys = new Set([...Object.keys(b), ...Object.keys(c)]);
   const valuesEqual = (x, y) => {
     if (x === y) return true;
-    if (x == null && y == null) return true;
-    if (x == null || y == null) return false;
+    // Kit audit (bugfix FM prevista cancellata): stringa vuota "" deve essere considerata
+    // uguale a null/undefined. Le select vuote (es. trendPrevisto non impostato) raccolgono
+    // come value "" — se la baseline aveva undefined (campo mai compilato), il vecchio codice
+    // li considerava diversi → il salvataggio scriveva "" nel DB → cancellava il valore salvato
+    // dal modale proiezione. Ora "" ≡ null ≡ undefined.
+    const isEmpty = (v) => v == null || v === '';
+    if (isEmpty(x) && isEmpty(y)) return true;
+    if (isEmpty(x) || isEmpty(y)) return false;
     // stesso valore scritto come numero da una parte e stringa dall'altra (capita con dati
     // importati o vecchi salvataggi) non deve contare come "modifica"
     if ((typeof x === 'number' || typeof y === 'number') && !isNaN(Number(x)) && !isNaN(Number(y))) {
@@ -5149,42 +5155,84 @@ function renderAstaValutazione(rec, refreshOnly){
   const fasce = FASCE_PER_RUOLO[reparto] || FASCE_PER_RUOLO.C;
   const currentFascia = (refreshOnly && !fasce.includes(rec.fascia)) ? fasce[0] : (rec.fascia && fasce.includes(rec.fascia) ? rec.fascia : fasce[0]);
 
-  area.innerHTML = `
-    <div class="field"><label>Fascia (${reparto})</label>
-      <select id="f_fascia">${fasce.map(f=>`<option value="${f}" ${f===currentFascia?'selected':''}>${f}</option>`).join('')}</select>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Valore effettivo (tuo tetto)</label><input type="number" id="f_valoreEffettivo" value="${rec.valoreEffettivo??''}" placeholder="es. 60"></div>
-      <div class="field"><label>Prezzo previsto (tuo, manuale)</label><input type="number" id="f_prezzoPrevistoNum" value="${rec.prezzoPrevisto??''}" placeholder="es. 70"></div>
-    </div>
-    ${auctionSettings.modalitaAsta ? `
-      <div id="autoPredictedBox" class="ai-empty"></div>
-      <div id="marketTempBox" class="ai-empty"></div>
-      <div id="rivalsBox" class="ai-empty"></div>
-    ` : `<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l'asta, quando attivi 🟢 Modalità Asta nella tab Asta.</div>`}
-  `;
+  // Kit audit (bugfix prezzo/tetto cancellati): struttura stabile come per il confronto.
+  // Prima area.innerHTML = ... distruggeva gli input #f_valoreEffettivo e #f_prezzoPrevistoNum
+  // ad ogni refresh (es. quando il compagno salva, o onchange di f_fascia) → perdi il focus
+  // e il valore mentre scrivi. Ora: struttura creata UNA volta, solo i box dinamici si aggiornano.
+  if(area.dataset.structured !== '1'){
+    // Prima inizializzazione: crea la struttura stabile
+    area.innerHTML = `
+      <div class="field"><label>Fascia (${reparto})</label>
+        <select id="f_fascia">${fasce.map(f=>`<option value="${f}" ${f===currentFascia?'selected':''}>${f}</option>`).join('')}</select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Valore effettivo (tuo tetto)</label><input type="number" id="f_valoreEffettivo" value="${rec.valoreEffettivo??''}" placeholder="es. 60"></div>
+        <div class="field"><label>Prezzo previsto (tuo, manuale)</label><input type="number" id="f_prezzoPrevistoNum" value="${rec.prezzoPrevisto??''}" placeholder="es. 70"></div>
+      </div>
+      ${auctionSettings.modalitaAsta ? `
+        <div id="autoPredictedBox" class="ai-empty"></div>
+        <div id="marketTempBox" class="ai-empty"></div>
+        <div id="rivalsBox" class="ai-empty"></div>
+      ` : `<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l'asta, quando attivi 🟢 Modalità Asta nella tab Asta.</div>`}
+    `;
+    area.dataset.structured = '1';
+    // Bind eventi UNA volta sola
+    const fasciaEl = document.getElementById('f_fascia');
+    if(fasciaEl) fasciaEl.onchange = () => { refreshAstaValutazioneBoxes(rec); scheduleAutosave(); };
+    const valoreEffEl = document.getElementById('f_valoreEffettivo');
+    if(valoreEffEl) valoreEffEl.addEventListener('input', scheduleAutosave);
+    const prezzoPrevEl = document.getElementById('f_prezzoPrevistoNum');
+    if(prezzoPrevEl) prezzoPrevEl.addEventListener('input', () => { refreshAstaValutazioneBoxes(rec); scheduleAutosave(); });
+  } else {
+    // Refresh: aggiorna solo fascia se il reparto è cambiato, NON toccare gli input prezzo/tetto
+    // (l'utente potrebbe starci scrivendo)
+    const fasciaEl = document.getElementById('f_fascia');
+    if(fasciaEl){
+      // Aggiorna le option solo se le fasce sono cambiate (reparto diverso)
+      const currentOptions = [...fasciaEl.options].map(o => o.value);
+      const sameFasce = fasce.length === currentOptions.length && fasce.every((f, i) => f === currentOptions[i]);
+      if(!sameFasce){
+        fasciaEl.innerHTML = fasce.map(f=>`<option value="${f}" ${f===currentFascia?'selected':''}>${f}</option>`).join('');
+      } else if(fasciaEl.value !== currentFascia && document.activeElement !== fasciaEl){
+        // Aggiorna il valore selezionato solo se l'utente non sta interagendo
+        fasciaEl.value = currentFascia;
+      }
+    }
+  }
+  // Refresh dei box dinamici (autoPredicted, marketTemp, rivals)
+  refreshAstaValutazioneBoxes(rec);
+}
 
-  const refresh = () => {
-    if(!auctionSettings.modalitaAsta) return;
-    const auto = computeAutoPredictedPrice(reparto, document.getElementById('f_fascia').value, rec);
-    document.getElementById('autoPredictedBox').innerHTML = auto
+// Kit audit: refresh SOLO dei box dinamici (non tocca gli input prezzo/tetto)
+function refreshAstaValutazioneBoxes(rec){
+  if(!auctionSettings.modalitaAsta) return;
+  const posFantaEl = document.getElementById('f_posFanta');
+  const reparto = posFantaEl ? posFantaEl.value : (rec.posFanta || 'C');
+  const fasciaEl = document.getElementById('f_fascia');
+  const fascia = fasciaEl ? fasciaEl.value : (rec.fascia || 'Top');
+
+  const auto = computeAutoPredictedPrice(reparto, fascia, rec);
+  const autoBox = document.getElementById('autoPredictedBox');
+  if(autoBox){
+    autoBox.innerHTML = auto
       ? `🤖 Previsione automatica: <b>~${auto.value} cr</b> <span style="color:var(--chalk-dim);">(${autoPredictedSourceLabel(auto)})</span>`
       : `🤖 Previsione automatica: <span style="color:var(--chalk-dim);">dati insufficienti per ora</span>`;
+  }
 
-    const temp = computeMarketTemperature(reparto, document.getElementById('f_fascia').value);
-    const t = TEMP_LABELS[temp.level];
-    document.getElementById('marketTempBox').innerHTML = `${t.icon} Mercato ${reparto}/${document.getElementById('f_fascia').value}: <b>${t.label}</b><br><span style="color:var(--chalk-dim); font-size:11.5px;">${t.hint}${temp.count?` · ${temp.count} vendite confrontate`+(temp.manualCount?` (${temp.manualCount} con tua stima, ${temp.count-temp.manualCount} con FVM)`:' (da FVM)')+marketTempConfidenceNote(temp):''}</span>`;
+  const temp = computeMarketTemperature(reparto, fascia);
+  const t = TEMP_LABELS[temp.level];
+  const tempBox = document.getElementById('marketTempBox');
+  if(tempBox){
+    tempBox.innerHTML = `${t.icon} Mercato ${reparto}/${fascia}: <b>${t.label}</b><br><span style="color:var(--chalk-dim); font-size:11.5px;">${t.hint}${temp.count?` · ${temp.count} vendite confrontate`+(temp.manualCount?` (${temp.manualCount} con tua stima, ${temp.count-temp.manualCount} con FVM)`:' (da FVM)')+marketTempConfidenceNote(temp):''}</span>`;
+  }
 
-    const rivals = computeRivalsActiveInReparto(reparto);
-    document.getElementById('rivalsBox').innerHTML = rivals.length
+  const rivals = computeRivalsActiveInReparto(reparto);
+  const rivalsBox = document.getElementById('rivalsBox');
+  if(rivalsBox){
+    rivalsBox.innerHTML = rivals.length
       ? `👀 Rivali ancora attivi su ${reparto}: ${rivals.map(r=>`${escapeHtml(r.nome)} (${r.remaining}cr, ${r.slotsLeft} slot)`).join(' · ')}`
       : `👀 Nessun rivale con slot liberi su ${reparto} al momento.`;
-  };
-
-  document.getElementById('f_fascia').onchange = () => { refresh(); scheduleAutosave(); };
-  document.getElementById('f_valoreEffettivo').addEventListener('input', scheduleAutosave);
-  document.getElementById('f_prezzoPrevistoNum').addEventListener('input', () => { refresh(); scheduleAutosave(); });
-  refresh();
+  }
 }
 
 function renderAsta(){
@@ -6833,44 +6881,69 @@ function renderAstaValutazioneScoped(winId, rec, refreshOnly) {
   const fasce = FASCE_PER_RUOLO[reparto] || FASCE_PER_RUOLO.C;
   const currentFascia = (refreshOnly && !fasce.includes(rec.fascia)) ? fasce[0] : (rec.fascia && fasce.includes(rec.fascia) ? rec.fascia : fasce[0]);
 
-  area.innerHTML = `
-    <div class="field"><label>Fascia (${reparto})</label>
-      <select data-field="f_fascia">${fasce.map(f => '<option value="' + f + '" ' + (f === currentFascia ? 'selected' : '') + '>' + f + '</option>').join('')}</select>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Valore effettivo (tuo tetto)</label><input type="number" data-field="f_valoreEffettivo" value="${rec.valoreEffettivo ?? ''}" placeholder="es. 60"></div>
-      <div class="field"><label>Prezzo previsto (tuo, manuale)</label><input type="number" data-field="f_prezzoPrevistoNum" value="${rec.prezzoPrevisto ?? ''}" placeholder="es. 70"></div>
-    </div>
-    ${auctionSettings.modalitaAsta ? `
-      <div data-field="autoPredictedBox" class="ai-empty"></div>
-      <div data-field="marketTempBox" class="ai-empty"></div>
-      <div data-field="rivalsBox" class="ai-empty"></div>
-    ` : '<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l\'asta.</div>'}
-  `;
+  // Kit audit (bugfix prezzo/tetto cancellati — versione WM desktop): stessa logica della
+  // versione mobile. Struttura stabile creata UNA volta, solo box dinamici si aggiornano.
+  if(area.dataset.structured !== '1'){
+    area.innerHTML = `
+      <div class="field"><label>Fascia (${reparto})</label>
+        <select data-field="f_fascia">${fasce.map(f => '<option value="' + f + '" ' + (f === currentFascia ? 'selected' : '') + '>' + f + '</option>').join('')}</select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Valore effettivo (tuo tetto)</label><input type="number" data-field="f_valoreEffettivo" value="${rec.valoreEffettivo ?? ''}" placeholder="es. 60"></div>
+        <div class="field"><label>Prezzo previsto (tuo, manuale)</label><input type="number" data-field="f_prezzoPrevistoNum" value="${rec.prezzoPrevisto ?? ''}" placeholder="es. 70"></div>
+      </div>
+      ${auctionSettings.modalitaAsta ? `
+        <div data-field="autoPredictedBox" class="ai-empty"></div>
+        <div data-field="marketTempBox" class="ai-empty"></div>
+        <div data-field="rivalsBox" class="ai-empty"></div>
+      ` : '<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l\'asta.</div>'}
+    `;
+    area.dataset.structured = '1';
+    // Bind eventi UNA volta sola
+    $f(body, 'f_fascia').onchange = () => { refreshAstaValutazioneBoxesScoped(winId, rec); scheduleAutosaveScoped(winId); };
+    $f(body, 'f_valoreEffettivo').addEventListener('input', () => scheduleAutosaveScoped(winId));
+    $f(body, 'f_prezzoPrevistoNum').addEventListener('input', () => { refreshAstaValutazioneBoxesScoped(winId, rec); scheduleAutosaveScoped(winId); });
+  } else {
+    // Refresh: aggiorna solo fascia se il reparto è cambiato, NON toccare gli input prezzo/tetto
+    const fasciaEl = $f(body, 'f_fascia');
+    if(fasciaEl){
+      const currentOptions = [...fasciaEl.options].map(o => o.value);
+      const sameFasce = fasce.length === currentOptions.length && fasce.every((f, i) => f === currentOptions[i]);
+      if(!sameFasce){
+        fasciaEl.innerHTML = fasce.map(f => '<option value="' + f + '" ' + (f === currentFascia ? 'selected' : '') + '>' + f + '</option>').join('');
+      } else if(fasciaEl.value !== currentFascia && document.activeElement !== fasciaEl){
+        fasciaEl.value = currentFascia;
+      }
+    }
+  }
+  refreshAstaValutazioneBoxesScoped(winId, rec);
+}
 
-  const refresh = () => {
-    if (!auctionSettings.modalitaAsta) return;
-    const fasciaVal = $f(body, 'f_fascia').value;
-    const auto = computeAutoPredictedPrice(reparto, fasciaVal, rec);
-    const apBox = $f(body, 'autoPredictedBox');
-    if (apBox) apBox.innerHTML = auto
-      ? '🤖 Previsione automatica: <b>~' + auto.value + ' cr</b> <span style="color:var(--chalk-dim);">(' + autoPredictedSourceLabel(auto) + ')</span>'
-      : '🤖 Previsione automatica: <span style="color:var(--chalk-dim);">dati insufficienti per ora</span>';
-    const temp = computeMarketTemperature(reparto, fasciaVal);
-    const t = TEMP_LABELS[temp.level];
-    const mtBox = $f(body, 'marketTempBox');
-    if (mtBox) mtBox.innerHTML = t.icon + ' Mercato ' + reparto + '/' + fasciaVal + ': <b>' + t.label + '</b><br><span style="color:var(--chalk-dim); font-size:11.5px;">' + t.hint + (temp.count?(' · '+temp.count+' vendite confrontate'+(temp.manualCount?(' ('+temp.manualCount+' con tua stima, '+(temp.count-temp.manualCount)+' con FVM)'):' (da FVM)')+marketTempConfidenceNote(temp)):'') + '</span>';
-    const rivals = computeRivalsActiveInReparto(reparto);
-    const rbBox = $f(body, 'rivalsBox');
-    if (rbBox) rbBox.innerHTML = rivals.length
-      ? '👀 Rivali ancora attivi su ' + reparto + ': ' + rivals.map(r => escapeHtml(r.nome) + ' (' + r.remaining + 'cr, ' + r.slotsLeft + ' slot)').join(' · ')
-      : '👀 Nessun rivale con slot liberi su ' + reparto + ' al momento.';
-  };
+// Kit audit: refresh SOLO dei box dinamici (versione WM desktop, non tocca gli input)
+function refreshAstaValutazioneBoxesScoped(winId, rec){
+  const win = WM.windows.get(winId);
+  if(!win) return;
+  const body = win.body;
+  if(!auctionSettings.modalitaAsta) return;
+  const posFantaEl = $f(body, 'f_posFanta');
+  const reparto = posFantaEl ? posFantaEl.value : (rec.posFanta || 'C');
+  const fasciaEl = $f(body, 'f_fascia');
+  const fasciaVal = fasciaEl ? fasciaEl.value : (rec.fascia || 'Top');
 
-  $f(body, 'f_fascia').onchange = () => { refresh(); scheduleAutosaveScoped(winId); };
-  $f(body, 'f_valoreEffettivo').addEventListener('input', () => scheduleAutosaveScoped(winId));
-  $f(body, 'f_prezzoPrevistoNum').addEventListener('input', () => { refresh(); scheduleAutosaveScoped(winId); });
-  refresh();
+  const auto = computeAutoPredictedPrice(reparto, fasciaVal, rec);
+  const apBox = $f(body, 'autoPredictedBox');
+  if (apBox) apBox.innerHTML = auto
+    ? '🤖 Previsione automatica: <b>~' + auto.value + ' cr</b> <span style="color:var(--chalk-dim);">(' + autoPredictedSourceLabel(auto) + ')</span>'
+    : '🤖 Previsione automatica: <span style="color:var(--chalk-dim);">dati insufficienti per ora</span>';
+  const temp = computeMarketTemperature(reparto, fasciaVal);
+  const t = TEMP_LABELS[temp.level];
+  const mtBox = $f(body, 'marketTempBox');
+  if (mtBox) mtBox.innerHTML = t.icon + ' Mercato ' + reparto + '/' + fasciaVal + ': <b>' + t.label + '</b><br><span style="color:var(--chalk-dim); font-size:11.5px;">' + t.hint + (temp.count?(' · '+temp.count+' vendite confrontate'+(temp.manualCount?(' ('+temp.manualCount+' con tua stima, '+(temp.count-temp.manualCount)+' con FVM)'):' (da FVM)')+marketTempConfidenceNote(temp)):'') + '</span>';
+  const rivals = computeRivalsActiveInReparto(reparto);
+  const rbBox = $f(body, 'rivalsBox');
+  if (rbBox) rbBox.innerHTML = rivals.length
+    ? '👀 Rivali ancora attivi su ' + reparto + ': ' + rivals.map(r => escapeHtml(r.nome) + ' (' + r.remaining + 'cr, ' + r.slotsLeft + ' slot)').join(' · ')
+    : '👀 Nessun rivale con slot liberi su ' + reparto + ' al momento.';
 }
 
 function bindAiSummaryHandlersScoped(winId) {
@@ -9192,11 +9265,14 @@ function wrLeagueStandingsHtml(){
   });
   
   const fmtFm = (v) => v != null ? v.toFixed(2) : '—';
-  
+
   let html = '<div class="wr-card"><div class="wr-card-title">🏆 Classifica lega live</div>';
   html += '<div class="settings-hint" style="margin-bottom:8px;">FM = media fantamedia dei giocatori assegnati. 🔮 = proiezione Oracolo (se impostata). Barra = % budget speso. Ordinamento: 🔮 proiettata → FM → slot. Click su una riga per il dettaglio.</div>';
-  html += '<table class="pair-detail-table"><thead><tr>';
-  html += '<th>#</th><th>Squadra</th><th>FM</th><th>🔮 Proiettata</th><th>Slot</th><th>Spesi / Budget</th><th>Rimasti</th>';
+  // Kit audit (bugfix overflow): tabella avvolta in container scrollabile + classi compatte
+  // per evitare che le colonne (specialmente "Spesi/Budget" con mini-bar) facciano sbordare la tabella
+  html += '<div class="wr-standings-scroll" style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:8px;">';
+  html += '<table class="pair-detail-table wr-standings-table" style="width:100%; min-width:560px; font-size:11.5px;"><thead><tr>';
+  html += '<th style="width:30px;">#</th><th>Squadra</th><th style="width:60px;">FM</th><th style="width:70px;">🔮 Proj.</th><th style="width:60px;">Slot</th><th style="min-width:120px;">Spesi</th><th style="width:60px;">Rimasti</th>';
   html += '</tr></thead><tbody>';
   rows.forEach((r, i) => {
     const isMine = r.t.isMine;
@@ -9206,20 +9282,21 @@ function wrLeagueStandingsHtml(){
     html += `<tr class="wr-war-row ${isMine?'mine':''}" data-team="${escapeHtml(r.t.nome)}" style="cursor:pointer;">`;
     html += `<td class="cell-g">#${i+1}</td>`;
     html += `<td><b>${escapeHtml(r.t.nome)}</b>${isMine?' <span style="color:var(--amber);">★</span>':''}</td>`;
-    html += `<td class="${fmClass}">${fmtFm(r.fmMedia)}${r.playersWithFm > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(${r.playersWithFm})</span>` : ''}</td>`;
-    html += `<td class="${projClass}">${fmtFm(r.fmProjMedia)}${r.projCount > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(${r.projCount})</span>` : ''}</td>`;
-    html += `<td>${r.filled}/${totalSlots}${r.slotsLeft > 0 ? ` <span style="color:var(--chalk-dim); font-size:10px;">(-${r.slotsLeft})</span>` : ''}</td>`;
-    // Mini-bar budget speso (accorpata dal vecchio Tavolo di guerra)
-    html += `<td style="min-width:140px;">
-      <div style="display:flex; align-items:center; gap:6px;">
-        <div class="wr-war-minibar" style="flex:1; min-width:60px;"><div class="wr-war-minibar-fill ${lowClass}" style="width:${r.pctSpent}%;"></div></div>
-        <span style="font-size:11px; color:var(--chalk-dim); white-space:nowrap;">${r.st.spent}/${r.budgetTot}</span>
+    html += `<td class="${fmClass}">${fmtFm(r.fmMedia)}${r.playersWithFm > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(${r.playersWithFm})</span>` : ''}</td>`;
+    html += `<td class="${projClass}">${fmtFm(r.fmProjMedia)}${r.projCount > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(${r.projCount})</span>` : ''}</td>`;
+    html += `<td>${r.filled}/${totalSlots}${r.slotsLeft > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(-${r.slotsLeft})</span>` : ''}</td>`;
+    // Mini-bar budget speso (accorpata dal vecchio Tavolo di guerra) — più compatta
+    html += `<td>
+      <div style="display:flex; align-items:center; gap:5px;">
+        <div class="wr-war-minibar" style="flex:1; min-width:50px;"><div class="wr-war-minibar-fill ${lowClass}" style="width:${r.pctSpent}%;"></div></div>
+        <span style="font-size:10.5px; color:var(--chalk-dim); white-space:nowrap;">${r.st.spent}/${r.budgetTot}</span>
       </div>
     </td>`;
     html += `<td><b style="color:${r.remaining < r.budgetTot*0.15 ? 'var(--red)' : 'var(--chalk)'};">${r.remaining}cr</b></td>`;
     html += '</tr>';
   });
   html += '</tbody></table>';
+  html += '</div>'; // chiude wr-standings-scroll
   
   // Statistiche extra per la mia squadra (potenziale rosa)
   const mine = rows.find(r => r.t.isMine);
@@ -9816,6 +9893,38 @@ dfOpenProjectionModal = function(pid){
       p.proiezione=Object.assign({}, p.proiezione, { nota:nota, by:myName||'anonimo', at:new Date().toISOString() });
       try{
         await persistPlayer(p, ['trendPrevisto','variazionePrevista','proiezione']);
+        // Kit audit (bugfix FM prevista cancellata): dopo il salvataggio dal modale proiezione,
+        // aggiorna ANCHE i campi corrispondenti nell'editor scheda giocatore (se aperto) e la
+        // baseline. Senza questo, l'autosave successivo dell'editor raccoglieva i campi vuoti
+        // (non aggiornati) e cancellava i valori appena salvati dal modale.
+        if(editingId === p.id && editingType === 'player'){
+          const trendEl = document.getElementById('f_trendPrevisto');
+          if(trendEl) trendEl.value = tv || '';
+          const varEl = document.getElementById('f_variazionePrevista');
+          if(varEl) varEl.value = vv;
+          // Aggiorna la baseline così l'autosave non li vede come "cambiati"
+          if(editingBaseline){
+            editingBaseline.trendPrevisto = p.trendPrevisto;
+            editingBaseline.variazionePrevista = p.variazionePrevista;
+            editingBaseline.proiezione = p.proiezione;
+          }
+        }
+        // Aggiorna anche le finestre WM desktop aperte sullo stesso giocatore
+        if(typeof WM !== 'undefined' && WM.windows){
+          WM.windows.forEach((w) => {
+            if(w.type === 'player' && w.recordId === p.id && w.body){
+              const tEl = w.body.querySelector('[data-field="f_trendPrevisto"]');
+              if(tEl) tEl.value = tv || '';
+              const vEl = w.body.querySelector('[data-field="f_variazionePrevista"]');
+              if(vEl) vEl.value = vv;
+              if(w.state && w.state.baseline){
+                w.state.baseline.trendPrevisto = p.trendPrevisto;
+                w.state.baseline.variazionePrevista = p.variazionePrevista;
+                w.state.baseline.proiezione = p.proiezione;
+              }
+            }
+          });
+        }
         render();
         showToast('Valutazione salvata e sincronizzata');
         close();
