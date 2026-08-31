@@ -1059,6 +1059,342 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 /* ===== FINE KIT v20 CSS ===== */
 
 
+/* ===== PIANO ROSA v2 — fork + candidati liberi ===== */
+.wr-piano-slot{
+  padding:14px 16px 16px;
+  gap:10px;
+  position:relative;
+  transition:border-color .15s,box-shadow .15s;
+}
+.wr-piano-slot.is-fork-active{
+  border-color:rgba(76,154,106,.65);
+  box-shadow:0 0 0 1px rgba(76,154,106,.35),0 6px 18px rgba(76,154,106,.10);
+}
+.wr-piano-slot-row{gap:10px}
+.wr-piano-slot-row label{min-width:54px}
+.piano-slot-head{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding-bottom:8px;border-bottom:1px dashed rgba(243,241,231,.08);
+  margin-bottom:2px;
+}
+.piano-slot-head .wr-piano-slot-badge{font-size:11.5px;padding:3px 10px}
+.piano-slot-head .piano-ric-btn{
+  margin-left:auto;
+  width:30px;height:30px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:8px;
+  background:rgba(11,25,19,.7);
+  border:1px solid rgba(243,241,231,.14);
+  color:#c9c7b8;font-size:14px;cursor:pointer;
+  transition:all .15s;
+}
+.piano-slot-head .piano-ric-btn:hover{
+  border-color:rgba(91,155,213,.55);color:#8ec3ec;
+  background:rgba(91,155,213,.10);
+}
+.piano-slot-head .piano-ric-btn.has-ric{
+  border-color:rgba(91,155,213,.55);color:#8ec3ec;
+  background:rgba(91,155,213,.10);
+}
+.piano-ric-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 10px;border-radius:12px;
+  background:rgba(91,155,213,.16);color:#8ec3ec;
+  border:1px solid rgba(91,155,213,.4);
+  font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:transform .12s,background .12s;
+}
+.piano-ric-chip:hover{transform:translateY(-1px);background:rgba(91,155,213,.28);}
+@media (prefers-reduced-motion: reduce){.piano-ric-chip{transform:none;transition:none;}}
+
+/* sezione fork */
+.piano-fork-section{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.piano-fork-section-head{
+  display:flex;align-items:center;gap:8px;
+  font-size:11.5px;font-weight:700;color:#c9c7b8;
+  letter-spacing:.03em;text-transform:uppercase;
+}
+.piano-fork-section-head .count{
+  font-size:10.5px;padding:1px 7px;border-radius:10px;
+  background:rgba(217,164,65,.15);color:#d9a441;font-weight:700;
+}
+.piano-fork-list{display:flex;flex-direction:column;gap:8px}
+.piano-fork-card{
+  background:rgba(11,25,19,.55);
+  border:1px solid rgba(243,241,231,.10);
+  border-radius:10px;padding:10px 12px;
+  display:flex;flex-direction:column;gap:8px;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+}
+.piano-fork-card:hover{border-color:rgba(217,164,65,.40)}
+.piano-fork-card.active{
+  border-color:rgba(76,154,106,.65);
+  background:rgba(76,154,106,.08);
+  box-shadow:0 0 0 1px rgba(76,154,106,.25),0 4px 14px rgba(76,154,106,.10);
+}
+.piano-fork-card-head{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.piano-fork-icon{font-size:13px;opacity:.85}
+.piano-fork-name{
+  font-size:13px;font-weight:700;color:#f3f1e9;flex:1;min-width:120px;
+}
+.piano-fork-card.active .piano-fork-name{color:#7fd3a0}
+.piano-fork-badge-active{
+  font-size:9.5px;font-weight:800;letter-spacing:.06em;
+  padding:2px 8px;border-radius:8px;
+  background:rgba(76,154,106,.22);color:#7fd3a0;
+  border:1px solid rgba(76,154,106,.45);
+  text-transform:uppercase;
+}
+.piano-fork-actions{display:flex;gap:4px;align-items:center}
+.piano-fork-btn{
+  width:26px;height:26px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:6px;background:transparent;
+  border:1px solid rgba(243,241,231,.12);color:#c9c7b8;
+  font-size:12px;cursor:pointer;transition:all .12s;
+}
+.piano-fork-btn:hover{border-color:rgba(217,164,65,.45);color:#e9bc5f;background:rgba(217,164,65,.08)}
+.piano-fork-btn.toggle.on{
+  background:rgba(76,154,106,.22);color:#7fd3a0;
+  border-color:rgba(76,154,106,.55);
+}
+.piano-fork-btn.toggle.on:hover{background:rgba(76,154,106,.30)}
+.piano-fork-btn.danger:hover{border-color:rgba(193,84,63,.55);color:#e07a63;background:rgba(193,84,63,.10)}
+.piano-fork-card-body{display:flex;flex-direction:column;gap:6px}
+.piano-fork-row{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.piano-fork-row-label{
+  font-size:10.5px;color:#8c8c7e;font-weight:700;
+  min-width:62px;padding-top:5px;letter-spacing:.04em;text-transform:uppercase;
+}
+.piano-fork-chips{display:flex;gap:5px;flex-wrap:wrap;align-items:center;flex:1}
+.piano-fork-anchor-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 11px;border-radius:14px;
+  background:rgba(217,164,65,.22);color:#f3d68a;
+  border:1px solid rgba(217,164,65,.55);
+  font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:transform .12s,box-shadow .12s;
+}
+.piano-fork-anchor-chip:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(217,164,65,.25)}
+.piano-fork-anchor-chip.empty{background:transparent;color:#8c8c7e;border-style:dashed;cursor:default}
+.piano-fork-anchor-chip.empty:hover{transform:none;box-shadow:none}
+.piano-fork-compat-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:11px;
+  background:rgba(91,155,213,.16);color:#9cc8ee;
+  border:1px solid rgba(91,155,213,.40);
+  font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:transform .12s,background .12s;
+}
+.piano-fork-compat-chip:hover{transform:translateY(-1px);background:rgba(91,155,213,.28)}
+.piano-fork-compat-chip .x{
+  font-size:10px;opacity:.7;margin-left:2px;
+  width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:50%;
+}
+.piano-fork-compat-chip .x:hover{opacity:1;background:rgba(255,255,255,.15)}
+.piano-fork-card.active .piano-fork-compat-chip{
+  background:rgba(76,154,106,.18);color:#a5dcb8;border-color:rgba(76,154,106,.50);
+}
+.piano-fork-compat-empty{font-size:11px;color:#8c8c7e;font-style:italic}
+.piano-fork-note{
+  font-size:11.5px;color:#c9c7b8;line-height:1.45;
+  padding:6px 9px;background:rgba(11,25,19,.55);
+  border-left:2px solid rgba(217,164,65,.40);
+  border-radius:0 6px 6px 0;
+}
+.piano-fork-note:empty{display:none}
+.piano-add-fork-btn{
+  align-self:flex-start;
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 12px;border-radius:8px;
+  background:transparent;border:1px dashed rgba(217,164,65,.45);
+  color:#d9a441;font-size:11.5px;font-weight:700;cursor:pointer;
+  transition:all .15s;
+}
+.piano-add-fork-btn:hover{
+  background:rgba(217,164,65,.10);border-style:solid;
+  color:#f3d68a;
+}
+.piano-empty-hint{
+  font-size:11.5px;color:#8c8c7e;font-style:italic;
+  padding:6px 0;
+}
+
+/* sezione candidati liberi */
+.piano-cand-section{
+  display:flex;flex-direction:column;gap:6px;margin-top:6px;
+  padding-top:8px;border-top:1px dashed rgba(243,241,231,.08);
+}
+.piano-cand-section-head{
+  display:flex;align-items:center;gap:8px;
+  font-size:11.5px;font-weight:700;color:#c9c7b8;
+  letter-spacing:.03em;text-transform:uppercase;
+}
+.piano-cand-section-head .count{
+  font-size:10.5px;padding:1px 7px;border-radius:10px;
+  background:rgba(243,241,231,.08);color:#c9c7b8;font-weight:700;
+}
+.piano-cand-grid{display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-height:24px}
+.piano-cand-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px 3px 9px;border-radius:11px;
+  background:rgba(217,164,65,.18);color:#e9bc5f;
+  border:1px solid rgba(217,164,65,.40);
+  font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:transform .12s,background .12s;
+}
+.piano-cand-chip:hover{transform:translateY(-1px);background:rgba(217,164,65,.28)}
+.piano-cand-chip.ghost{background:transparent;color:#8c8c7e;border-style:dashed;cursor:default}
+.piano-cand-chip.ghost:hover{transform:none;background:transparent}
+.piano-cand-chip .x{
+  font-size:10px;opacity:.65;margin-left:2px;
+  width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:50%;
+}
+.piano-cand-chip .x:hover{opacity:1;background:rgba(255,255,255,.15)}
+.piano-cand-add-row{
+  display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+}
+.piano-cand-input{
+  flex:1;min-width:160px;
+  background:rgba(11,25,19,.7);
+  border:1px solid rgba(243,241,231,.12);
+  border-radius:6px;color:#f3f1e9;
+  padding:5px 9px;font-size:12px;font-family:inherit;
+}
+.piano-cand-input:focus{outline:none;border-color:rgba(217,164,65,.55)}
+.piano-cand-input::placeholder{color:#8c8c7e;font-style:italic}
+
+/* badge fork sulla card Rosa */
+.piano-fork-rose-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:800;
+  padding:2px 8px;border-radius:10px;
+  background:rgba(76,154,106,.20);color:#7fd3a0;
+  border:1px solid rgba(76,154,106,.50);
+  margin-top:4px;
+}
+.piano-fork-rose-badge.anchor{
+  background:rgba(217,164,65,.22);color:#f3d68a;
+  border-color:rgba(217,164,65,.55);
+}
+.card.piano-fork-active-compat{
+  border-color:rgba(76,154,106,.65)!important;
+  box-shadow:0 0 0 1px rgba(76,154,106,.30),0 4px 14px rgba(76,154,106,.10);
+}
+.card.piano-fork-active-anchor{
+  border-color:rgba(217,164,65,.65)!important;
+  box-shadow:0 0 0 1px rgba(217,164,65,.30),0 4px 14px rgba(217,164,65,.15);
+}
+@media (prefers-reduced-motion: reduce){
+  .piano-ric-chip,.piano-fork-anchor-chip,.piano-fork-compat-chip,
+  .piano-cand-chip,.piano-add-fork-btn,.piano-fork-card{
+    transform:none!important;transition:none!important;
+  }
+}
+
+/* ===== PIANO ROSA v2.1 — fork inline editabile ===== */
+.piano-fork-name-input{
+  flex:1;min-width:120px;
+  background:transparent;border:1px solid transparent;
+  border-radius:6px;color:#f3f1e9;
+  padding:3px 8px;font-size:13px;font-weight:700;
+  font-family:inherit;
+  transition:border-color .12s,background .12s;
+}
+.piano-fork-name-input:hover{border-color:rgba(243,241,231,.12);background:rgba(11,25,19,.45)}
+.piano-fork-name-input:focus{
+  outline:none;border-color:rgba(217,164,65,.55);
+  background:rgba(11,25,19,.65);
+}
+.piano-fork-card.active .piano-fork-name-input{color:#7fd3a0}
+.piano-fork-card.active .piano-fork-name-input:focus{border-color:rgba(76,154,106,.65)}
+
+/* anchor inline: chip cliccabile che al click diventa input */
+.piano-fork-anchor-edit{
+  display:inline-flex;align-items:center;gap:4px;
+  flex:1;min-width:160px;
+}
+.piano-fork-anchor-edit input{
+  flex:1;
+  background:rgba(11,25,19,.65);
+  border:1px solid rgba(217,164,65,.45);
+  border-radius:8px;color:#f3d1d0;
+  padding:3px 9px;font-size:12px;font-family:inherit;
+}
+.piano-fork-anchor-edit input:focus{outline:none;border-color:rgba(217,164,65,.75)}
+
+/* compatibili: input inline per aggiungerne uno */
+.piano-fork-compat-add-input{
+  flex:1;min-width:140px;
+  background:rgba(11,25,19,.55);
+  border:1px dashed rgba(91,155,213,.40);
+  border-radius:8px;color:#f3f1e9;
+  padding:3px 9px;font-size:11.5px;font-family:inherit;
+}
+.piano-fork-compat-add-input:focus{outline:none;border-style:solid;border-color:rgba(91,155,213,.65)}
+.piano-fork-compat-add-input::placeholder{color:#8c8c7e;font-style:italic}
+
+/* note inline: textarea che cresce col contenuto */
+.piano-fork-note-input{
+  width:100%;
+  background:rgba(11,25,19,.55);
+  border:1px solid rgba(243,241,231,.10);
+  border-left:2px solid rgba(217,164,65,.40);
+  border-radius:0 6px 6px 0;
+  color:#c9c7b8;
+  padding:6px 9px;font-size:11.5px;font-family:inherit;
+  line-height:1.45;
+  min-height:32px;
+  resize:vertical;
+}
+.piano-fork-note-input:focus{outline:none;border-color:rgba(217,164,65,.45);border-left-color:rgba(217,164,65,.65)}
+.piano-fork-note-input::placeholder{color:#8c8c7e;font-style:italic}
+
+/* row "add compatibile" dentro la card fork */
+.piano-fork-compat-addrow{
+  display:flex;gap:5px;align-items:center;flex-wrap:wrap;
+  margin-top:2px;
+}
+
+/* pulsanti piccoli per l'anchor (cambia / rimuovi) */
+.piano-fork-anchor-mini{
+  width:22px;height:22px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:5px;background:transparent;
+  border:1px solid rgba(243,241,231,.10);color:#8c8c7e;
+  font-size:11px;cursor:pointer;transition:all .12s;
+}
+.piano-fork-anchor-mini:hover{border-color:rgba(217,164,65,.45);color:#e9bc5f;background:rgba(217,164,65,.08)}
+.piano-fork-anchor-mini.danger:hover{border-color:rgba(193,84,63,.55);color:#e07a63;background:rgba(193,84,63,.10)}
+
+/* anchor chip: ✕ per rimuovere (multi-anchor) */
+.piano-fork-anchor-chip .x{
+  font-size:10px;opacity:.7;margin-left:2px;
+  width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:50%;
+}
+.piano-fork-anchor-chip .x:hover{opacity:1;background:rgba(255,255,255,.15)}
+.piano-fork-anchor-chip.ghost{background:transparent;color:#8c8c7e;border-style:dashed;cursor:default}
+.piano-fork-anchor-chip.ghost:hover{transform:none;box-shadow:none}
+
+/* input add anchor (variante ambra del compat-add-input) */
+.piano-fork-anchor-add-input{
+  flex:1;min-width:140px;
+  background:rgba(11,25,19,.55);
+  border:1px dashed rgba(217,164,65,.40);
+  border-radius:8px;color:#f3f1e9;
+  padding:3px 9px;font-size:11.5px;font-family:inherit;
+}
+.piano-fork-anchor-add-input:focus{outline:none;border-style:solid;border-color:rgba(217,164,65,.65)}
+.piano-fork-anchor-add-input::placeholder{color:#8c8c7e;font-style:italic}
+/* ===== FINE PIANO ROSA v2.1 CSS ===== */
+/* ===== FINE PIANO ROSA v2 CSS ===== */
+
+
 /* ===== KIT v20 · RICERCA PER SLOT ===== */
 .v20-ric-btn{flex-shrink:0;}
 .v20-ric-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;background:rgba(91,155,213,.16);color:#8ec3ec;border:1px solid rgba(91,155,213,.4);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .15s,background .15s;user-select:none;}
@@ -4601,7 +4937,27 @@ function playerCardHtml(p){
   const astaBadge = p.asta ? `<div class="assign-badge ${p.asta.team===myTeamName?'mine-taken':'taken'}">🏷️ ${escapeHtml(p.asta.team)} · ${p.asta.prezzo}cr</div>` : '';
   const sc = computeScoutingCompleteness(p);
   const scoutingBadge = `<span class="scouting-badge ${sc.isComplete?'complete':'incomplete'}" title="${sc.filled}/${sc.total} campi scouting compilati">${sc.isComplete?'✅':'⚠️'} ${sc.pct}%</span>`;
-  var _ap=getActivePlanForReparto(p.posFanta);var _pm=checkPianoMatch(p,_ap);var _pmClass=_pm?' piano-match':'';var _pmBadge=_pm?'<div class="piano-badge">\uD83C\uDFAF '+_pm.reparto+' slot '+_pm.slotNumber+(_pm.budget?' · max '+_pm.budget+' cr':'')+'</div>':'';
+  var _ap=getActivePlanForReparto(p.posFanta);var _pm=checkPianoMatch(p,_ap);
+  var _pmClass='';
+  var _pmBadge='';
+  if(_pm){
+    if(_pm.forkActive){
+      // fork attivo: distingui anchor vs compatibile
+      if(_pm.forkRole==='anchor'){
+        _pmClass=' piano-fork-active-anchor';
+        _pmBadge='<div class="piano-fork-rose-badge anchor">🔱 '+escapeHtml(_pm.forkName||'fork')+' · ancora</div>';
+      } else {
+        _pmClass=' piano-fork-active-compat';
+        _pmBadge='<div class="piano-fork-rose-badge">🔱 '+escapeHtml(_pm.forkName||'fork')+' · compatibile</div>';
+      }
+    } else {
+      _pmClass=' piano-match';
+      var _pmLabel='🎯 '+_pm.reparto+' slot '+_pm.slotNumber;
+      if(_pm.forkAnchor) _pmLabel+=' · 🔱 '+escapeHtml(_pm.forkName||'');
+      if(_pm.budget) _pmLabel+=' · max '+_pm.budget+' cr';
+      _pmBadge='<div class="piano-badge">'+_pmLabel+'</div>';
+    }
+  }
   const fuoriSerieABadge = isFuoriSerieA(p) ? `<div class="assign-badge taken" style="background:rgba(193,84,63,0.18); color:var(--red); border-color:rgba(193,84,63,0.3);">🌍 Fuori Serie A</div>` : '';
   return `
   <div class="card role-${p.posFanta||'A'}${_pmClass}" ${(auctionSettings.modalitaAsta && WM.isDesktop) ? 'draggable="true"' : ''} data-pid="${p.id}">
@@ -10040,7 +10396,57 @@ function calculatePlanBudget(plan, onlyRep){
   }
   return tot;
 }
-function checkPianoMatch(player,plan){if(!plan||!plan.slots)return null;var rep=player.posFanta;var slots=plan.slots[rep];if(!slots)return null;for(var i=0;i<slots.length;i++){if(slots[i].fascia&&player.fascia&&slots[i].fascia===player.fascia){return{reparto:rep,slotNumber:i+1,budget:slots[i].budget,archetipo:slots[i].archetipo};}}return null;}
+function checkPianoMatch(player,plan){
+  if(!plan||!plan.slots||!player)return null;
+  var rep=player.posFanta;
+  var slots=plan.slots[rep];
+  if(!slots)return null;
+  // 1) Fork ATTIVO: se il giocatore è un'ancora o un compatibile di un fork attivo in questo slot,
+  //    match forte con info sul fork (così la tab Rosa può mostrare il badge 🔱).
+  for(var i=0;i<slots.length;i++){
+    var sl=slots[i]; if(!sl||!sl.forks)continue;
+    for(var f=0;f<sl.forks.length;f++){
+      var fk=sl.forks[f]; if(!fk)continue;
+      if(sl.activeForkId && sl.activeForkId===fk.id){
+        // multi-anchor: controlla fk.anchors (array); fallback legacy fk.anchor (singolo)
+        var anchors = fk.anchors || (fk.anchor ? [fk.anchor] : []);
+        if(anchors.indexOf(player.id)>=0){
+          return {reparto:rep, slotNumber:i+1, budget:sl.budget, forkActive:true, forkRole:'anchor', forkName:fk.nome||''};
+        }
+        if(fk.compatibili && fk.compatibili.indexOf(player.id)>=0){
+          return {reparto:rep, slotNumber:i+1, budget:sl.budget, forkActive:true, forkRole:'compat', forkName:fk.nome||''};
+        }
+      }
+    }
+  }
+  // 2) Candidati liberi + anchor di fork non attivi: match come candidato
+  for(var i=0;i<slots.length;i++){
+    var sl=slots[i]; if(!sl)continue;
+    var cand=sl.candidati||[];
+    if(cand.indexOf(player.id)>=0){
+      return {reparto:rep, slotNumber:i+1, budget:sl.budget, candidato:true};
+    }
+    // anchor di un fork qualsiasi (anche non attivo) → match debole come candidato
+    if(sl.forks){
+      for(var f=0;f<sl.forks.length;f++){
+        var fk=sl.forks[f];
+        if(!fk)continue;
+        var anchors = fk.anchors || (fk.anchor ? [fk.anchor] : []);
+        if(anchors.indexOf(player.id)>=0){
+          return {reparto:rep, slotNumber:i+1, budget:sl.budget, candidato:true, forkAnchor:true, forkName:fk.nome||''};
+        }
+      }
+    }
+  }
+  // 3) Match fascia (comportamento originale)
+  for(var i=0;i<slots.length;i++){
+    var sl=slots[i]; if(!sl)continue;
+    if(sl.fascia&&player.fascia&&sl.fascia===player.fascia){
+      return {reparto:rep, slotNumber:i+1, budget:sl.budget};
+    }
+  }
+  return null;
+}
 function wrPianoOverviewHtml(){
   var budget=auctionSettings.budgetTotale||500;
   var perRep={};
@@ -10127,6 +10533,9 @@ function wrRenderPiano(sec){
   }
   h+="<button class=\"btn small\" id=\"pianoImportBtn\" title=\"Importa piano da JSON\">📥 Importa</button>";
   h+="<button class=\"btn small\" id=\"pianoCompareBtn\" title=\"Confronta due piani affiancati\">⚖️ Confronta</button>";
+  if(typeof WM!=='undefined' && WM.isDesktop){
+    h+="<button class=\"btn small\" id=\"pianoWindowBtn\" title=\"Apri il Piano in una finestra separata (minimizzabile, trascinabile) — utile mentre cerchi nella Rosa\">🪟 Apri in finestra</button>";
+  }
   h+="</div>";
   // Hidden file input for piano import
   h+="<input type=\"file\" id=\"pianoImportFile\" accept=\".json,application/json\" style=\"display:none;\">";
@@ -10147,12 +10556,50 @@ function wrRenderPiano(sec){
   h+="<div class=\"wr-piano-rep\"><div class=\"wr-piano-rep-title\">"+PIANO_REP_LABEL[rep]+" ("+n+" slot)</div><div class=\"wr-piano-slots\">";
   var fasce=["Top","Semitop","Medio","Regolarista","Scommessa"];
   for(var si=0;si<n;si++){
-    var sl=slots[si]||{fascia:"",archetipo:"",budget:"",note:""};
-    h+="<div class=\"wr-piano-slot\"><div class=\"wr-piano-slot-row\"><span class=\"wr-piano-slot-badge\">Slot "+(si+1)+"</span><label>Fascia</label><select data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"fascia\"><option value=\"\">—</option>";
+    var sl=slots[si]||{fascia:"",budget:"",note:""};
+    if(!sl.candidati) sl.candidati=[];
+    if(!sl.forks) sl.forks=[];
+    // migrazione one-shot: se lo slot ha ancora un vecchio "archetipo" che corrisponde a un
+    // nome giocatore, lo promuoviamo a candidato libero (una tantum, poi l'archetipo è ignorato)
+    if(sl.archetipo && typeof pianoFindPlayer==='function'){
+      var migrated=pianoFindPlayer(sl.archetipo);
+      if(migrated && sl.candidati.indexOf(migrated.id)<0){
+        sl.candidati.push(migrated.id);
+      }
+    }
+    var hasForkActive = sl.activeForkId && sl.forks.some(function(f){return f && f.id===sl.activeForkId;});
+    var ric = sl.ricerca;
+    var hasRic = ric && ((ric.posReali&&ric.posReali.length)||(ric.fasce&&ric.fasce.length));
+    h+="<div class=\"wr-piano-slot"+(hasForkActive?" is-fork-active":"")+"\" data-slot-rep=\""+rep+"\" data-slot-idx=\""+si+"\">";
+    // HEAD: badge slot + fascia + budget + tasto ricerca
+    h+="<div class=\"piano-slot-head\">";
+    h+="<span class=\"wr-piano-slot-badge\">Slot "+(si+1)+"</span>";
+    h+="<label style=\"margin:0;min-width:0\">Fascia</label>";
+    h+="<select data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"fascia\" style=\"min-width:120px;flex:0 1 auto\">";
+    h+="<option value=\"\">—</option>";
     for(var fi=0;fi<fasce.length;fi++){
       h+="<option value=\""+fasce[fi]+"\""+(sl.fascia===fasce[fi]?" selected":"")+">"+fasce[fi]+"</option>";
     }
-    h+="</select><label>Archetipo</label><input type=\"text\" data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"archetipo\" value=\""+escapeHtml(sl.archetipo||"")+"\" placeholder=\"es. Kalulu\"></div><div class=\"wr-piano-slot-row\"><label>Budget</label><input type=\"number\" data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"budget\" value=\""+(sl.budget||"")+"\" placeholder=\"0\" style=\"max-width:90px\"><label>Note</label><textarea data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"note\" placeholder=\"Cosa cerchi...\">"+escapeHtml(sl.note||"")+"</textarea></div></div>";
+    h+="</select>";
+    h+="<label style=\"margin:0;min-width:0\">Budget</label>";
+    h+="<input type=\"number\" data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"budget\" value=\""+(sl.budget||"")+"\" placeholder=\"0\" style=\"max-width:80px;flex:0 0 80px\">";
+    h+="<button type=\"button\" class=\"piano-ric-btn"+(hasRic?" has-ric":"")+"\" data-ric-btn=\"1\" data-rep=\""+rep+"\" data-idx=\""+si+"\" title=\"Ricerca per ruolo reale + fascia\">🔍</button>";
+    h+="</div>";
+    // RIGA NOTE
+    h+="<div class=\"wr-piano-slot-row\"><label>Note</label><textarea data-rep=\""+rep+"\" data-idx=\""+si+"\" data-field=\"note\" placeholder=\"Cosa cerchi in questo slot...\">"+escapeHtml(sl.note||"")+"</textarea></div>";
+    // CHIP RICERCA SALVATA
+    if(hasRic){
+      var nMatches = (typeof pianoCountSearchMatches==='function') ? pianoCountSearchMatches(rep, ric) : 0;
+      var parts=[];
+      if(ric.posReali&&ric.posReali.length) parts.push(ric.posReali.join(', '));
+      if(ric.fasce&&ric.fasce.length) parts.push(ric.fasce.join('/'));
+      h+="<span class=\"piano-ric-chip\" data-ric-chip=\"1\" data-rep=\""+rep+"\" data-idx=\""+si+"\" title=\"Clicca per vedere i papabili\">🔍 "+escapeHtml(parts.join(' · '))+" · "+nMatches+"</span>";
+    }
+    // SEZIONE FORK
+    h+=pianoRenderForkSection(rep, si, sl);
+    // SEZIONE CANDIDATI LIBERI
+    h+=pianoRenderCandSection(rep, si, sl);
+    h+="</div>";
   }
   h+="</div></div>";
   h+="</div>";
@@ -10167,13 +10614,27 @@ async function duplicatePlan(srcPlan){
   if(!srcPlan) return;
   var newId = 'plan_' + Date.now();
   var newName = (srcPlan.name || 'Piano') + ' (copia)';
-  // Deep clone degli slot
+  // Deep clone degli slot, includendo forks/ricerca/activeForkId/candidati
   var slotsCopy = {};
   if(srcPlan.slots){
     for(var rep in srcPlan.slots){
       if(!srcPlan.slots[rep]) continue;
       slotsCopy[rep] = srcPlan.slots[rep].map(function(s){
-        return Object.assign({fascia:'',archetipo:'',budget:'',note:''}, s || {});
+        var copy = Object.assign({fascia:'',budget:'',note:'',candidati:[],forks:[],ricerca:null,activeForkId:null}, s || {});
+        // deep-clone arrays/objects
+        if(s && s.candidati) copy.candidati = s.candidati.slice();
+        if(s && s.forks) copy.forks = s.forks.map(function(f){
+          var fk = Object.assign({}, f);
+          if(f.compatibili) fk.compatibili = f.compatibili.slice();
+          if(f.anchors) fk.anchors = f.anchors.slice();
+          else if(f.anchor) fk.anchors = [f.anchor]; // legacy
+          delete fk.anchor; // pulizia legacy
+          return fk;
+        });
+        if(s && s.ricerca) copy.ricerca = {posReali:(s.ricerca.posReali||[]).slice(), fasce:(s.ricerca.fasce||[]).slice()};
+        // nel duplicato, NESSUNO fork è attivo (utente decide se riattivarlo)
+        copy.activeForkId = null;
+        return copy;
       });
     }
   }
@@ -10332,16 +10793,30 @@ function renderComparePlansTable(planA, planB){
     rowsHtml += '<div class="section-body no-grid">';
     rowsHtml += '<table class="pair-detail-table"><thead><tr><th style="width:60px;">Slot</th><th>' + escapeHtml(planA.name) + '</th><th>' + escapeHtml(planB.name) + '</th></tr></thead><tbody>';
     for(var i = 0; i < maxSlots; i++){
-      var sA = slotsA[i] || {fascia:'',archetipo:'',budget:'',note:''};
-      var sB = slotsB[i] || {fascia:'',archetipo:'',budget:'',note:''};
+      var sA = slotsA[i] || {fascia:'',budget:'',note:''};
+      var sB = slotsB[i] || {fascia:'',budget:'',note:''};
       var diff = (Number(sA.budget)||0) - (Number(sB.budget)||0);
       var diffClass = diff === 0 ? '' : (diff > 0 ? 'cell-hard' : 'cell-best');
       var diffStr = diff === 0 ? '＝' : (diff > 0 ? '+' + diff : '' + diff);
       var fasciaDiff = sA.fascia !== sB.fascia ? ' style="color:var(--amber);"' : '';
+      // Riepilogo fork+candidati per ogni slot (al posto del vecchio archetipo)
+      function slotSummary(s){
+        if(!s) return '';
+        var parts=[];
+        var fkCount=(s.forks||[]).length;
+        var candCount=(s.candidati||[]).length;
+        if(fkCount) parts.push('🔱'+fkCount);
+        if(candCount) parts.push('🎯'+candCount);
+        if(s.activeForkId){
+          var af=(s.forks||[]).find(function(f){return f && f.id===s.activeForkId;});
+          if(af) parts.push('★'+escapeHtml(af.nome||''));
+        }
+        return parts.length?' <span style="color:var(--chalk-dim);font-size:11px;">'+parts.join(' · ')+'</span>':'';
+      }
       rowsHtml += '<tr>';
       rowsHtml += '<td class="cell-g">Slot ' + (i+1) + '</td>';
-      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sA.fascia || '—') + '</b> ' + escapeHtml(sA.archetipo || '') + ' · <span style="color:var(--amber);">' + (sA.budget || '0') + ' cr</span></td>';
-      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sB.fascia || '—') + '</b> ' + escapeHtml(sB.archetipo || '') + ' · <span style="color:var(--amber);">' + (sB.budget || '0') + ' cr</span></td>';
+      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sA.fascia || '—') + '</b>' + slotSummary(sA) + ' · <span style="color:var(--amber);">' + (sA.budget || '0') + ' cr</span></td>';
+      rowsHtml += '<td><b' + fasciaDiff + '>' + escapeHtml(sB.fascia || '—') + '</b>' + slotSummary(sB) + ' · <span style="color:var(--amber);">' + (sB.budget || '0') + ' cr</span></td>';
       rowsHtml += '</tr>';
       if(diff !== 0){
         rowsHtml += '<tr style="background:rgba(217,164,65,0.06);"><td colspan="3" class="' + diffClass + '" style="text-align:right; font-size:11px;">Δ budget slot: ' + diffStr + ' cr</td></tr>';
@@ -10356,6 +10831,819 @@ function renderComparePlansTable(planA, planB){
 
 // ============================================================
 // FINE KIT AUDIT — Piano
+// ============================================================
+
+// ============================================================
+// PIANO ROSA v2 — FORK + CANDIDATI LIBERI + RICERCA (native)
+// ============================================================
+// Utility giocatori — definita prima possibile così è disponibile ovunque.
+function pianoFindPlayer(name){
+  var n=String(name||'').trim().toLowerCase();
+  if(!n || typeof players==='undefined' || !players) return null;
+  for(var i=0;i<players.length;i++){
+    if(String(players[i].nome||'').trim().toLowerCase()===n) return players[i];
+  }
+  return null;
+}
+function pianoFindPlayerById(id){
+  if(typeof players==='undefined' || !players) return null;
+  for(var i=0;i<players.length;i++){ if(players[i].id===id) return players[i]; }
+  return null;
+}
+function pianoOpenPlayer(pid, nome){
+  var b=document.getElementById('edit_'+pid);
+  if(b){ b.click(); return; }
+  if(typeof openPlayerEditor==='function'){ try{ openPlayerEditor(pid); return; }catch(e){} }
+  if(typeof openEditor==='function'){ try{ openEditor('player',pid); return; }catch(e){} }
+  showToast('Non riesco ad aprire '+(nome||'il giocatore')+'. Aprilo dalla tab Rosa.');
+}
+// Normalizza stringa per confronti (delega a normalize_ se disponibile)
+function pianoNorm(s){
+  if(typeof normalize_==='function') return normalize_(s);
+  return String(s||'').trim().toLowerCase();
+}
+// Conteggio papabili per ricerca salvata
+function pianoCountSearchMatches(rep, ricerca){
+  if(!ricerca) return 0;
+  var hasPR=ricerca.posReali&&ricerca.posReali.length;
+  var hasF=ricerca.fasce&&ricerca.fasce.length;
+  if(!hasPR&&!hasF) return 0;
+  if(typeof players==='undefined' || !players) return 0;
+  var n=0;
+  for(var i=0;i<players.length;i++){
+    var p=players[i];
+    if(p.posFanta!==rep) continue;
+    if(hasPR){
+      var pr=pianoNorm(p.posReale); var ok=false;
+      for(var j=0;j<ricerca.posReali.length;j++){ if(pianoNorm(ricerca.posReali[j])===pr){ok=true;break;} }
+      if(!ok) continue;
+    }
+    if(hasF){ if(ricerca.fasce.indexOf(p.fascia)===-1) continue; }
+    n++;
+  }
+  return n;
+}
+// Trova tutti i papabili per ricerca salvata (per il modale risultati)
+function pianoFindSearchMatches(rep, ricerca){
+  if(!ricerca) return [];
+  var hasPR=ricerca.posReali&&ricerca.posReali.length;
+  var hasF=ricerca.fasce&&ricerca.fasce.length;
+  if(!hasPR&&!hasF) return [];
+  if(typeof players==='undefined' || !players) return [];
+  var out=[];
+  for(var i=0;i<players.length;i++){
+    var p=players[i];
+    if(p.posFanta!==rep) continue;
+    if(hasPR){
+      var pr=pianoNorm(p.posReale); var ok=false;
+      for(var j=0;j<ricerca.posReali.length;j++){ if(pianoNorm(ricerca.posReali[j])===pr){ok=true;break;} }
+      if(!ok) continue;
+    }
+    if(hasF){ if(ricerca.fasce.indexOf(p.fascia)===-1) continue; }
+    out.push(p);
+  }
+  return out;
+}
+
+// ---------- RENDER: sezione FORK di uno slot ----------
+function pianoRenderForkSection(rep, idx, slot){
+  var forks = slot.forks || [];
+  var activeId = slot.activeForkId || null;
+  var h = '<div class="piano-fork-section">';
+  h += '<div class="piano-fork-section-head">🔱 Fork'
+    + (forks.length?' <span class="count">'+forks.length+'</span>':'')
+    + '<span style="font-weight:400;color:#8c8c7e;text-transform:none;letter-spacing:0;font-size:11px;margin-left:6px">— scenari alternativi in base a chi prendi</span>'
+    + '</div>';
+  h += '<div class="piano-fork-list">';
+  for(var i=0;i<forks.length;i++){
+    h += pianoRenderForkCard(rep, idx, forks[i], activeId);
+  }
+  if(!forks.length){
+    h += '<div class="piano-empty-hint">Nessun fork. Es: «Se prendo Bastoni → poi dimarco».</div>';
+  }
+  h += '</div>';
+  h += '<button type="button" class="piano-add-fork-btn" data-fork-add="1" data-rep="'+rep+'" data-idx="'+idx+'">+ Aggiungi fork</button>';
+  h += '</div>';
+  return h;
+}
+function pianoRenderForkCard(rep, idx, fork, activeId){
+  if(!fork) return '';
+  var isActive = activeId && activeId===fork.id;
+  // normalize: support both legacy `anchor` (single) and new `anchors` (array)
+  var anchors = fork.anchors ? fork.anchors.slice() : (fork.anchor ? [fork.anchor] : []);
+  var compats = fork.compatibili || [];
+  var h = '<div class="piano-fork-card'+(isActive?' active':'')+'" data-fork-id="'+escapeHtml(fork.id)+'">';
+  // HEAD: icona + input nome (editabile) + badge attivo + azioni
+  h += '<div class="piano-fork-card-head">';
+  h += '<span class="piano-fork-icon">🔱</span>';
+  h += '<input type="text" class="piano-fork-name-input" data-fork-name="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" value="'+escapeHtml(fork.nome||'')+'" placeholder="Nome fork..." title="Nome del fork (modificabile sul posto)">';
+  if(isActive) h += '<span class="piano-fork-badge-active">Attivo</span>';
+  h += '<span class="piano-fork-actions">';
+  h += '<button type="button" class="piano-fork-btn toggle'+(isActive?' on':'')+'" data-fork-toggle="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" title="'+(isActive?'Disattiva fork':'Attiva fork: evidenzia compatibili nella Rosa')+'">'+(isActive?'◉':'○')+'</button>';
+  h += '<button type="button" class="piano-fork-btn danger" data-fork-delete="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" title="Elimina fork">🗑</button>';
+  h += '</span>';
+  h += '</div>';
+  // BODY
+  h += '<div class="piano-fork-card-body">';
+  // ANCHORS: multiple chips con ✕ + input per aggiungerne (sempre visibile)
+  h += '<div class="piano-fork-row"><span class="piano-fork-row-label">Se prendo</span><div class="piano-fork-chips">';
+  if(anchors.length){
+    for(var a=0;a<anchors.length;a++){
+      var ap = pianoFindPlayerById(anchors[a]);
+      if(ap){
+        h += '<span class="piano-fork-anchor-chip" data-player-open="'+escapeHtml(ap.id)+'" title="Apri la scheda di '+escapeHtml(ap.nome)+'">⚡ '+escapeHtml(ap.nome)
+          + '<span class="x" data-fork-anchor-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" data-pid="'+escapeHtml(ap.id)+'" title="Rimuovi ancora">✕</span>'
+          + '</span>';
+      } else {
+        h += '<span class="piano-fork-anchor-chip ghost" title="Giocatore non più in rosa">👻 non in rosa'
+          + '<span class="x" data-fork-anchor-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" data-pid="'+escapeHtml(anchors[a])+'" title="Rimuovi">✕</span>'
+          + '</span>';
+      }
+    }
+  } else {
+    h += '<span class="piano-fork-compat-empty">— nessuno —</span>';
+  }
+  h += '</div></div>';
+  // Riga add anchor (sempre visibile)
+  h += '<div class="piano-fork-compat-addrow">';
+  h += '<input type="text" class="piano-fork-anchor-add-input" data-fork-anchor-input="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" placeholder="+ aggiungi ancora..." autocomplete="off">';
+  h += '</div>';
+  // COMPATIBILI: chip esistenti con ✕ + input per aggiungerne
+  h += '<div class="piano-fork-row"><span class="piano-fork-row-label">Insieme a lui</span><div class="piano-fork-chips">';
+  if(compats.length){
+    for(var k=0;k<compats.length;k++){
+      var p = pianoFindPlayerById(compats[k]);
+      if(p){
+        h += '<span class="piano-fork-compat-chip" data-player-open="'+escapeHtml(p.id)+'" title="Apri la scheda di '+escapeHtml(p.nome)+'">⚡ '+escapeHtml(p.nome)
+          + '<span class="x" data-fork-compat-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" data-pid="'+escapeHtml(p.id)+'" title="Rimuovi dai compatibili">✕</span>'
+          + '</span>';
+      } else {
+        h += '<span class="piano-fork-compat-chip ghost" title="Giocatore non più in rosa">👻 non in rosa'
+          + '<span class="x" data-fork-compat-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" data-pid="'+escapeHtml(compats[k])+'" title="Rimuovi">✕</span>'
+          + '</span>';
+      }
+    }
+  } else {
+    h += '<span class="piano-fork-compat-empty">— nessuno —</span>';
+  }
+  h += '</div></div>';
+  // Riga add compatibile (sempre visibile per edit rapido)
+  h += '<div class="piano-fork-compat-addrow">';
+  h += '<input type="text" class="piano-fork-compat-add-input" data-fork-compat-input="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" placeholder="+ aggiungi compatibile..." autocomplete="off">';
+  h += '</div>';
+  // NOTE: textarea editabile inline
+  h += '<div class="piano-fork-row"><span class="piano-fork-row-label">Note</span><div style="flex:1;min-width:0">';
+  h += '<textarea class="piano-fork-note-input" data-fork-note="1" data-rep="'+rep+'" data-idx="'+idx+'" data-fork-id="'+escapeHtml(fork.id)+'" placeholder="Perché ci stanno bene insieme..." rows="1">'+escapeHtml(fork.note||'')+'</textarea>';
+  h += '</div></div>';
+  h += '</div>'; // body
+  h += '</div>'; // card
+  return h;
+}
+
+// ---------- RENDER: sezione CANDIDATI LIBERI di uno slot ----------
+function pianoRenderCandSection(rep, idx, slot){
+  var ids = slot.candidati || [];
+  var h = '<div class="piano-cand-section">';
+  h += '<div class="piano-cand-section-head">🎯 Candidati liberi'
+    + (ids.length?' <span class="count">'+ids.length+'</span>':'')
+    + '<span style="font-weight:400;color:#8c8c7e;text-transform:none;letter-spacing:0;font-size:11px;margin-left:6px">— osservati, non legati a un fork</span>'
+    + '</div>';
+  h += '<div class="piano-cand-grid">';
+  for(var i=0;i<ids.length;i++){
+    var p = pianoFindPlayerById(ids[i]);
+    if(p){
+      h += '<span class="piano-cand-chip" data-player-open="'+escapeHtml(p.id)+'" title="Apri la scheda di '+escapeHtml(p.nome)+'">⚡ '+escapeHtml(p.nome)
+        + '<span class="x" data-cand-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-pid="'+escapeHtml(p.id)+'" title="Rimuovi">✕</span>'
+        + '</span>';
+    } else {
+      h += '<span class="piano-cand-chip ghost">👻 non in rosa'
+        + '<span class="x" data-cand-remove="1" data-rep="'+rep+'" data-idx="'+idx+'" data-pid="'+escapeHtml(ids[i])+'" title="Rimuovi">✕</span>'
+        + '</span>';
+    }
+  }
+  if(!ids.length){
+    h += '<span class="piano-empty-hint" style="padding:0">Nessuno.</span>';
+  }
+  h += '</div>';
+  h += '<div class="piano-cand-add-row">';
+  h += '<input type="text" class="piano-cand-input" data-cand-input="1" data-rep="'+rep+'" data-idx="'+idx+'" placeholder="Cerca e aggiungi giocatore..." autocomplete="off">';
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
+
+// ---------- AUTOCOMPLETE GIOCATORE (riusabile) ----------
+// Inietta un dropdown sotto l'input; chiama onPick(playerId) quando l'utente seleziona.
+function pianoAttachAutocomplete(inp, onPick){
+  if(inp.__pianoDD) return; inp.__pianoDD=true;
+  try{ inp.removeAttribute('list'); }catch(e){}
+  var wrap=document.createElement('span');
+  wrap.className='v20-ddwrap'; // riusiamo lo stile esistente
+  wrap.style.position='relative';
+  wrap.style.flex='1';
+  wrap.style.minWidth='160px';
+  wrap.style.display='flex';
+  inp.parentNode.insertBefore(wrap, inp);
+  wrap.appendChild(inp);
+  var dd=document.createElement('div');
+  dd.className='v20-dd';
+  dd.style.display='none';
+  wrap.appendChild(dd);
+  var closing=false;
+  function list(){
+    if(typeof players==='undefined' || !players){ dd.innerHTML='<div class="v20-dd-empty">Rosa non caricata</div>'; return; }
+    var q=String(inp.value||'').trim().toLowerCase();
+    var res=[];
+    for(var i=0;i<players.length;i++){
+      var nm=String(players[i].nome||'').toLowerCase();
+      if(!q || nm.indexOf(q)>=0) res.push(players[i]);
+      if(res.length>=40) break;
+    }
+    if(!res.length){ dd.innerHTML='<div class="v20-dd-empty">Nessun giocatore trovato</div>'; return; }
+    dd.innerHTML=res.map(function(p){
+      return '<div class="v20-dd-item" data-id="'+escapeHtml(p.id)+'">'
+        +'<span class="v20-badge '+String(p.posFanta||'A')+'">'+(ROLE_LABEL[p.posFanta]||'-')+'</span>'
+        +'<span class="v20-dd-name">'+escapeHtml(p.nome)+'</span>'
+        +'<span class="v20-dd-team">'+escapeHtml(p.squadra||'')+(p.fascia?' · '+escapeHtml(p.fascia):'')+'</span>'
+        +'</div>';
+    }).join('');
+  }
+  function open(){ list(); dd.style.display='block'; }
+  function hide(){ dd.style.display='none'; }
+  inp.addEventListener('focus', open);
+  inp.addEventListener('input', function(){ if(dd.style.display!=='block'){ open(); } else { list(); } });
+  inp.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      var first=dd.querySelector('.v20-dd-item');
+      if(dd.style.display==='block' && first){
+        onPick(first.getAttribute('data-id'));
+        hide();
+      }
+    } else if(e.key==='Escape'){ hide(); }
+  });
+  dd.addEventListener('mousedown', function(e){
+    var item=e.target.closest ? e.target.closest('.v20-dd-item') : null;
+    if(!item) return;
+    e.preventDefault();
+    closing=true;
+    onPick(item.getAttribute('data-id'));
+    hide();
+    setTimeout(function(){ closing=false; },120);
+  });
+  inp.addEventListener('blur', function(){
+    setTimeout(function(){ if(!closing) hide(); },140);
+  });
+}
+
+// ---------- SLOT HELPER ----------
+function pianoGetSlot(rep, idx){
+  if(typeof getActivePlan!=='function') return null;
+  var plan=getActivePlan();
+  if(!plan) return null;
+  if(!plan.slots) plan.slots={};
+  if(!plan.slots[rep]) plan.slots[rep]=[];
+  while(plan.slots[rep].length<=idx) plan.slots[rep].push({fascia:'',budget:'',note:'',candidati:[],forks:[]});
+  var sl=plan.slots[rep][idx];
+  if(!sl.candidati) sl.candidati=[];
+  if(!sl.forks) sl.forks=[];
+  // normalizza fork legacy: migra `anchor` (singolo) → `anchors` (array)
+  for(var f=0;f<sl.forks.length;f++){
+    var fk=sl.forks[f];
+    if(!fk) continue;
+    if(!fk.anchors){
+      fk.anchors = fk.anchor ? [fk.anchor] : [];
+      if(fk.anchor) delete fk.anchor; // pulizia: il campo legacy non serve più
+    }
+    if(!fk.compatibili) fk.compatibili=[];
+  }
+  return {plan:plan, slot:sl};
+}
+function pianoSaveSlot(plan, rep, idx){
+  if(typeof savePlan==='function'){ try{ savePlan(plan, rep, idx); }catch(e){console.warn(e);} }
+}
+function pianoRefresh(){
+  var sec=document.getElementById('wrSection');
+  if(sec && typeof wrRenderPiano==='function'){ wrRenderPiano(sec); }
+  // aggiorna anche la finestra WM del piano se aperta
+  pianoRefreshWindow();
+}
+
+// ---------- WINDOW MANAGER: Piano in finestra separata ----------
+// Apre il Piano in una finestra WM separata, così può essere minimizzata
+// mentre l'utente cerca nella tab Rosa. Solo desktop.
+function pianoOpenInWindow(){
+  if(typeof WM==='undefined' || !WM.isDesktop){
+    showToast('Finestra disponibile solo su desktop');
+    return;
+  }
+  // Se esiste già una finestra del Piano, portala in primo piano (non aprirne doppie)
+  var existing=null;
+  WM.windows.forEach(function(w, wid){
+    if(w.type==='piano'){ existing={wid:wid, win:w}; }
+  });
+  if(existing){
+    if(existing.win.minimized) WM.restore(existing.wid);
+    else WM.focus(existing.wid);
+    return;
+  }
+  var rep=pianoActiveReparto;
+  var plan=getActivePlan();
+  var title='🎼 Piano '+(PIANO_REP_LABEL[rep]||rep)+(plan?(' · '+(plan.name||'Senza nome')):'');
+  var winId=WM.create({
+    title:title,
+    type:'piano',
+    state:{ rep:rep },
+    onClose:function(){ /* niente di speciale, la finestra sparisce */ }
+  });
+  var win=WM.windows.get(winId);
+  if(!win) return;
+  // etichetta il data-win-type per i selettori CSS usati altrove
+  win.el.setAttribute('data-win-type','piano');
+  // dimensioni ragionevoli per contenere il Piano
+  var vw=window.innerWidth, vh=window.innerHeight;
+  win.el.style.width=Math.min(720, vw-80)+'px';
+  win.el.style.height=Math.min(vh-100, 700)+'px';
+  win.el.style.left=Math.max(20, vw-740)+'px';
+  win.el.style.top='60px';
+  // renderizza il Piano dentro il body della finestra
+  win.body.innerHTML='<div id="wmPianoContainer" style="padding:8px 12px 16px;overflow-y:auto;max-height:calc(100% - 38px);"></div>';
+  var container=win.body.querySelector('#wmPianoContainer');
+  if(container && typeof wrRenderPiano==='function'){
+    wrRenderPiano(container);
+  }
+}
+function pianoRefreshWindow(){
+  // Se la finestra WM del Piano è aperta, aggiorna il suo contenuto.
+  if(typeof WM==='undefined' || !WM.windows) return;
+  WM.windows.forEach(function(w, wid){
+    if(w.type!=='piano') return;
+    var container=w.body ? w.body.querySelector('#wmPianoContainer') : null;
+    if(container && typeof wrRenderPiano==='function'){
+      // aggiorna anche il titolo con il piano attivo corrente
+      var rep=pianoActiveReparto;
+      var plan=getActivePlan();
+      w.title='🎼 Piano '+(PIANO_REP_LABEL[rep]||rep)+(plan?(' · '+(plan.name||'Senza nome')):'');
+      if(w.el.querySelector('.wm-title')) w.el.querySelector('.wm-title').textContent=w.title;
+      WM.updateTaskbar();
+      wrRenderPiano(container);
+    }
+  });
+}
+
+// ---------- EDITOR FORK (modale) ----------
+function pianoOpenForkEditor(rep, idx, forkId){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fork = forkId ? (d.slot.forks||[]).find(function(f){return f && f.id===forkId;}) : null;
+  if(forkId && !fork){ showToast('Fork non trovato'); return; }
+  var editing = !!fork;
+  var name = fork ? (fork.nome||'') : '';
+  var anchor = fork ? (fork.anchor||'') : '';
+  var compats = fork ? (fork.compatibili||[]).slice() : [];
+  var note = fork ? (fork.note||'') : '';
+
+  var overlay=document.createElement('div');
+  overlay.className='overlay'; overlay.id='pianoForkEditorOverlay';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:560px;">'
+    +'<div class="modal-head"><h2>🔱 '+(editing?'Modifica fork':'Nuovo fork')+'</h2><button class="close-x" id="pfeClose">✕</button></div>'
+    +'<div class="settings-hint">Uno fork è uno scenario: «se all\'asta prendo <b>X</b>, allora mi conviene inseguire anche <b>Y, Z</b> perché ci stanno bene insieme». Attivandolo, nella tab Rosa i compatibili vengono evidenziati.</div>'
+    +'<div class="field"><label>Nome fork</label><input type="text" id="pfeName" value="'+escapeHtml(name)+'" placeholder="es. Bastoni + Dimarco (costruzione)"></div>'
+    +'<div class="field"><label>Se prendo (ancora)</label><input type="text" id="pfeAnchor" value="'+escapeHtml(anchor?(pianoFindPlayerById(anchor)||{}).nome||'':'')+'" placeholder="Cerca giocatore..." autocomplete="off"></div>'
+    +'<div class="field"><label>Insieme a lui (compatibili)</label>'
+    +'<div id="pfeCompatChips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;min-height:28px"></div>'
+    +'<input type="text" id="pfeCompatInput" placeholder="Cerca e aggiungi..." autocomplete="off"></div>'
+    +'<div class="field"><label>Note (perché ci stanno bene)</label><textarea id="pfeNote" placeholder="es. Costruzione bassa,lettura difensiva simile, stesso modulo...">'+escapeHtml(note)+'</textarea></div>'
+    +'<div class="modal-actions">'
+    +'<button class="btn danger" id="pfeDelete" style="display:'+(editing?'inline-block':'none')+'">Elimina</button>'
+    +'<button class="btn" id="pfeCancel" style="flex:1">Annulla</button>'
+    +'<button class="btn primary" id="pfeSave" style="flex:2">Salva fork</button>'
+    +'</div></div>';
+  document.body.appendChild(overlay);
+
+  var nameInput=overlay.querySelector('#pfeName');
+  var anchorInput=overlay.querySelector('#pfeAnchor');
+  var compatWrap=overlay.querySelector('#pfeCompatChips');
+  var compatInput=overlay.querySelector('#pfeCompatInput');
+  var noteInput=overlay.querySelector('#pfeNote');
+  var closeFn=function(){ overlay.remove(); };
+
+  function renderCompatChips(){
+    compatWrap.innerHTML='';
+    for(var i=0;i<compats.length;i++){
+      (function(pid){
+        var p=pianoFindPlayerById(pid);
+        var chip=document.createElement('span');
+        chip.className='piano-fork-compat-chip';
+        chip.innerHTML='⚡ '+escapeHtml(p?p.nome:'👻 non in rosa')+'<span class="x">✕</span>';
+        chip.style.cursor='default';
+        chip.querySelector('.x').onclick=function(){
+          var pos=compats.indexOf(pid);
+          if(pos>=0) compats.splice(pos,1);
+          renderCompatChips();
+        };
+        if(p){
+          chip.style.cursor='pointer';
+          chip.addEventListener('click', function(ev){
+            if(ev.target.classList && ev.target.classList.contains('x')) return;
+            pianoOpenPlayer(p.id, p.nome);
+          });
+        }
+        compatWrap.appendChild(chip);
+      })(compats[i]);
+    }
+    if(!compats.length){
+      var hint=document.createElement('span');
+      hint.className='piano-empty-hint';
+      hint.style.padding='4px 0';
+      hint.textContent='Nessuno.';
+      compatWrap.appendChild(hint);
+    }
+  }
+  renderCompatChips();
+
+  // autocomplete anchor
+  pianoAttachAutocomplete(anchorInput, function(pid){
+    var p=pianoFindPlayerById(pid);
+    if(!p) return;
+    anchor=p.id;
+    anchorInput.value=p.nome;
+    // suggerimento: prepopola il nome fork se vuoto
+    if(!nameInput.value){
+      nameInput.value='Se prendo '+p.nome;
+    }
+  });
+  // autocomplete compatibili
+  pianoAttachAutocomplete(compatInput, function(pid){
+    var p=pianoFindPlayerById(pid);
+    if(!p) return;
+    if(compats.indexOf(pid)<0){
+      compats.push(pid);
+      renderCompatChips();
+    }
+    compatInput.value='';
+    compatInput.focus();
+  });
+  // Enter manuale su compat
+  compatInput.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      var pl=pianoFindPlayer(compatInput.value);
+      if(pl){
+        if(compats.indexOf(pl.id)<0){ compats.push(pl.id); renderCompatChips(); }
+        compatInput.value='';
+      }
+    }
+  });
+  // Enter manuale su anchor
+  anchorInput.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      var pl=pianoFindPlayer(anchorInput.value);
+      if(pl){ anchor=pl.id; anchorInput.value=pl.nome; }
+    }
+  });
+
+  overlay.querySelector('#pfeClose').onclick=closeFn;
+  overlay.querySelector('#pfeCancel').onclick=closeFn;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeFn(); });
+  overlay.querySelector('#pfeSave').onclick=function(){
+    var fork;
+    if(editing){
+      fork = (d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+      if(!fork){ closeFn(); return; }
+    } else {
+      fork = { id:'fork_'+Date.now()+'_'+Math.random().toString(36).slice(2,6) };
+      if(!d.slot.forks) d.slot.forks=[];
+      d.slot.forks.push(fork);
+    }
+    fork.nome = (nameInput.value||'').trim() || 'Fork senza nome';
+    fork.anchor = anchor || null;
+    // pulizia compatibili: rimuovi eventuali null/undefined
+    fork.compatibili = compats.filter(function(x){return !!x;});
+    fork.note = (noteInput.value||'').trim();
+    pianoSaveSlot(d.plan, rep, idx);
+    closeFn();
+    pianoRefresh();
+    showToast(editing?'Fork aggiornato':'Fork creato');
+  };
+  if(editing){
+    overlay.querySelector('#pfeDelete').onclick=function(){
+      if(!confirm('Eliminare questo fork?')) return;
+      d.slot.forks = (d.slot.forks||[]).filter(function(f){return f && f.id!==forkId;});
+      if(d.slot.activeForkId===forkId) d.slot.activeForkId=null;
+      pianoSaveSlot(d.plan, rep, idx);
+      closeFn();
+      pianoRefresh();
+      showToast('Fork eliminato');
+    };
+  }
+  setTimeout(function(){ nameInput.focus(); }, 50);
+}
+
+// ---------- TOGGLE / DELETE / ADD FORK ----------
+function pianoToggleFork(rep, idx, forkId){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  if(d.slot.activeForkId===forkId){
+    d.slot.activeForkId=null;
+    showToast('Fork disattivato');
+  } else {
+    d.slot.activeForkId=forkId;
+    var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+    showToast('Fork attivo: '+(fk?fk.nome:''));
+  }
+  pianoSaveSlot(d.plan, rep, idx);
+  pianoRefresh();
+}
+function pianoDeleteFork(rep, idx, forkId){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk) return;
+  if(!confirm('Eliminare il fork "'+(fk.nome||'senza nome')+'"?')) return;
+  d.slot.forks = d.slot.forks.filter(function(f){return f && f.id!==forkId;});
+  if(d.slot.activeForkId===forkId) d.slot.activeForkId=null;
+  pianoSaveSlot(d.plan, rep, idx);
+  pianoRefresh();
+  showToast('Fork eliminato');
+}
+function pianoAddFork(rep, idx){
+  // Crea un fork vuoto direttamente sullo slot, senza modale.
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fork = {
+    id: 'fork_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    nome: '',
+    anchors: [],
+    compatibili: [],
+    note: ''
+  };
+  if(!d.slot.forks) d.slot.forks=[];
+  d.slot.forks.push(fork);
+  pianoSaveSlot(d.plan, rep, idx);
+  pianoRefresh();
+  // focus sul nome del nuovo fork appena creato
+  setTimeout(function(){
+    var sec=document.getElementById('wrSection') || document.querySelector('.wm-window[data-win-type="piano"] .wm-body');
+    if(!sec) return;
+    var inputs=sec.querySelectorAll('[data-fork-name]');
+    if(inputs.length){
+      var last=inputs[inputs.length-1];
+      last.focus();
+      last.select();
+    }
+  }, 60);
+}
+
+// ---------- EDIT INLINE FORK ----------
+// Salva il nome del fork (al change, non ad ogni keystroke)
+function pianoSetForkName(rep, idx, forkId, nome){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk) return;
+  fk.nome = nome||'';
+  pianoSaveSlot(d.plan, rep, idx);
+  // non refreshiamo: l'utente sta ancora digitando
+}
+// Salva la nota del fork (al blur, non ad ogni keystroke)
+function pianoSetForkNote(rep, idx, forkId, note){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk) return;
+  fk.note = note||'';
+  pianoSaveSlot(d.plan, rep, idx);
+}
+// ---------- ANCHOR: add / remove (multi-anchor) ----------
+// Aggiunge un'ancora al fork (da input inline o autocomplete)
+function pianoAddAnchor(rep, idx, forkId, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk) return;
+  if(!fk.anchors) fk.anchors=[];
+  if(fk.anchors.indexOf(pid)<0){
+    fk.anchors.push(pid);
+    // suggerimento: prepopola il nome fork se vuoto
+    if(!fk.nome){
+      var p=pianoFindPlayerById(pid);
+      if(p) fk.nome='Se prendo '+p.nome;
+    }
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+// Rimuove un'ancora specifica dal fork
+function pianoRemoveAnchor(rep, idx, forkId, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk || !fk.anchors) return;
+  var pos=fk.anchors.indexOf(pid);
+  if(pos>=0){
+    fk.anchors.splice(pos,1);
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+
+// ---------- COMPATIBILI: add / remove ----------
+// Aggiunge un compatibile al fork (da input inline)
+function pianoAddCompat(rep, idx, forkId, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk) return;
+  if(!fk.compatibili) fk.compatibili=[];
+  if(fk.compatibili.indexOf(pid)<0){
+    fk.compatibili.push(pid);
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+
+// ---------- COMPATIBILI: remove rapido dalla card ----------
+function pianoRemoveCompat(rep, idx, forkId, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var fk=(d.slot.forks||[]).find(function(f){return f && f.id===forkId;});
+  if(!fk || !fk.compatibili) return;
+  var pos=fk.compatibili.indexOf(pid);
+  if(pos>=0){
+    fk.compatibili.splice(pos,1);
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+
+// ---------- CANDIDATI LIBERI: add / remove ----------
+function pianoAddCandidatoLibero(rep, idx, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  if(!d.slot.candidati) d.slot.candidati=[];
+  if(d.slot.candidati.indexOf(pid)<0){
+    d.slot.candidati.push(pid);
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+function pianoRemoveCandidatoLibero(rep, idx, pid){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  if(!d.slot.candidati) return;
+  var pos=d.slot.candidati.indexOf(pid);
+  if(pos>=0){
+    d.slot.candidati.splice(pos,1);
+    pianoSaveSlot(d.plan, rep, idx);
+    pianoRefresh();
+  }
+}
+
+// ---------- RICERCA PER SLOT (modale builder + risultati) ----------
+function pianoOpenSearchBuilder(rep, idx){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var existing=d.slot.ricerca||{};
+  var selPR={}; (existing.posReali||[]).forEach(function(x){ selPR[pianoNorm(x)]=x; });
+  var selF={}; (existing.fasce||[]).forEach(function(x){ selF[x]=true; });
+  var posRealeOpts=(typeof getPosRealeOptions==='function')?getPosRealeOptions(rep):[];
+  var fasciaOpts=(typeof FASCE_PER_RUOLO!=='undefined'&&FASCE_PER_RUOLO[rep])?FASCE_PER_RUOLO[rep]:[];
+
+  var overlay=document.createElement('div');
+  overlay.className='overlay'; overlay.id='pianoSearchBuilderOverlay';
+  var repNome=PIANO_REP_LABEL[rep]||rep;
+  overlay.innerHTML=
+    '<div class="modal">'
+    +'<div class="modal-head"><h2>🔍 Ricerca · '+escapeHtml(repNome)+' · slot '+(idx+1)+'</h2><button class="close-x" id="psbClose">✕</button></div>'
+    +'<div class="settings-hint">Scegli i criteri: i giocatori in rosa che li rispettano tutti diventano i "papabili". Clicca le opzioni per attivarle/disattivarle, poi Salva.</div>'
+    +'<div class="field"><label>Ruolo reale</label><div class="v20-chips" id="psbPRchips"></div></div>'
+    +'<div class="field"><label>Fascia</label><div class="v20-chips" id="psbFchips"></div></div>'
+    +'<div class="v20-livecount" id="psbLiveCount"></div>'
+    +'<div class="modal-actions">'
+    +'<button class="btn danger" id="psbClear">Pulisci</button>'
+    +'<button class="btn" id="psbCancel">Annulla</button>'
+    +'<button class="btn primary" id="psbSave" style="flex:1;">Salva ricerca</button>'
+    +'</div></div>';
+  document.body.appendChild(overlay);
+  var prWrap=overlay.querySelector('#psbPRchips');
+  var fWrap=overlay.querySelector('#psbFchips');
+  function currentRicerca(){
+    return {posReali:Object.keys(selPR).map(function(k){return selPR[k];}), fasce:Object.keys(selF)};
+  }
+  function buildPR(){
+    prWrap.innerHTML='';
+    if(!posRealeOpts.length){ prWrap.innerHTML='<span class="tag-picker-hint">Nessun ruolo reale censito per questo reparto: compila il campo "posizione reale" nelle schede dei giocatori.</span>'; return; }
+    posRealeOpts.forEach(function(opt){
+      var c=document.createElement('span');
+      var on=selPR.hasOwnProperty(pianoNorm(opt));
+      c.className='v20-toggle'+(on?' on':'');
+      c.textContent=opt;
+      c.onclick=function(){
+        if(selPR.hasOwnProperty(pianoNorm(opt))) delete selPR[pianoNorm(opt)]; else selPR[pianoNorm(opt)]=opt;
+        buildPR(); liveCount();
+      };
+      prWrap.appendChild(c);
+    });
+  }
+  function buildF(){
+    fWrap.innerHTML='';
+    if(!fasciaOpts.length){ fWrap.innerHTML='<span class="tag-picker-hint">Nessuna fascia disponibile.</span>'; return; }
+    fasciaOpts.forEach(function(opt){
+      var c=document.createElement('span');
+      var on=!!selF[opt];
+      c.className='v20-toggle'+(on?' on':'');
+      c.textContent=opt;
+      c.onclick=function(){
+        if(selF[opt]) delete selF[opt]; else selF[opt]=true;
+        buildF(); liveCount();
+      };
+      fWrap.appendChild(c);
+    });
+  }
+  function liveCount(){
+    var n=pianoCountSearchMatches(rep, currentRicerca());
+    overlay.querySelector('#psbLiveCount').innerHTML='👥 <b>'+n+'</b> papabili in rosa con questi criteri';
+  }
+  buildPR(); buildF(); liveCount();
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#psbClose').onclick=close;
+  overlay.querySelector('#psbCancel').onclick=close;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
+  overlay.querySelector('#psbSave').onclick=function(){
+    d.slot.ricerca=currentRicerca();
+    pianoSaveSlot(d.plan, rep, idx);
+    close(); pianoRefresh(); showToast('Ricerca salvata');
+  };
+  overlay.querySelector('#psbClear').onclick=function(){
+    d.slot.ricerca=null;
+    pianoSaveSlot(d.plan, rep, idx);
+    close(); pianoRefresh(); showToast('Ricerca rimossa');
+  };
+}
+function pianoOpenSearchResults(rep, idx){
+  var d=pianoGetSlot(rep, idx);
+  if(!d) return;
+  var ric=d.slot.ricerca;
+  var matches=pianoFindSearchMatches(rep,ric);
+  matches.sort(function(a,b){
+    var ga=Number(a.golPrevisti)||0, gb=Number(b.golPrevisti)||0;
+    if(gb!==ga) return gb-ga;
+    return (Number(b.titolaritaVoto)||0)-(Number(a.titolaritaVoto)||0);
+  });
+  var parts=[];
+  if(ric&&ric.posReali&&ric.posReali.length) parts.push(ric.posReali.join(', '));
+  if(ric&&ric.fasce&&ric.fasce.length) parts.push(ric.fasce.join('/'));
+  var rows='';
+  if(!matches.length){
+    rows='<div class="empty">Nessun giocatore in rosa rispetta questi criteri.</div>';
+  } else {
+    rows=matches.map(function(p){
+      var already=d.slot.candidati&&d.slot.candidati.indexOf(p.id)>=0;
+      return '<div class="quick-row" data-pid="'+escapeHtml(p.id)+'" style="cursor:pointer;">'
+        +'<span><span class="badge '+(p.posFanta||'A')+' qbadge">'+(ROLE_LABEL[p.posFanta]||'-')+'</span> <span class="qname">'+escapeHtml(p.nome)+'</span> <span style="color:var(--chalk-dim);font-size:11px;">'+escapeHtml(p.squadra||'')+(p.posReale?' · '+escapeHtml(p.posReale):'')+(p.fascia?' · '+escapeHtml(p.fascia):'')+'</span></span>'
+        +'<button class="btn small v20-addcand'+(already?' primary':'')+'" data-add="'+escapeHtml(p.id)+'">'+(already?'✓ candidato':'+ candidato')+'</button>'
+        +'</div>';
+    }).join('');
+  }
+  var overlay=document.createElement('div');
+  overlay.className='overlay'; overlay.id='pianoSearchResultsOverlay';
+  var repNome=PIANO_REP_LABEL[rep]||rep;
+  overlay.innerHTML=
+    '<div class="modal">'
+    +'<div class="modal-head"><h2>🔍 Papabili · '+escapeHtml(repNome)+' · slot '+(idx+1)+'</h2><button class="close-x" id="psrClose">✕</button></div>'
+    +'<div class="settings-hint">'+escapeHtml(parts.join(' · '))+' · <b>'+matches.length+'</b> giocatori. Clicca una riga per aprire la scheda; "+ candidato" lo aggiunge ai candidati liberi dello slot.</div>'
+    +'<div id="psrList" style="max-height:420px;overflow-y:auto;">'+rows+'</div>'
+    +'<div class="modal-actions"><button class="btn" id="psrClose2" style="flex:1;">Chiudi</button></div>'
+    +'</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#psrClose').onclick=close;
+  overlay.querySelector('#psrClose2').onclick=close;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
+  overlay.querySelectorAll('.quick-row[data-pid]').forEach(function(row){
+    row.onclick=function(e){
+      if(e.target.closest&&e.target.closest('.v20-addcand')) return;
+      pianoOpenPlayer(row.getAttribute('data-pid'));
+    };
+  });
+  overlay.querySelectorAll('.v20-addcand').forEach(function(btn){
+    btn.onclick=function(e){
+      e.stopPropagation();
+      var pid=btn.getAttribute('data-add');
+      if(!d.slot.candidati) d.slot.candidati=[];
+      if(d.slot.candidati.indexOf(pid)<0){
+        d.slot.candidati.push(pid);
+        pianoSaveSlot(d.plan, rep, idx);
+        btn.textContent='✓ candidato'; btn.classList.add('primary');
+      }
+    };
+  });
+}
+// ============================================================
+// FINE PIANO ROSA v2 — FORK + CANDIDATI LIBERI + RICERCA
 // ============================================================
 function bindPianoEvents(sec){
   var tabs=sec.querySelectorAll(".wr-piano-reptab");
@@ -10444,6 +11732,11 @@ function bindPianoEvents(sec){
     openComparePlansModal();
   };
 
+  var winBtn=sec.querySelector("#pianoWindowBtn");
+  if(winBtn)winBtn.onclick=function(){
+    pianoOpenInWindow();
+  };
+
   var fields=sec.querySelectorAll("[data-field]");
   for(var i=0;i<fields.length;i++){
     fields[i].onchange=(function(el){return async function(){
@@ -10454,7 +11747,7 @@ function bindPianoEvents(sec){
       var field=el.getAttribute("data-field");
       if(!plan.slots)plan.slots={};
       if(!plan.slots[rep])plan.slots[rep]=[];
-      while(plan.slots[rep].length<=idx)plan.slots[rep].push({fascia:"",archetipo:"",budget:"",note:""});
+      while(plan.slots[rep].length<=idx)plan.slots[rep].push({fascia:"",budget:"",note:"",candidati:[],forks:[]});
       plan.slots[rep][idx][field]=el.value;
       await savePlan(plan,rep,idx);
       var budget=auctionSettings.budgetTotale||500;
@@ -10471,580 +11764,262 @@ function bindPianoEvents(sec){
       }
     };})(fields[i]);
   }
+
+  // ===== PIANO v2 — bind fork / candidati / ricerca =====
+  // Apre la scheda di un giocatore quando si clicca su un chip con data-player-open
+  sec.querySelectorAll('[data-player-open]').forEach(function(el){
+    el.onclick=function(e){
+      if(e.target.closest && e.target.closest('[data-cand-remove],[data-fork-compat-remove],[data-fork-anchor-remove]')) return;
+      var pid=el.getAttribute('data-player-open');
+      if(pid) pianoOpenPlayer(pid);
+    };
+  });
+
+  // Pulsanti "+ Aggiungi fork"
+  sec.querySelectorAll('[data-fork-add]').forEach(function(btn){
+    btn.onclick=function(){
+      var rep=btn.getAttribute('data-rep');
+      var idx=parseInt(btn.getAttribute('data-idx'),10);
+      pianoAddFork(rep, idx);
+    };
+  });
+
+  // Toggle fork attivo
+  sec.querySelectorAll('[data-fork-toggle]').forEach(function(btn){
+    btn.onclick=function(){
+      var rep=btn.getAttribute('data-rep');
+      var idx=parseInt(btn.getAttribute('data-idx'),10);
+      var fid=btn.getAttribute('data-fork-id');
+      pianoToggleFork(rep, idx, fid);
+    };
+  });
+
+  // Elimina fork
+  sec.querySelectorAll('[data-fork-delete]').forEach(function(btn){
+    btn.onclick=function(){
+      var rep=btn.getAttribute('data-rep');
+      var idx=parseInt(btn.getAttribute('data-idx'),10);
+      var fid=btn.getAttribute('data-fork-id');
+      pianoDeleteFork(rep, idx, fid);
+    };
+  });
+
+  // ===== EDIT INLINE FORK =====
+  // Nome fork: salva al change (blur) o Enter
+  sec.querySelectorAll('[data-fork-name]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var rep=inp.getAttribute('data-rep');
+      var idx=parseInt(inp.getAttribute('data-idx'),10);
+      var fid=inp.getAttribute('data-fork-id');
+      pianoSetForkName(rep, idx, fid, inp.value);
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        inp.blur();
+      }
+    });
+  });
+
+  // Note fork: salva al blur
+  sec.querySelectorAll('[data-fork-note]').forEach(function(ta){
+    ta.addEventListener('blur', function(){
+      var rep=ta.getAttribute('data-rep');
+      var idx=parseInt(ta.getAttribute('data-idx'),10);
+      var fid=ta.getAttribute('data-fork-id');
+      pianoSetForkNote(rep, idx, fid, ta.value);
+    });
+    // auto-resize: adatta l'altezza al contenuto
+    function autoresize(){
+      ta.style.height='auto';
+      ta.style.height=Math.max(32, ta.scrollHeight+4)+'px';
+    }
+    ta.addEventListener('input', autoresize);
+    setTimeout(autoresize, 0); // resize al primo render
+  });
+
+  // Anchor: input "+ aggiungi ancora..." (multi-anchor)
+  sec.querySelectorAll('[data-fork-anchor-input]').forEach(function(inp){
+    pianoAttachAutocomplete(inp, function(pid){
+      var rep=inp.getAttribute('data-rep');
+      var idx=parseInt(inp.getAttribute('data-idx'),10);
+      var fid=inp.getAttribute('data-fork-id');
+      pianoAddAnchor(rep, idx, fid, pid);
+      // dopo il refresh, ri-focus sul nuovo input dello stesso fork
+      setTimeout(function(){
+        var sec2=document.getElementById('wrSection') || document.querySelector('.wm-window[data-win-type="piano"] .wm-body');
+        if(!sec2) return;
+        var newInp=sec2.querySelector('[data-fork-anchor-input][data-fork-id="'+CSS.escape(fid)+'"]');
+        if(newInp){ newInp.focus(); }
+      }, 50);
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        var pl=pianoFindPlayer(inp.value);
+        if(pl){
+          var rep=inp.getAttribute('data-rep');
+          var idx=parseInt(inp.getAttribute('data-idx'),10);
+          var fid=inp.getAttribute('data-fork-id');
+          pianoAddAnchor(rep, idx, fid, pl.id);
+        }
+      }
+    });
+  });
+
+  // Anchor: rimuovi singola ancora (✕ sui chip anchor)
+  sec.querySelectorAll('[data-fork-anchor-remove]').forEach(function(x){
+    x.onclick=function(e){
+      e.stopPropagation();
+      var rep=x.getAttribute('data-rep');
+      var idx=parseInt(x.getAttribute('data-idx'),10);
+      var fid=x.getAttribute('data-fork-id');
+      var pid=x.getAttribute('data-pid');
+      pianoRemoveAnchor(rep, idx, fid, pid);
+    };
+  });
+
+  // Compatibili: input "+ aggiungi compatibile..."
+  sec.querySelectorAll('[data-fork-compat-input]').forEach(function(inp){
+    pianoAttachAutocomplete(inp, function(pid){
+      var rep=inp.getAttribute('data-rep');
+      var idx=parseInt(inp.getAttribute('data-idx'),10);
+      var fid=inp.getAttribute('data-fork-id');
+      pianoAddCompat(rep, idx, fid, pid);
+      // dopo il refresh, ri-focus sul nuovo input dello stesso fork
+      setTimeout(function(){
+        var sec2=document.getElementById('wrSection') || document.querySelector('.wm-window[data-win-type="piano"] .wm-body');
+        if(!sec2) return;
+        var newInp=sec2.querySelector('[data-fork-compat-input][data-fork-id="'+CSS.escape(fid)+'"]');
+        if(newInp){ newInp.focus(); }
+      }, 50);
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        var pl=pianoFindPlayer(inp.value);
+        if(pl){
+          var rep=inp.getAttribute('data-rep');
+          var idx=parseInt(inp.getAttribute('data-idx'),10);
+          var fid=inp.getAttribute('data-fork-id');
+          pianoAddCompat(rep, idx, fid, pl.id);
+        }
+      }
+    });
+  });
+
+  // Rimuovi compatibile rapido (✕ sui chip compatibili)
+  sec.querySelectorAll('[data-fork-compat-remove]').forEach(function(x){
+    x.onclick=function(e){
+      e.stopPropagation();
+      var rep=x.getAttribute('data-rep');
+      var idx=parseInt(x.getAttribute('data-idx'),10);
+      var fid=x.getAttribute('data-fork-id');
+      var pid=x.getAttribute('data-pid');
+      pianoRemoveCompat(rep, idx, fid, pid);
+    };
+  });
+
+  // Rimuovi candidato libero (✕ sui chip)
+  sec.querySelectorAll('[data-cand-remove]').forEach(function(x){
+    x.onclick=function(e){
+      e.stopPropagation();
+      var rep=x.getAttribute('data-rep');
+      var idx=parseInt(x.getAttribute('data-idx'),10);
+      var pid=x.getAttribute('data-pid');
+      pianoRemoveCandidatoLibero(rep, idx, pid);
+    };
+  });
+
+  // Input "Cerca e aggiungi giocatore..." con autocomplete
+  sec.querySelectorAll('[data-cand-input]').forEach(function(inp){
+    pianoAttachAutocomplete(inp, function(pid){
+      var rep=inp.getAttribute('data-rep');
+      var idx=parseInt(inp.getAttribute('data-idx'),10);
+      pianoAddCandidatoLibero(rep, idx, pid);
+      inp.value='';
+      // ri-focus sul nuovo input (dopo il re-render è un elemento nuovo)
+      var sec2=document.getElementById('wrSection');
+      if(sec2){
+        var newInp=sec2.querySelector('[data-cand-input][data-rep="'+rep+'"][data-idx="'+idx+'"]');
+        if(newInp) setTimeout(function(){ newInp.focus(); }, 30);
+      }
+    });
+    // Enter manuale se l'utente digita un nome esatto
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        var pl=pianoFindPlayer(inp.value);
+        if(pl){
+          var rep=inp.getAttribute('data-rep');
+          var idx=parseInt(inp.getAttribute('data-idx'),10);
+          pianoAddCandidatoLibero(rep, idx, pl.id);
+          inp.value='';
+        }
+      }
+    });
+  });
+
+  // Pulsante ricerca 🔍 (apre il builder)
+  sec.querySelectorAll('[data-ric-btn]').forEach(function(btn){
+    btn.onclick=function(){
+      var rep=btn.getAttribute('data-rep');
+      var idx=parseInt(btn.getAttribute('data-idx'),10);
+      pianoOpenSearchBuilder(rep, idx);
+    };
+  });
+
+  // Chip ricerca salvata (apre i risultati)
+  sec.querySelectorAll('[data-ric-chip]').forEach(function(chip){
+    chip.onclick=function(){
+      var rep=chip.getAttribute('data-rep');
+      var idx=parseInt(chip.getAttribute('data-idx'),10);
+      pianoOpenSearchResults(rep, idx);
+    };
+  });
 }
-try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"public",table:"roster_plans"},function(){loadRosterPlans();}).subscribe();}catch(e){ console.warn('Errore sottoscrizione realtime roster_plans:', e.message); }
+try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"public",table:"roster_plans"},function(){
+  loadRosterPlans().then(function(){
+    // dopo aver ricaricato i piani, aggiorna anche la finestra WM del Piano se aperta
+    try{ pianoRefreshWindow(); }catch(e){}
+    // e aggiorna il Piano nella War Room se visibile
+    try{
+      var sec=document.getElementById('wrSection');
+      if(sec && typeof wrRenderPiano==='function' && sec.querySelector('.wr-piano-container')){
+        wrRenderPiano(sec);
+      }
+    }catch(e){}
+  });
+}).subscribe();}catch(e){ console.warn('Errore sottoscrizione realtime roster_plans:', e.message); }
 // FINE KIT v17
 
 
 
 
 
-// ===== KIT v20 · CANDIDATI CON MENU CLICCABILE =====
-(function(){
-  if(window.__kitV20) return; window.__kitV20=true;
-
-  function v20Find(name){
-    var n=String(name||'').trim().toLowerCase();
-    if(!n || typeof players==='undefined' || !players) return null;
-    for(var i=0;i<players.length;i++){
-      if(String(players[i].nome||'').trim().toLowerCase()===n) return players[i];
-    }
-    return null;
-  }
-  function v20ById(id){
-    if(typeof players==='undefined' || !players) return null;
-    for(var i=0;i<players.length;i++){ if(players[i].id===id) return players[i]; }
-    return null;
-  }
-  function v20Open(pid,nome){
-    var b=document.getElementById('edit_'+pid);
-    if(b){ b.click(); return; }
-    if(typeof openPlayerEditor==='function'){ try{openPlayerEditor(pid);return;}catch(e){} }
-    if(typeof openEditor==='function'){ try{openEditor('player',pid);return;}catch(e){} }
-    alert('Non riesco ad aprire '+nome+'. Aprilo dalla tab Rosa.');
-  }
-  function v20Slot(rep,idx){
-    if(typeof getActivePlan!=='function') return null;
-    var plan=getActivePlan();
-    if(!plan) return null;
-    if(!plan.slots) plan.slots={};
-    if(!plan.slots[rep]) plan.slots[rep]=[];
-    while(plan.slots[rep].length<=idx) plan.slots[rep].push({fascia:'',archetipo:'',budget:'',note:''});
-    return {plan:plan, slot:plan.slots[rep][idx]};
-  }
-  function v20Save(plan, rep, idx){
-    if(typeof savePlan==='function'){ try{ savePlan(plan, rep, idx); }catch(e){} }
-  }
-
-  // ---------- MENU A TENDINA CLICCABILE ----------
-  function v20AttachDD(inp, onPick){
-    if(inp.__v20dd) return; inp.__v20dd=true;
-    try{ inp.removeAttribute('list'); }catch(e){}
-    var wrap=document.createElement('span');
-    wrap.className='v20-ddwrap';
-    inp.parentNode.insertBefore(wrap, inp);
-    wrap.appendChild(inp);
-    var dd=document.createElement('div');
-    dd.className='v20-dd';
-    dd.style.display='none';
-    wrap.appendChild(dd);
-    var closing=false;
-
-    function list(){
-      if(typeof players==='undefined' || !players){ dd.innerHTML='<div class="v20-dd-empty">Rosa non caricata</div>'; return; }
-      var q=String(inp.value||'').trim().toLowerCase();
-      var res=[];
-      for(var i=0;i<players.length;i++){
-        var nm=String(players[i].nome||'').toLowerCase();
-        if(!q || nm.indexOf(q)>=0) res.push(players[i]);
-        if(res.length>=40) break;
-      }
-      if(!res.length){ dd.innerHTML='<div class="v20-dd-empty">Nessun giocatore trovato</div>'; return; }
-      dd.innerHTML=res.map(function(p){
-        return '<div class="v20-dd-item" data-id="'+p.id+'">'
-          +'<span class="v20-badge '+String(p.posFanta||'A')+'">'+(ROLE_LABEL[p.posFanta]||'-')+'</span>'
-          +'<span class="v20-dd-name">'+escapeHtml(p.nome)+'</span>'
-          +'<span class="v20-dd-team">'+escapeHtml(p.squadra||'')+(p.fascia?' · '+escapeHtml(p.fascia):'')+'</span>'
-          +'</div>';
-      }).join('');
-    }
-    function open(){ list(); dd.style.display='block'; }
-    function hide(){ dd.style.display='none'; }
-
-    inp.addEventListener('focus', open);
-    inp.addEventListener('input', function(){ if(dd.style.display!=='block'){ open(); } else { list(); } });
-    inp.addEventListener('keydown', function(e){
-      if(e.key==='Enter'){
-        e.preventDefault();
-        var first=dd.querySelector('.v20-dd-item');
-        if(dd.style.display==='block' && first){
-          onPick(first.getAttribute('data-id'));
-          hide();
-        }
-      } else if(e.key==='Escape'){ hide(); }
-    });
-    dd.addEventListener('mousedown', function(e){
-      var item=e.target.closest ? e.target.closest('.v20-dd-item') : null;
-      if(!item) return;
-      e.preventDefault();
-      closing=true;
-      onPick(item.getAttribute('data-id'));
-      hide();
-      setTimeout(function(){ closing=false; },120);
-    });
-    inp.addEventListener('blur', function(){
-      setTimeout(function(){ if(!closing) hide(); },140);
-    });
-  }
-
-  // ---------- SYNC CHIP (sempre attivo) ----------
-  function v20Sync(slotEl){
-    if(!slotEl || !slotEl.isConnected) return;
-    var rep=slotEl.getAttribute('data-v20-rep');
-    var idx=parseInt(slotEl.getAttribute('data-v20-idx'),10);
-    if(!rep || isNaN(idx)) return;
-    var d=v20Slot(rep,idx);
-    if(!d) return;
-
-    // candidati
-    var wrapEl=slotEl.querySelector('.v20-cand-chips');
-    var lbl=slotEl.querySelector('.v20-cand-label');
-    var ids=d.slot.candidati||[];
-    if(wrapEl){
-      var sig=ids.join(',');
-      if(wrapEl.getAttribute('data-sig')!==sig){
-        wrapEl.setAttribute('data-sig',sig);
-        wrapEl.innerHTML='';
-        for(var k=0;k<ids.length;k++){
-          (function(pid){
-            var pl=v20ById(pid);
-            var chip=document.createElement('span');
-            chip.className='piano-player-chip'+(pl?'':' ghost');
-            chip.textContent=pl?('⚡ '+pl.nome):'👻 non più in rosa';
-            chip.title=pl?('Apri la scheda di '+pl.nome):'Giocatore non più presente';
-            if(pl) chip.addEventListener('click',function(){ v20Open(pl.id,pl.nome); });
-            var x=document.createElement('span');
-            x.className='v19-chip-x';
-            x.textContent='✕';
-            x.title='Rimuovi dallo slot';
-            x.addEventListener('click',function(ev){
-              ev.stopPropagation();
-              var dd=v20Slot(rep,idx);
-              if(dd && dd.slot.candidati){
-                var pos=dd.slot.candidati.indexOf(pid);
-                if(pos>=0) dd.slot.candidati.splice(pos,1);
-                v20Save(dd.plan, rep, idx);
-                v20Sync(slotEl);
-              }
-            });
-            chip.appendChild(x);
-            wrapEl.appendChild(chip);
-          })(ids[k]);
-        }
-      }
-    }
-    if(lbl) lbl.textContent='🎯 Candidati'+(ids.length?' ('+ids.length+')':'');
-
-    // chip archetipo
-    var archChip=slotEl.querySelector('.v20-arch-chip');
-    if(archChip){
-      var apl=v20Find(d.slot.archetipo);
-      if(apl){
-        archChip.style.display='inline-flex';
-        var want='⚡ '+apl.nome;
-        if(archChip.getAttribute('data-name')!==want){
-          archChip.setAttribute('data-name',want);
-          archChip.textContent=want;
-          archChip.title='Apri la scheda di '+apl.nome;
-        }
-      } else {
-        archChip.style.display='none';
-      }
-    }
-  }
-
-  // ---------- INIEZIONE UI PER SLOT ----------
-  function v20EnhanceSlot(slotEl){
-    if(slotEl.__v20candDone) return;
-    var ref=slotEl.querySelector('[data-rep][data-idx]');
-    if(!ref) return;
-    var rep=ref.getAttribute('data-rep');
-    var idx=parseInt(ref.getAttribute('data-idx'),10);
-    if(!rep || isNaN(idx)) return;
-    slotEl.__v20candDone=true;
-    slotEl.setAttribute('data-v20-rep',rep);
-    slotEl.setAttribute('data-v20-idx',idx);
-
-    // riga candidati
-    var row=document.createElement('div');
-    row.className='v19-cand-row';
-    row.innerHTML='<label class="v19-cand-label">🎯 Candidati</label><span class="v19-msg"></span>';
-    var cinp=document.createElement('input');
-    cinp.type='text';
-    cinp.className='v19-cand-input';
-    cinp.placeholder='Cerca e clicca un giocatore...';
-    cinp.autocomplete='off';
-    row.insertBefore(cinp, row.querySelector('.v19-msg'));
-    var chips=document.createElement('div');
-    chips.className='v20-cand-chips v19-cand-chips';
-    slotEl.appendChild(row);
-    slotEl.appendChild(chips);
-
-    v20AttachDD(cinp, function(pid){
-      var dd=v20Slot(rep,idx);
-      var pl=v20ById(pid);
-      if(!dd) return;
-      if(!dd.slot.candidati) dd.slot.candidati=[];
-      if(dd.slot.candidati.indexOf(pid)<0){
-        dd.slot.candidati.push(pid);
-        v20Save(dd.plan, rep, idx);
-      }
-      cinp.value='';
-      v20Sync(slotEl);
-      cinp.focus();
-    });
-    cinp.addEventListener('keydown', function(e){
-      if(e.key==='Enter'){
-        var pl=v20Find(cinp.value);
-        if(pl){
-          e.preventDefault();
-          var dd=v20Slot(rep,idx);
-          if(dd){
-            if(!dd.slot.candidati) dd.slot.candidati=[];
-            if(dd.slot.candidati.indexOf(pl.id)<0){ dd.slot.candidati.push(pl.id); v20Save(dd.plan, rep, idx); }
-            cinp.value='';
-            v20Sync(slotEl);
-            cinp.focus();
-          }
-        }
-      }
-    });
-
-    // dropdown anche sull'archetipo (se presente in questo slot)
-    var arch=slotEl.querySelector('input[data-field="archetipo"]');
-    if(arch){
-      v20AttachDD(arch, function(pid){
-        var pl=v20ById(pid);
-        if(!pl) return;
-        var dd=v20Slot(rep,idx);
-        if(dd){
-          dd.slot.archetipo=pl.nome;
-          v20Save(dd.plan, rep, idx);
-          arch.value=pl.nome;
-          v20Sync(slotEl);
-        }
-      });
-      var achip=document.createElement('span');
-      achip.className='piano-player-chip v20-arch-chip';
-      achip.style.display='none';
-      achip.addEventListener('click', function(){
-        var dd=v20Slot(rep,idx);
-        var pl=dd?v20Find(dd.slot.archetipo):null;
-        if(pl) v20Open(pl.id,pl.nome);
-      });
-      var ddwrap=arch.closest('.v20-ddwrap');
-      (ddwrap||arch).insertAdjacentElement('afterend', achip);
-    }
-
-    v20Sync(slotEl);
-  }
-
-  function v20Ensure(scope){
-    var sec=scope||document.getElementById('wrSection');
-    if(!sec) return;
-    var slots=sec.querySelectorAll('.wr-piano-slot');
-    for(var i=0;i<slots.length;i++) v20EnhanceSlot(slots[i]);
-  }
-
-  // aggancio al render + rete di sicurezza
-  if(typeof window.wrRenderPiano==='function'){
-    var __origWRP=window.wrRenderPiano;
-    window.wrRenderPiano=function(sec){
-      var r=__origWRP.apply(this,arguments);
-      try{ v20Ensure(sec); }catch(e){}
-      return r;
-    };
-  }
-  var __v20obs=new MutationObserver(function(){
-    var sec=document.getElementById('wrSection');
-    if(sec && (sec.querySelector('.wr-piano-slot')||sec.querySelector('input[data-field="archetipo"]'))){
-      try{ v20Ensure(sec); }catch(e){}
-    }
-  });
-  function __v20start(){
-    if(document.body) __v20obs.observe(document.body,{childList:true,subtree:true});
-    else setTimeout(__v20start,200);
-  }
-  __v20start();
-  setInterval(function(){
-    var sec=document.getElementById('wrSection');
-    if(!sec || !sec.querySelector('.wr-piano-slot')) return;
-    try{
-      v20Ensure(sec);
-      var slots=sec.querySelectorAll('.wr-piano-slot');
-      for(var i=0;i<slots.length;i++) v20Sync(slots[i]);
-    }catch(e){}
-  },600);
-
-  // candidati espliciti evidenziati nella tab Rosa
-  if(typeof window.checkPianoMatch==='function' && !window.__v20chk){
-    window.__v20chk=true;
-    var __origChk=window.checkPianoMatch;
-    window.checkPianoMatch=function(player,plan){
-      if(player && plan && plan.slots){
-        var reps=Object.keys(plan.slots);
-        for(var i=0;i<reps.length;i++){
-          var arr=plan.slots[reps[i]]||[];
-          for(var j=0;j<arr.length;j++){
-            var cand=(arr[j]&&arr[j].candidati)||[];
-            if(cand.indexOf(player.id)>=0){
-              return {reparto:reps[i], slotNumber:j+1, budget:arr[j].budget, archetipo:arr[j].archetipo, candidato:true};
-            }
-          }
-        }
-      }
-      return __origChk.apply(this,arguments);
-    };
-  }
-})();
-// ===== FINE KIT v20 =====
-
-
-
-// ===== KIT v20 · RICERCA PER SLOT =====
-(function(){
-if(window.__kitV20Applied) return;
-window.__kitV20Applied = true;
-
-function v20norm(s){
-  if(typeof normalize_==='function') return normalize_(s);
-  return String(s||'').trim().toLowerCase();
-}
-function v20GetSlot(rep, idx){
-  if(typeof getActivePlan!=='function') return null;
-  var plan=getActivePlan();
-  if(!plan||!plan.slots||!plan.slots[rep]||!plan.slots[rep][idx]) return null;
-  return {plan:plan, slot:plan.slots[rep][idx]};
-}
-function v20FindMatches(rep, ricerca){
-  if(!ricerca) return [];
-  var hasPR=ricerca.posReali&&ricerca.posReali.length;
-  var hasF=ricerca.fasce&&ricerca.fasce.length;
-  if(!hasPR&&!hasF) return [];
-  return players.filter(function(p){
-    if(p.posFanta!==rep) return false;
-    if(hasPR){
-      var pr=v20norm(p.posReale); var ok=false;
-      for(var i=0;i<ricerca.posReali.length;i++){ if(v20norm(ricerca.posReali[i])===pr){ok=true;break;} }
-      if(!ok) return false;
-    }
-    if(hasF){ if(ricerca.fasce.indexOf(p.fascia)===-1) return false; }
-    return true;
-  });
-}
-function v20Open(pid){
-  var b=document.getElementById('edit_'+pid);
-  if(b){ b.click(); return; }
-  if(typeof openEditor==='function'){ try{ openEditor('player',pid); }catch(e){} }
-}
-function v20RepNome(rep){ return ({P:'Portieri',D:'Difensori',C:'Centrocampisti',A:'Attaccanti'})[rep]||rep; }
-function v20Refresh(){
-  var sec=document.getElementById('wrSection');
-  if(sec&&typeof wrRenderPiano==='function'){ wrRenderPiano(sec); }
-  else if(sec){ v20Enhance(sec); }
-}
-
-function v20EnhanceSlot(slotEl){
-  var ref=slotEl.querySelector('[data-rep][data-idx]');
-  if(!ref) return;
-  var rep=ref.getAttribute('data-rep');
-  var idx=parseInt(ref.getAttribute('data-idx'),10);
-  if(!rep||isNaN(idx)) return;
-  if(!slotEl.__v20ricDone){
-    slotEl.__v20ricDone=true;
-    var arch=slotEl.querySelector('input[data-field="archetipo"]');
-    if(arch){
-      var btn=document.createElement('button');
-      btn.className='btn small v20-ric-btn';
-      btn.textContent='🔍';
-      btn.title='Imposta ricerca per ruolo reale + fascia';
-      var chip=document.createElement('span');
-      chip.className='v20-ric-chip';
-      chip.style.display='none';
-      arch.insertAdjacentElement('afterend',btn);
-      btn.insertAdjacentElement('afterend',chip);
-      btn.onclick=function(){ v20OpenBuilder(rep,idx); };
-    }
-  }
-  v20RenderRicChip(slotEl,rep,idx);
-}
-function v20RenderRicChip(slotEl,rep,idx){
-  var chip=slotEl.querySelector('.v20-ric-chip');
-  if(!chip) return;
-  var d=v20GetSlot(rep,idx);
-  var ric=d&&d.slot.ricerca;
-  var has=ric&&((ric.posReali&&ric.posReali.length)||(ric.fasce&&ric.fasce.length));
-  if(!has){ chip.style.display='none'; chip.onclick=null; return; }
-  var n=v20FindMatches(rep,ric).length;
-  var parts=[];
-  if(ric.posReali&&ric.posReali.length) parts.push(ric.posReali.join(', '));
-  if(ric.fasce&&ric.fasce.length) parts.push(ric.fasce.join('/'));
-  chip.textContent='🔍 '+parts.join(' · ')+' · '+n;
-  chip.style.display='inline-flex';
-  chip.title='Clicca per vedere i '+n+' papabili';
-  chip.onclick=function(){ v20OpenResults(rep,idx); };
-}
-function v20Enhance(scope){
-  if(!scope) return;
-  var slots=scope.querySelectorAll('.wr-piano-slot');
-  for(var i=0;i<slots.length;i++) v20EnhanceSlot(slots[i]);
-}
-
-function v20OpenBuilder(rep,idx){
-  var d=v20GetSlot(rep,idx);
-  if(!d) return;
-  var existing=d.slot.ricerca||{};
-  var selPR={}; (existing.posReali||[]).forEach(function(x){ selPR[v20norm(x)]=x; });
-  var selF={}; (existing.fasce||[]).forEach(function(x){ selF[x]=true; });
-  var posRealeOpts=(typeof getPosRealeOptions==='function')?getPosRealeOptions(rep):[];
-  var fasciaOpts=(typeof FASCE_PER_RUOLO!=='undefined'&&FASCE_PER_RUOLO[rep])?FASCE_PER_RUOLO[rep]:[];
-
-  var overlay=document.createElement('div');
-  overlay.className='overlay'; overlay.id='v20BuilderOverlay';
-  overlay.innerHTML=
-    '<div class="modal">'
-    +'<div class="modal-head"><h2>🔍 Ricerca · '+v20RepNome(rep)+' · slot '+(idx+1)+'</h2><button class="close-x" id="v20Bclose">✕</button></div>'
-    +'<div class="settings-hint">Scegli i criteri: i giocatori in rosa che li rispettano tutti diventano i "papabili". Clicca le opzioni per attivarle/disattivarle, poi Salva.</div>'
-    +'<div class="field"><label>Ruolo reale</label><div class="v20-chips" id="v20PRchips"></div></div>'
-    +'<div class="field"><label>Fascia</label><div class="v20-chips" id="v20Fchips"></div></div>'
-    +'<div class="v20-livecount" id="v20LiveCount"></div>'
-    +'<div class="modal-actions">'
-    +'<button class="btn danger" id="v20Bclear">Pulisci</button>'
-    +'<button class="btn" id="v20Bannulla">Annulla</button>'
-    +'<button class="btn primary" id="v20Bsave" style="flex:1;">Salva ricerca</button>'
-    +'</div></div>';
-  document.body.appendChild(overlay);
-
-  var prWrap=overlay.querySelector('#v20PRchips');
-  var fWrap=overlay.querySelector('#v20Fchips');
-  function currentRicerca(){
-    return {posReali:Object.keys(selPR).map(function(k){return selPR[k];}), fasce:Object.keys(selF)};
-  }
-  function buildPR(){
-    prWrap.innerHTML='';
-    if(!posRealeOpts.length){ prWrap.innerHTML='<span class="tag-picker-hint">Nessun ruolo reale censito per questo reparto: compila il campo "posizione reale" nelle schede dei giocatori.</span>'; return; }
-    posRealeOpts.forEach(function(opt){
-      var c=document.createElement('span');
-      var on=selPR.hasOwnProperty(v20norm(opt));
-      c.className='v20-toggle'+(on?' on':'');
-      c.textContent=opt;
-      c.onclick=function(){
-        if(selPR.hasOwnProperty(v20norm(opt))) delete selPR[v20norm(opt)]; else selPR[v20norm(opt)]=opt;
-        buildPR(); liveCount();
-      };
-      prWrap.appendChild(c);
-    });
-  }
-  function buildF(){
-    fWrap.innerHTML='';
-    if(!fasciaOpts.length){ fWrap.innerHTML='<span class="tag-picker-hint">Nessuna fascia disponibile.</span>'; return; }
-    fasciaOpts.forEach(function(opt){
-      var c=document.createElement('span');
-      var on=!!selF[opt];
-      c.className='v20-toggle'+(on?' on':'');
-      c.textContent=opt;
-      c.onclick=function(){
-        if(selF[opt]) delete selF[opt]; else selF[opt]=true;
-        buildF(); liveCount();
-      };
-      fWrap.appendChild(c);
-    });
-  }
-  function liveCount(){
-    var n=v20FindMatches(rep,currentRicerca()).length;
-    overlay.querySelector('#v20LiveCount').innerHTML='👥 <b>'+n+'</b> papabili in rosa con questi criteri';
-  }
-  buildPR(); buildF(); liveCount();
-
-  function close(){ overlay.remove(); }
-  overlay.querySelector('#v20Bclose').onclick=close;
-  overlay.querySelector('#v20Bannulla').onclick=close;
-  overlay.querySelector('#v20Bsave').onclick=function(){
-    d.slot.ricerca=currentRicerca();
-    if(typeof savePlan==='function') savePlan(d.plan, rep, idx);
-    close(); v20Refresh(); showToast('Ricerca salvata');
-  };
-  overlay.querySelector('#v20Bclear').onclick=function(){
-    d.slot.ricerca=null;
-    if(typeof savePlan==='function') savePlan(d.plan, rep, idx);
-    close(); v20Refresh(); showToast('Ricerca rimossa');
-  };
-}
-
-function v20OpenResults(rep,idx){
-  var d=v20GetSlot(rep,idx);
-  if(!d) return;
-  var ric=d.slot.ricerca;
-  var matches=v20FindMatches(rep,ric);
-  matches.sort(function(a,b){
-    var ga=Number(a.golPrevisti)||0, gb=Number(b.golPrevisti)||0;
-    if(gb!==ga) return gb-ga;
-    return (Number(b.titolaritaVoto)||0)-(Number(a.titolaritaVoto)||0);
-  });
-  var parts=[];
-  if(ric&&ric.posReali&&ric.posReali.length) parts.push(ric.posReali.join(', '));
-  if(ric&&ric.fasce&&ric.fasce.length) parts.push(ric.fasce.join('/'));
-  var rows='';
-  if(!matches.length){
-    rows='<div class="empty">Nessun giocatore in rosa rispetta questi criteri.</div>';
-  } else {
-    rows=matches.map(function(p){
-      var already=d.slot.candidati&&d.slot.candidati.indexOf(p.id)>=0;
-      return '<div class="quick-row" data-pid="'+p.id+'" style="cursor:pointer;">'
-        +'<span><span class="badge '+(p.posFanta||'A')+' qbadge">'+(ROLE_LABEL[p.posFanta]||'-')+'</span> <span class="qname">'+escapeHtml(p.nome)+'</span> <span style="color:var(--chalk-dim);font-size:11px;">'+escapeHtml(p.squadra||'')+(p.posReale?' · '+escapeHtml(p.posReale):'')+(p.fascia?' · '+escapeHtml(p.fascia):'')+'</span></span>'
-        +'<button class="btn small v20-addcand'+(already?' primary':'')+'" data-add="'+p.id+'">'+(already?'✓ candidato':'+ candidato')+'</button>'
-        +'</div>';
-    }).join('');
-  }
-  var overlay=document.createElement('div');
-  overlay.className='overlay'; overlay.id='v20ResultsOverlay';
-  overlay.innerHTML=
-    '<div class="modal">'
-    +'<div class="modal-head"><h2>🔍 Papabili · '+v20RepNome(rep)+' · slot '+(idx+1)+'</h2><button class="close-x" id="v20Rclose">✕</button></div>'
-    +'<div class="settings-hint">'+escapeHtml(parts.join(' · '))+' · <b>'+matches.length+'</b> giocatori. Clicca una riga per aprire la scheda; "+ candidato" lo aggiunge ai candidati dello slot.</div>'
-    +'<div id="v20ResultsList" style="max-height:420px;overflow-y:auto;">'+rows+'</div>'
-    +'<div class="modal-actions"><button class="btn" id="v20Rclose2" style="flex:1;">Chiudi</button></div>'
-    +'</div>';
-  document.body.appendChild(overlay);
-  function close(){ overlay.remove(); }
-  overlay.querySelector('#v20Rclose').onclick=close;
-  overlay.querySelector('#v20Rclose2').onclick=close;
-  overlay.querySelectorAll('.quick-row[data-pid]').forEach(function(row){
-    row.onclick=function(e){
-      if(e.target.closest&&e.target.closest('.v20-addcand')) return;
-      v20Open(row.getAttribute('data-pid'));
-    };
-  });
-  overlay.querySelectorAll('.v20-addcand').forEach(function(btn){
-    btn.onclick=function(e){
-      e.stopPropagation();
-      var pid=btn.getAttribute('data-add');
-      if(!d.slot.candidati) d.slot.candidati=[];
-      if(d.slot.candidati.indexOf(pid)<0){
-        d.slot.candidati.push(pid);
-        if(typeof savePlan==='function') savePlan(d.plan, rep, idx);
-        btn.textContent='✓ candidato'; btn.classList.add('primary');
-        v20Refresh();
-      }
-    };
-  });
-}
-
-// hooks
-if(typeof window.bindPianoEvents==='function'){
-  var __v20origBind=window.bindPianoEvents;
-  window.bindPianoEvents=function(sec){
-    var r=__v20origBind.apply(this,arguments);
-    try{ v20Enhance(sec); }catch(e){ console.warn('kit v20',e); }
-    return r;
-  };
-}
-var __v20pending=false;
-var __v20obs=new MutationObserver(function(){
-  if(__v20pending) return;
-  var sec=document.getElementById('wrSection');
-  if(sec&&sec.querySelector('.wr-piano-slot')){
-    __v20pending=true;
-    setTimeout(function(){ __v20pending=false; try{ v20Enhance(sec);}catch(e){} },60);
-  }
-});
-function __v20start(){
-  if(document.body){ __v20obs.observe(document.body,{childList:true,subtree:true}); }
-  else setTimeout(__v20start,200);
-}
-__v20start();
-})();
-// ===== FINE KIT v20 =====
+// ===== KIT v20 — RIMOSSI, sostituiti da funzioni native piano* =====
+// I due IIFE originali (CANDIDATI CON MENU CLICCABILE + RICERCA PER SLOT) sono stati
+// rimossi in favore di un'implementazione nativa nel render di wrRenderPiano/bindPianoEvents.
+//
+// Funzioni migrate:
+//   v20Find         -> pianoFindPlayer(name)
+//   v20ById         -> pianoFindPlayerById(id)
+//   v20Open         -> pianoOpenPlayer(pid, nome)
+//   v20AttachDD     -> pianoAttachAutocomplete(input, onPick)
+//   v20FindMatches  -> pianoFindSearchMatches(rep, ricerca) + pianoCountSearchMatches(rep, ricerca)
+//   v20OpenBuilder  -> pianoOpenSearchBuilder(rep, idx)
+//   v20OpenResults  -> pianoOpenSearchResults(rep, idx)
+//   v20Refresh      -> pianoRefresh()
+//
+// Rimossi anche:
+//   - i MutationObserver che riappiccicavano la UI ad ogni cambio DOM
+//   - i setInterval(600ms) che ri-sincronizzavano i chip a raffica
+//   - i flag __v20candDone / __v20ricDone / __kitV20 / __kitV20Applied / __v20chk
+//   - i wrapper di wrRenderPiano e bindPianoEvents (non più necessari:
+//     la UI dei fork e candidati è renderizzata nativamente da wrRenderPiano)
+//   - il wrapper di checkPianoMatch (la logica fork è integrata direttamente
+//     nella funzione checkPianoMatch)
+// ===== FINE KIT v20 RIMOSSO =====
 
 // Funzione per aggiunta rapida giocatore (pulsante nascosto)
 function openQuickAddPlayer() {
