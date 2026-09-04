@@ -14,6 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="DossierFanta">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --pitch-dark:#0F2E22;
@@ -1509,6 +1510,79 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
   .overlay.pair-side{ align-items:flex-end; justify-content:center; }
   .overlay.pair-side .modal.pair-modal{ width:100vw; max-width:100vw; max-height:90vh; border-radius:16px 16px 0 0; box-shadow:0 -8px 32px rgba(0,0,0,0.45); }
 }
+
+/* ========== DOSSIER AVVERSARI (profilo storico d'asta) ========== */
+.avv-profile{ border-top:1px solid var(--line); margin-top:8px; padding-top:6px; font-size:12px; }
+.avv-profile summary{ cursor:pointer; color:var(--amber); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; list-style:none; display:flex; align-items:center; gap:6px; user-select:none; }
+.avv-profile summary::-webkit-details-marker{ display:none; }
+.avv-profile summary .avv-caret{ transition:transform .15s; display:inline-block; }
+.avv-profile[open] summary .avv-caret{ transform:rotate(90deg); }
+.avv-profile-body{ padding:8px 2px 4px; }
+.avv-profile-headline{ display:flex; flex-wrap:wrap; gap:8px 16px; align-items:baseline; margin-bottom:8px; }
+.avv-idx-big{ font-family:'JetBrains Mono', monospace; font-size:22px; font-weight:800; line-height:1; }
+.avv-idx-big.up{ color:var(--red); }
+.avv-idx-big.down{ color:var(--grass); }
+.avv-idx-big.flat{ color:var(--chalk); }
+.avv-idx-note{ font-size:10.5px; color:var(--chalk-dim); }
+.avv-mini-grid{ display:grid; grid-template-columns:1fr 1fr; gap:3px 14px; background:var(--pitch-light); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:10px; }
+.avv-mini-row{ display:flex; justify-content:space-between; gap:6px; font-size:11px; color:var(--chalk-dim); }
+.avv-mini-row b{ color:var(--chalk); font-variant-numeric:tabular-nums; }
+.avv-mini-row b.up{ color:var(--red); }
+.avv-mini-row b.down{ color:var(--grass); }
+.avv-dept-block{ margin:8px 0 10px; }
+.avv-dept-title{ font-size:10px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; }
+.avv-dept-row{ display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.avv-dept-label{ width:14px; text-align:center; flex-shrink:0; }
+.avv-dept-bar{ flex:1; height:8px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; }
+.avv-dept-fill{ height:100%; border-radius:4px; }
+.avv-dept-fill.rep-P{ background:linear-gradient(90deg,#D9A441,#E9BC5F); }
+.avv-dept-fill.rep-D{ background:linear-gradient(90deg,#3E8A5F,#54A573); }
+.avv-dept-fill.rep-C{ background:linear-gradient(90deg,#4A86BE,#5B9BD5); }
+.avv-dept-fill.rep-A{ background:linear-gradient(90deg,#A84632,#C1543F); }
+.avv-dept-pct{ width:38px; text-align:right; font-size:10.5px; color:var(--chalk-dim); font-variant-numeric:tabular-nums; flex-shrink:0; }
+.avv-deal-row{ display:flex; justify-content:space-between; gap:8px; font-size:11px; color:var(--chalk-dim); margin-top:2px; }
+.avv-deal-row b{ color:var(--chalk); }
+.avv-deal-row .num-good{ color:var(--grass); }
+.avv-deal-row .num-bad{ color:var(--red); }
+.avv-meta-line{ margin-top:6px; font-size:10.5px; color:var(--chalk-dim); }
+.avv-empty{ color:var(--chalk-dim); font-size:11.5px; padding:4px 0; }
+.avv-merge-note{ margin-top:8px; padding:7px 9px; background:rgba(217,164,65,0.08); border:1px solid rgba(217,164,65,0.3); border-radius:8px; font-size:11px; color:var(--chalk-dim); }
+.avv-merge-note b{ color:var(--amber); }
+.avv-merge-note ul{ margin:4px 0 0; padding-left:16px; }
+/* mini-colonna indice nel Tavolo di guerra / classifica lega */
+.avv-war-idx{ font-weight:700; font-family:'JetBrains Mono', monospace; white-space:nowrap; }
+.avv-war-idx.up{ color:var(--red); }
+.avv-war-idx.down{ color:var(--grass); }
+.avv-war-idx.none{ color:var(--chalk-dim); opacity:0.5; font-weight:400; }
+/* avvisi avversari nel Piano */
+.piano-avv-section{ margin-top:8px; border-top:1px dashed rgba(243,241,231,0.14); padding-top:6px; }
+.piano-avv-toggle{ font-size:11px; color:var(--amber); background:none; border:none; cursor:pointer; padding:2px 0; font-family:inherit; }
+.piano-avv-list{ display:flex; flex-wrap:wrap; gap:4px 6px; padding:5px 0 2px; }
+.piano-avv-chip{ display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; font-size:10.5px; font-weight:700; background:rgba(193,84,63,0.14); color:var(--red); border:1px solid rgba(193,84,63,0.35); cursor:pointer; }
+.piano-avv-chip:hover{ background:rgba(193,84,63,0.26); }
+.piano-avv-chip .num{ font-family:'JetBrains Mono', monospace; }
+.piano-avv-empty{ font-size:10.5px; color:var(--chalk-dim); padding:2px 0; }
+/* filtro prezzo storico nella Rosa */
+.avv-range-wrap{ display:inline-flex; align-items:center; gap:5px; }
+.avv-range-wrap input[type=range]{ width:70px; height:14px; accent-color:var(--amber); cursor:pointer; padding:0; margin:0; }
+.avv-range-val{ font-size:10.5px; color:var(--chalk-dim); min-width:74px; text-align:left; font-variant-numeric:tabular-nums; }
+/* storia acquisti simili nella scheda giocatore */
+.avv-sim-table{ width:100%; border-collapse:collapse; font-size:11px; }
+.avv-sim-table th{ text-align:left; padding:4px 6px; font-size:9.5px; font-weight:800; text-transform:uppercase; color:var(--amber); border-bottom:1px solid var(--line); }
+.avv-sim-table td{ padding:3px 6px; border-bottom:1px solid rgba(255,255,255,0.04); font-variant-numeric:tabular-nums; }
+.avv-sim-summary{ font-size:11.5px; color:var(--chalk-dim); margin-bottom:7px; }
+.avv-sim-summary b{ color:var(--amber); }
+/* selettore fantallenatore attivo per previsioni personalizzate */
+.avv-active-mgr{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--chalk-dim); }
+.avv-active-mgr select{ max-width:180px; }
+.avv-pred-box b{ color:var(--amber); }
+/* modale anteprima import */
+.avv-match-row{ display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; background:var(--pitch); font-size:12px; flex-wrap:wrap; }
+.avv-match-row .mk-icon{ width:20px; text-align:center; }
+.avv-match-row .mk-name{ font-weight:700; min-width:110px; }
+.avv-match-row .mk-detail{ flex:1; min-width:160px; color:var(--chalk-dim); font-size:11.5px; }
+.avv-match-row select{ font-size:11.5px; max-width:230px; }
+/* ========== FINE DOSSIER AVVERSARI ========== */
 </style>
 </head>
 <body>
@@ -1585,6 +1659,12 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
 <label style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--chalk-dim); cursor:pointer; white-space:nowrap;" title="Mostra il testo completo delle note invece dei puntini di sospensione (vale per tutte le card ovunque)">
 <input type="checkbox" id="expandNotesFilter"> 📝 espandi note
 </label>
+<span class="avv-range-wrap" title="Filtra per il prezzo medio pagato storicamente (Dossier avversari) per giocatori simili: stesso ruolo + stessa fascia. Estremi aperti = nessun limite.">
+<span class="control-label">💰 Prezzo storico</span>
+<input type="range" id="histPriceMin" min="0" max="300" step="10" value="0">
+<input type="range" id="histPriceMax" min="0" max="300" step="10" value="300">
+<span class="avv-range-val" id="histPriceLabel">tutti</span>
+</span>
 </div>
 <div class="control-group">
 <span class="control-label">Ordina</span>
@@ -1627,6 +1707,7 @@ table.compare-table th{ font-family:var(--display); text-transform:uppercase; le
     <div class="card-actions" style="margin-bottom:12px;">
       <button class="btn small" id="astaModeToggle">🔴 Modalità Asta: OFF</button>
       <button class="btn small" id="astaSettingsBtn">⚙️ Impostazioni asta</button>
+      <button class="btn small" id="astaAvversariBtn" title="Importa il file Excel con l'analisi storica del comportamento d'asta degli avversari">📥 Dossier avversari</button>
     </div>
     <div class="card-actions" id="astaLiveActions" style="margin-bottom:12px; display:none;">
       <button class="btn small primary" id="astaAssignBtn">🏷️ Assegna giocatore</button>
@@ -1662,7 +1743,7 @@ let leagueTeams = [];
 let creatorOpinions = [];
 let playerVideos = [];
 let calendario = [];
-let auctionSettings = { budgetTotale: 500, slots: { P:3, D:8, C:8, A:6 }, modalitaAsta: false, tempSogliaCalda: 1.15, tempSogliaFredda: 0.85 };
+let auctionSettings = { budgetTotale: 500, slots: { P:3, D:8, C:8, A:6 }, modalitaAsta: false, tempSogliaCalda: 1.15, tempSogliaFredda: 0.85, tempPersonalizzata: true };
 let myName = '';
 let compareIds = [];
 let currentTab = 'list';
@@ -1679,6 +1760,16 @@ let activeTeamTagFilterRosa = null;
 let activeTeamTagFilterSquadre = null;
 let aiSettings = { mode:'openrouter', openrouterKey:'', openrouterModel:'meta-llama/llama-3.3-70b-instruct:free', lmstudioUrl:'http://localhost:1234/v1', lmstudioModel:'', ollamaUrl:'http://localhost:11434/v1', ollamaModel:'', ollamaKey:'' };
 let compareShowOriginalNotes = false;
+
+// ---------- DOSSIER AVVERSARI — stato globale ----------
+// Dati storici d'asta degli avversari (file Excel importato a inizio stagione).
+// auctionHistory/leagueSeasons = copia locale delle righe Supabase; avversariProfiles = cache
+// in memoria costruita da auctionHistory con matching già fatto, invalidata solo su realtime.
+var auctionHistory = [];        // righe della tabella auction_history (inclusa eventuale riga _settings)
+var leagueSeasons = [];         // righe della tabella league_seasons (squadre della stagione corrente)
+var avversariProfiles = {};     // mappa { nomeFantallenatoreNormalizzato: profilo }
+var avversariProfilesBySquadra = {}; // alias { nomeFantaSquadraStoricaNormalizzato: profilo } per lookup rapido
+var avversariFantaSquadraAttiva = ''; // fanta-squadra "attiva" per le previsioni personalizzate (solo locale, localStorage)
 
 // ---------- SALVATAGGIO SICURO (merge invece di sovrascrittura totale) ----------
 // Problema che risolve: due persone che modificano lo stesso record (giocatore/squadra/piano)
@@ -1953,6 +2044,7 @@ loadSimFormations();
   updateWhoBtn();
   await loadAll();
   await loadRosterPlans();
+  await dossierAvversariLoad(); // Dossier avversari: righe auction_history + league_seasons (mai bloccante, fallback silenzioso)
   subscribeRealtime();
   applyAuctionModeVisibility();
 }
@@ -4351,7 +4443,7 @@ async function loadAll(){
       if(ltErr) throw ltErr;
       const rows = (ltData||[]).map(r => ({ id: r.id, ...r.data }));
       const settingsRow = rows.find(r => r.id === '_settings');
-      if(settingsRow) auctionSettings = { budgetTotale: settingsRow.budgetTotale, slots: settingsRow.slots, modalitaAsta: !!settingsRow.modalitaAsta, tempSogliaCalda: settingsRow.tempSogliaCalda!=null?settingsRow.tempSogliaCalda:1.15, tempSogliaFredda: settingsRow.tempSogliaFredda!=null?settingsRow.tempSogliaFredda:0.85 };
+      if(settingsRow) auctionSettings = { budgetTotale: settingsRow.budgetTotale, slots: settingsRow.slots, modalitaAsta: !!settingsRow.modalitaAsta, tempSogliaCalda: settingsRow.tempSogliaCalda!=null?settingsRow.tempSogliaCalda:1.15, tempSogliaFredda: settingsRow.tempSogliaFredda!=null?settingsRow.tempSogliaFredda:0.85, tempPersonalizzata: settingsRow.tempPersonalizzata!==false };
       leagueTeams = rows.filter(r => r.id !== '_settings');
     }catch(e){
       console.warn('Tabella league_teams non trovata o non ancora creata:', e.message||e);
@@ -4727,6 +4819,26 @@ document.getElementById('sortBy').onchange = () => {
 };
 document.getElementById('sortDirBtn').onclick = toggleSortDir;
 document.getElementById('posRealeFilter').onchange = render;
+// Dossier avversari: filtro "💰 Prezzo storico medio" (doppio slider min/max)
+(function bindHistPriceFilter(){
+  const mn = document.getElementById('histPriceMin');
+  const mx = document.getElementById('histPriceMax');
+  const lb = document.getElementById('histPriceLabel');
+  if(!mn || !mx || !lb) return;
+  function upd(){
+    const a = Number(mn.value), b = Number(mx.value);
+    lb.textContent = (a<=0 && b>=300) ? 'tutti' : (a<=0 ? ('≤ '+b+' cr') : (b>=300 ? ('≥ '+a+' cr') : (a+'–'+b+' cr')));
+  }
+  function onChange(){
+    if(Number(mn.value) > Number(mx.value)) mx.value = mn.value; // evita range invertito
+    upd();
+  }
+  mn.addEventListener('input', onChange);
+  mx.addEventListener('input', onChange);
+  mn.addEventListener('change', () => { upd(); render(); });
+  mx.addEventListener('change', () => { upd(); render(); });
+  upd();
+})();
 // Kit audit: carica filtri da URL hash al primo caricamento
 try{ loadFiltersFromHash(); }catch(e){ console.warn('Errore caricamento filtri da hash:', e.message); }
 // Ascolta cambi di hash (back/forward browser)
@@ -4781,6 +4893,12 @@ const posRealeF = document.getElementById('posRealeFilter').value;
 // Kit audit: nuovi filtri
 const unassignedF = document.getElementById('unassignedFilter') ? document.getElementById('unassignedFilter').value : '';
 const pianoCandF = document.getElementById('pianoCandidatesFilter') ? document.getElementById('pianoCandidatesFilter').checked : false;
+// Dossier avversari: filtro prezzo storico medio (0 = nessun limite minimo, 300 = nessun limite massimo)
+const _hpMin = document.getElementById('histPriceMin');
+const _hpMax = document.getElementById('histPriceMax');
+const histPriceMin = _hpMin ? Number(_hpMin.value) : 0;
+const histPriceMax = _hpMax ? Number(_hpMax.value) : 300;
+const histPriceActive = histPriceMin>0 || histPriceMax<300;
 const myTeamName = (leagueTeams.find(t=>t.isMine)||{}).nome;
   players.forEach(p => { delete p._searchBlobCache; });
   return players.filter(p => {
@@ -4806,6 +4924,14 @@ if(posRealeF && (p.posReale||'').trim() !== posRealeF) return false;
       const ap = getActivePlanForReparto(p.posFanta);
       const pm = checkPianoMatch(p, ap);
       if(!pm) return false;
+    }
+    // Dossier avversari: filtro "💰 Prezzo storico medio" (media pagata per giocatori simili ruolo+fascia)
+    if(histPriceActive){
+      if(typeof avversariPrezzoStoricoMedio!=='function') return false;
+      const st = avversariPrezzoStoricoMedio(p.posFanta, p.fascia);
+      if(!st) return false; // nessun dato storico per questo bucket
+      if(histPriceMin>0 && st.media<histPriceMin) return false;
+      if(histPriceMax<300 && st.media>histPriceMax) return false;
     }
     if(q && !playerSearchMatchesQuery(p, q)) return false;
     return true;
@@ -5447,15 +5573,23 @@ function computeMarketTemperature(reparto, fascia){
   const ratios = pool.map(x => Number(x.p.asta.prezzo) / x.ref.value);
   const avgRatio = ratios.reduce((a,b)=>a+b,0) / ratios.length;
   const manualCount = pool.filter(x => x.ref.source==='manuale').length;
-  const sogliaCalda = auctionSettings.tempSogliaCalda!=null ? auctionSettings.tempSogliaCalda : 1.15;
-  const sogliaFredda = auctionSettings.tempSogliaFredda!=null ? auctionSettings.tempSogliaFredda : 0.85;
+  // Dossier avversari: se il fantallenatore considerato (fanta-squadra attiva, altrimenti la
+  // squadra isMine) ha uno storico, le soglie si spostano in base al SUO indice generale —
+  // un grande spenditore non vede "caldo" un mercato che per lui è normale. Senza storico
+  // (o con il toggle OFF) soglieTemperaturaPerFantallenatore restituisce quelle standard.
+  const soglie = soglieTemperaturaPerFantallenatore(avversariManagerPerTemperature(), {
+    sogliaCaldo: auctionSettings.tempSogliaCalda!=null ? auctionSettings.tempSogliaCalda : 1.15,
+    sogliaFreddo: auctionSettings.tempSogliaFredda!=null ? auctionSettings.tempSogliaFredda : 0.85
+  });
   let level = 'normale';
-  if(avgRatio > sogliaCalda) level = 'caldo';
-  else if(avgRatio < sogliaFredda) level = 'freddo';
+  if(avgRatio > soglie.sogliaCaldo) level = 'caldo';
+  else if(avgRatio < soglie.sogliaFreddo) level = 'freddo';
   // con solo 2-3 vendite il segnale è debole (poco più che aneddotico): lo mostriamo comunque,
   // ma segnaliamo che è ancora un dato "morbido" piuttosto che dare un verdetto sicuro di sé
   const confidence = pool.length>=4 ? 'alta' : 'bassa';
-  return { level, avgRatio, count: pool.length, manualCount, confidence };
+  return { level, avgRatio, count: pool.length, manualCount, confidence,
+    personalizzata: soglie.personalizzata, indiceFantallenatore: soglie.indiceFantallenatore,
+    nomeFantallenatore: soglie.nomeFantallenatore, soglieUsate: { sogliaCaldo: soglie.sogliaCaldo, sogliaFreddo: soglie.sogliaFreddo } };
 }
 
 function autoPredictedSourceLabel(auto){
@@ -5527,8 +5661,10 @@ function renderAstaValutazione(rec, refreshOnly){
       </div>
       ${auctionSettings.modalitaAsta ? `
         <div id="autoPredictedBox" class="ai-empty"></div>
+        <div id="avvPredBox" class="ai-empty avv-pred-box"></div>
         <div id="marketTempBox" class="ai-empty"></div>
         <div id="rivalsBox" class="ai-empty"></div>
+        ${avversariActiveManagerSelectHtml('avvActiveMgrSelect')}
       ` : `<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l'asta, quando attivi 🟢 Modalità Asta nella tab Asta.</div>`}
     `;
     area.dataset.structured = '1';
@@ -5539,6 +5675,7 @@ function renderAstaValutazione(rec, refreshOnly){
     if(valoreEffEl) valoreEffEl.addEventListener('input', scheduleAutosave);
     const prezzoPrevEl = document.getElementById('f_prezzoPrevistoNum');
     if(prezzoPrevEl) prezzoPrevEl.addEventListener('input', () => { refreshAstaValutazioneBoxes(rec); scheduleAutosave(); });
+    if(typeof bindAvversariActiveManagerSelect==='function') bindAvversariActiveManagerSelect(document.getElementById('avvActiveMgrSelect'));
   } else {
     // Refresh: aggiorna solo fascia se il reparto è cambiato, NON toccare gli input prezzo/tetto
     // (l'utente potrebbe starci scrivendo)
@@ -5573,6 +5710,12 @@ function refreshAstaValutazioneBoxes(rec){
     autoBox.innerHTML = auto
       ? `🤖 Previsione automatica: <b>~${auto.value} cr</b> <span style="color:var(--chalk-dim);">(${autoPredictedSourceLabel(auto)})</span>`
       : `🤖 Previsione automatica: <span style="color:var(--chalk-dim);">dati insufficienti per ora</span>`;
+  }
+
+  // Dossier avversari: previsione personalizzata per la fanta-squadra attiva (se selezionata)
+  if(typeof avversariPredBoxHtml==='function'){
+    const avvBox = document.getElementById('avvPredBox');
+    if(avvBox) avvBox.innerHTML = avversariPredBoxHtml(rec);
   }
 
   const temp = computeMarketTemperature(reparto, fascia);
@@ -5637,10 +5780,14 @@ function renderAsta(){
         <span>C: <b>${slotsFilled.C}/${slots.C}</b></span>
         <span>A: <b>${slotsFilled.A}/${slots.A}</b></span>
       </div>
+      ${typeof avversariProfiloHtml==='function' ? avversariProfiloHtml(t.nome, {}) : ''}
     </div>`;
   }).join('');
   area.querySelectorAll('.asta-team-card').forEach(el => {
 el.onclick = () => openTeamRosterDetail(el.dataset.team);
+// Dossier avversari: i click dentro il profilo storico non aprono il dettaglio roster
+el.querySelectorAll('.avv-profile').forEach(d => d.addEventListener('click', e => e.stopPropagation()));
+if(typeof bindAvversariProfileActions==='function') bindAvversariProfileActions(el);
 el.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('drag-over'); });
 el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
 el.addEventListener('drop', (e) => {
@@ -5685,9 +5832,11 @@ function openTeamRosterDetail(teamName){
     </div>
     <div class="save-status">Speso ${spent} / ${budgetTot} · Rimane ${budgetTot-spent}</div>
     ${body}
+    ${typeof avversariProfiloHtml==='function' ? avversariProfiloHtml(teamName, {openDefault:true}) : ''}
     <div class="modal-actions"><button class="btn" id="closeRoster2" style="flex:1;">Chiudi</button></div>
   </div>`;
   document.body.appendChild(overlay);
+  if(typeof bindAvversariProfileActions==='function') bindAvversariProfileActions(overlay);
   document.getElementById('closeRoster').onclick = () => overlay.remove();
   document.getElementById('closeRoster2').onclick = () => overlay.remove();
   overlay.querySelectorAll('.slot-row button').forEach(btn => {
@@ -5854,10 +6003,22 @@ function openAstaSettings(){
       <summary>🌡️ Soglie temperatura mercato</summary>
       <div class="section-body">
         <div class="settings-hint" style="padding:0 14px;">Quanto deve scostarsi il prezzo di vendita reale dal prezzo di riferimento (tua stima o FVM) perché lo consideri "caldo" o "freddo". I valori di default (1.15 e 0.85, cioè +15%/-15%) sono un punto di partenza generico: aggiustali in base a come si comporta davvero la vostra asta.</div>
-        <div class="field-row" style="padding:0 14px 14px;">
+        <div class="field-row" style="padding:0 14px 8px;">
           <div class="field"><label>Soglia "caldo" (es. 1.15 = +15%)</label><input type="number" step="0.01" min="1.01" id="setTempCalda" value="${auctionSettings.tempSogliaCalda!=null?auctionSettings.tempSogliaCalda:1.15}"></div>
           <div class="field"><label>Soglia "freddo" (es. 0.85 = -15%)</label><input type="number" step="0.01" max="0.99" id="setTempFredda" value="${auctionSettings.tempSogliaFredda!=null?auctionSettings.tempSogliaFredda:0.85}"></div>
         </div>
+        <label style="display:flex; align-items:center; gap:6px; padding:0 14px 14px; font-size:12px; color:var(--chalk-dim); cursor:pointer;" title="Se il fantallenatore considerato (fanta-squadra attiva o la tua squadra) ha uno storico nel Dossier avversari, le soglie si spostano in base al suo indice generale">
+          <input type="checkbox" id="setTempPersonalizzata" ${auctionSettings.tempPersonalizzata!==false?'checked':''}> 🌡️ Personalizza le soglie per fantallenatore (Dossier avversari)
+        </label>
+      </div>
+    </div>
+
+    <div class="section-block" open>
+      <summary>📥 Dossier avversari</summary>
+      <div class="section-body">
+        <div class="settings-hint" style="padding:0 14px;">Importa il file Excel dell'analisi storica dell'asta (Dossier_avversari_analisi_asta.xlsx): crea il profilo storico di ogni fantallenatore, personalizza previsioni e temperatura, e aggiunge gli avvisi "avversari pericolosi" nel Piano. Il matching è per <b>nome fantallenatore</b>, non per nome squadra. Salvataggio come upsert: nulla viene cancellato.</div>
+        <div id="avvImportStatus" style="padding:6px 14px 10px; font-size:12.5px; color:var(--chalk-dim);"></div>
+        <button class="btn" id="avvImportFromSettings" style="margin:0 14px 14px;">📥 Importa file Excel…</button>
       </div>
     </div>
 
@@ -5886,8 +6047,26 @@ function openAstaSettings(){
   document.body.appendChild(overlay);
   renderLeagueTeamsManage();
   refreshFvmSnapshotStatus();
+  // Dossier avversari: stato dell'import + binding del pulsante (il wrapper di openAstaSettings riaggancia comunque)
+  if(typeof dossierAvversariHaDati==='function'){
+    const stEl = document.getElementById('avvImportStatus');
+    if(stEl){
+      if(dossierAvversariHaDati()){
+        const stagNuova = (typeof dossierAvversariStagioneCorrente==='function') ? dossierAvversariStagioneCorrente() : '';
+        const nProf = auctionHistory.filter(r => r.id!=='_settings' && r.riepilogo).length;
+        const nSq = leagueSeasons.filter(s => s.id!=='_settings').length;
+        stEl.textContent = 'Dati presenti: '+nProf+' profili storici, '+nSq+' squadre '+(stagNuova||'')+'.';
+      } else {
+        stEl.textContent = 'Nessun dossier importato: l\'app funziona comunque, ma senza profili storici.';
+      }
+    }
+  }
   document.getElementById('closeAstaSettings').onclick = () => overlay.remove();
   document.getElementById('closeAstaSettings2').onclick = () => overlay.remove();
+  // Dossier avversari: binding diretto del pulsante import (questa funzione viene creata
+  // dinamicamente, quindi non è raggiungibile dai binding a load)
+  const avvImpBtn = document.getElementById('avvImportFromSettings');
+  if(avvImpBtn && typeof dossierAvversariPickAndImportFile==='function') avvImpBtn.onclick = dossierAvversariPickAndImportFile;
   document.getElementById('fvmSnapshotBtn').onclick = async () => {
     const btn = document.getElementById('fvmSnapshotBtn');
     const statusEl = document.getElementById('fvmSnapshotStatus');
@@ -5908,6 +6087,7 @@ function openAstaSettings(){
     let sogliaFredda = parseFloat(document.getElementById('setTempFredda').value);
     if(isNaN(sogliaCalda) || sogliaCalda<=1) sogliaCalda = 1.15;
     if(isNaN(sogliaFredda) || sogliaFredda>=1) sogliaFredda = 0.85;
+    const tempPersEl = document.getElementById('setTempPersonalizzata');
     auctionSettings = {
       budgetTotale: parseInt(document.getElementById('setBudget').value) || 500,
       slots: {
@@ -5918,7 +6098,8 @@ function openAstaSettings(){
       },
       modalitaAsta: auctionSettings.modalitaAsta,
       tempSogliaCalda: sogliaCalda,
-      tempSogliaFredda: sogliaFredda
+      tempSogliaFredda: sogliaFredda,
+      tempPersonalizzata: tempPersEl ? !!tempPersEl.checked : (auctionSettings.tempPersonalizzata!==false)
     };
     await persistAuctionSettings();
     showToast('Impostazioni salvate');
@@ -6941,6 +7122,10 @@ function buildPlayerEditorBody(rec) {
       </div>
     </div>
     <div data-field="dynamicFields">${renderSectionsFormScoped(PLAYER_SECTIONS, rec || {})}</div>
+    <details class="section-block" data-avv-sim-block="1">
+      <summary>🆚 Storia acquisti simili</summary>
+      <div class="section-body no-grid" data-field="avvSimArea"></div>
+    </details>
     <details class="section-block">
       <summary>🎥 Highlights</summary>
       <div class="section-body no-grid" data-field="highlightsArea"></div>
@@ -7005,6 +7190,11 @@ function openPlayerWindow(id) {
   renderHighlightsSectionScoped(winId, rec || {});
   renderAstaValutazioneScoped(winId, rec || {});
   renderPlayerTeamTagsRowScoped(winId, rec || {});
+  // Dossier avversari: storia acquisti simili (stesso ruolo+fascia, stagione storica)
+  if(typeof renderAvversariSimiliInArea==='function'){
+    const avvArea = $f(win.body, 'avvSimArea');
+    if(avvArea) renderAvversariSimiliInArea(avvArea, rec || {});
+  }
 
   const dynFields = $f(win.body, 'dynamicFields');
   if (dynFields) {
@@ -7250,8 +7440,10 @@ function renderAstaValutazioneScoped(winId, rec, refreshOnly) {
       </div>
       ${auctionSettings.modalitaAsta ? `
         <div data-field="autoPredictedBox" class="ai-empty"></div>
+        <div data-field="avvPredBox" class="ai-empty avv-pred-box"></div>
         <div data-field="marketTempBox" class="ai-empty"></div>
         <div data-field="rivalsBox" class="ai-empty"></div>
+        ${avversariActiveManagerSelectHtml('avvActiveMgrSelectScoped')}
       ` : '<div class="ai-empty">Previsione automatica, temperatura di mercato e rivali attivi compaiono qui durante l\'asta.</div>'}
     `;
     area.dataset.structured = '1';
@@ -7259,6 +7451,7 @@ function renderAstaValutazioneScoped(winId, rec, refreshOnly) {
     $f(body, 'f_fascia').onchange = () => { refreshAstaValutazioneBoxesScoped(winId, rec); scheduleAutosaveScoped(winId); };
     $f(body, 'f_valoreEffettivo').addEventListener('input', () => scheduleAutosaveScoped(winId));
     $f(body, 'f_prezzoPrevistoNum').addEventListener('input', () => { refreshAstaValutazioneBoxesScoped(winId, rec); scheduleAutosaveScoped(winId); });
+    if(typeof bindAvversariActiveManagerSelect==='function') bindAvversariActiveManagerSelect($f(body, 'avvActiveMgrSelectScoped'));
   } else {
     // Refresh: aggiorna solo fascia se il reparto è cambiato, NON toccare gli input prezzo/tetto
     const fasciaEl = $f(body, 'f_fascia');
@@ -7291,6 +7484,11 @@ function refreshAstaValutazioneBoxesScoped(winId, rec){
   if (apBox) apBox.innerHTML = auto
     ? '🤖 Previsione automatica: <b>~' + auto.value + ' cr</b> <span style="color:var(--chalk-dim);">(' + autoPredictedSourceLabel(auto) + ')</span>'
     : '🤖 Previsione automatica: <span style="color:var(--chalk-dim);">dati insufficienti per ora</span>';
+  // Dossier avversari: previsione personalizzata per la fanta-squadra attiva (se selezionata)
+  if (typeof avversariPredBoxHtml === 'function') {
+    const avvBox = $f(body, 'avvPredBox');
+    if (avvBox) avvBox.innerHTML = avversariPredBoxHtml(rec);
+  }
   const temp = computeMarketTemperature(reparto, fasciaVal);
   const t = TEMP_LABELS[temp.level];
   const mtBox = $f(body, 'marketTempBox');
@@ -8073,6 +8271,11 @@ function openEditor(type, id){
     <div id="dynamicFields">${renderSectionsForm(sections, rec||{})}</div>
     ${type==='player' ? `
       <details class="section-block">
+        <summary>🆚 Storia acquisti simili</summary>
+        <div class="section-body no-grid" id="avvSimArea"></div>
+      </details>` : ''}
+    ${type==='player' ? `
+      <details class="section-block">
         <summary>🎥 Highlights</summary>
         <div class="section-body no-grid" id="highlightsArea"></div>
       </details>` : ''}
@@ -8112,6 +8315,8 @@ function openEditor(type, id){
     bindAiSummaryHandlers();
     renderHighlightsSection(rec || {});
     renderAstaValutazione(rec || {});
+    // Dossier avversari: storia acquisti simili (stesso ruolo+fascia, stagione storica)
+    if(typeof renderAvversariSimiliInArea==='function') renderAvversariSimiliInArea(document.getElementById('avvSimArea'), rec || {});
     const posFantaElForFascia = document.getElementById('f_posFanta');
 if(posFantaElForFascia) posFantaElForFascia.addEventListener('change', () => { renderAstaValutazione(rec || {}, true); refreshPosRealeGlobal(); });
 
@@ -9185,6 +9390,18 @@ function renderCompare(){
       });
       if(sec.key === 'previsioni'){
         rowsHtml += `<tr><td>Tag</td>` + compareCols.map(p => `<td>${(p.tag&&p.tag.length) ? escapeHtml(p.tag.join(', ')) : '-'}</td>`).join('') + `</tr>`;
+        // Dossier avversari: FVM / prezzo storico medio per giocatori simili (stesso ruolo+fascia, stagione 2025/26)
+        if(typeof avversariPrezzoStoricoMedio==='function'){
+          rowsHtml += `<tr><td>💰 FVM / prezzo storico medio</td>` + compareCols.map(p => {
+            if(p._isAverage) return '<td><span style="color:var(--chalk-dim);">n/a</span></td>';
+            const st = avversariPrezzoStoricoMedio(p.posFanta, p.fascia);
+            if(!st) return '<td><span style="color:var(--chalk-dim);">n/d — dossier non importato</span></td>';
+            const ref = referencePrice(p);
+            const rap = (ref && st.media) ? Number(ref.value)/st.media : null;
+            const rapCls = rap!=null ? (rap>1.2?'cell-hard':(rap<0.8?'cell-best':'')) : '';
+            return '<td>'+(ref?('FVM <b>'+Math.round(ref.value)+'</b> · '):'')+'storico <b class="'+rapCls+'">'+st.media.toFixed(1)+' cr</b> <span style="color:var(--chalk-dim); font-size:10px;">(media su '+st.n+' simili'+(rap!=null?' · FVM/storico '+rap.toFixed(2):'')+')</span></td>';
+          }).join('') + `</tr>`;
+        }
       }
     }
   });
@@ -9511,6 +9728,7 @@ function wrHeadHtml(){
     <div class="wr-head-right">
       <span class="wr-live"><span class="wr-live-dot"></span>LIVE</span>
       <button class="btn small ${active?'primary':''}" id="wrModeToggle">${active?'🟢 Asta ON':'🔴 Asta OFF'}</button>
+      <button class="btn small" id="wrAvversariBtn" title="Importa il Dossier avversari: profilo storico d'asta di ogni fantallenatore (file Excel)">📥 Dossier avversari</button>
       <button class="btn small" id="wrAstaSettings" title="Impostazioni asta">⚙️</button>
     </div>
     <div class="wr-scan"></div>
@@ -9531,6 +9749,8 @@ function renderWarRoom(){
   if(mt) mt.onclick=async()=>{ auctionSettings.modalitaAsta=!auctionSettings.modalitaAsta; await persistAuctionSettings(); applyAuctionModeVisibility(); renderWarRoom(); };
   const as=document.getElementById('wrAstaSettings');
   if(as) as.onclick=openAstaSettings;
+  const ab=document.getElementById('wrAvversariBtn');
+  if(ab) ab.onclick=dossierAvversariPickAndImportFile;
   const sec=document.getElementById('wrSection');
   if(wrActiveSection==='plancia') wrRenderPlancia(sec);
   else if(wrActiveSection==='acquisti') wrRenderAcquisti(sec);
@@ -9627,19 +9847,31 @@ function wrLeagueStandingsHtml(){
   // Kit audit (bugfix overflow): tabella avvolta in container scrollabile + classi compatte
   // per evitare che le colonne (specialmente "Spesi/Budget" con mini-bar) facciano sbordare la tabella
   html += '<div class="wr-standings-scroll" style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:8px;">';
-  html += '<table class="pair-detail-table wr-standings-table" style="width:100%; min-width:560px; font-size:11.5px;"><thead><tr>';
-  html += '<th style="width:30px;">#</th><th>Squadra</th><th style="width:60px;">FM</th><th style="width:70px;">🔮 Proj.</th><th style="width:60px;">Slot</th><th style="min-width:120px;">Spesi</th><th style="width:60px;">Rimasti</th>';
+  html += '<table class="pair-detail-table wr-standings-table" style="width:100%; min-width:620px; font-size:11.5px;"><thead><tr>';
+  html += '<th style="width:30px;">#</th><th>Squadra</th><th style="width:60px;">FM</th><th style="width:70px;">🔮 Proj.</th><th style="width:64px;">📈 Indice</th><th style="width:60px;">Slot</th><th style="min-width:120px;">Spesi</th><th style="width:60px;">Rimasti</th>';
   html += '</tr></thead><tbody>';
   rows.forEach((r, i) => {
     const isMine = r.t.isMine;
     const fmClass = r.fmMedia != null ? (r.fmMedia >= 6.5 ? 'cell-best' : r.fmMedia >= 6 ? '' : 'cell-hard') : '';
     const projClass = r.fmProjMedia != null ? (r.fmProjMedia >= 6.5 ? 'cell-best' : r.fmProjMedia >= 6 ? '' : 'cell-hard') : '';
     const lowClass = r.pctSpent > 90 ? 'low' : '';
+    // Dossier avversari: indice generale storico del fantallenatore (▼ economico / ▲ caro)
+    const prof = (typeof dossierAvversariProfiloPerTeamLega==='function') ? dossierAvversariProfiloPerTeamLega(r.t.nome) : null;
+    let idxCell = '<span class="avv-war-idx none">—</span>';
+    if(prof && prof.hasHistoricalData && prof.indiceGenerale!=null){
+      const cls = typeof avversariIdxClass==='function' ? avversariIdxClass(prof.indiceGenerale) : '';
+      const arrow = typeof avversariIdxArrow==='function' ? avversariIdxArrow(prof.indiceGenerale) : '';
+      const mgrNome = (prof.managers||[]).join(' + ');
+      idxCell = '<span class="avv-war-idx '+cls+'" title="'+escapeHtml(mgrNome)+' · indice storico (1.0 = media lega)'+(prof.merged?' · profilo combinato (merge)':'')+'">'+avversariFmt(prof.indiceGenerale)+' '+arrow+'</span>';
+    } else if(prof){
+      idxCell = '<span class="avv-war-idx none" title="Prima stagione in lega (nessun dato storico)">1ª</span>';
+    }
     html += `<tr class="wr-war-row ${isMine?'mine':''}" data-team="${escapeHtml(r.t.nome)}" style="cursor:pointer;">`;
     html += `<td class="cell-g">#${i+1}</td>`;
     html += `<td><b>${escapeHtml(r.t.nome)}</b>${isMine?' <span style="color:var(--amber);">★</span>':''}</td>`;
     html += `<td class="${fmClass}">${fmtFm(r.fmMedia)}${r.playersWithFm > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(${r.playersWithFm})</span>` : ''}</td>`;
     html += `<td class="${projClass}">${fmtFm(r.fmProjMedia)}${r.projCount > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(${r.projCount})</span>` : ''}</td>`;
+    html += `<td>${idxCell}</td>`;
     html += `<td>${r.filled}/${totalSlots}${r.slotsLeft > 0 ? ` <span style="color:var(--chalk-dim); font-size:9px;">(-${r.slotsLeft})</span>` : ''}</td>`;
     // Mini-bar budget speso (accorpata dal vecchio Tavolo di guerra) — più compatta
     html += `<td>
@@ -9650,6 +9882,10 @@ function wrLeagueStandingsHtml(){
     </td>`;
     html += `<td><b style="color:${r.remaining < r.budgetTot*0.15 ? 'var(--red)' : 'var(--chalk)'};">${r.remaining}cr</b></td>`;
     html += '</tr>';
+    // Dossier avversari: riga collassabile "📊 Profilo storico" sotto ogni squadra (aperta se c'è storico)
+    if(typeof avversariProfiloHtml==='function'){
+      html += `<tr class="avv-profile-tr"><td colspan="8" style="padding:0 4px 4px; border-bottom:1px solid rgba(255,255,255,0.06);">${avversariProfiloHtml(r.t.nome, {})}</td></tr>`;
+    }
   });
   html += '</tbody></table>';
   html += '</div>'; // chiude wr-standings-scroll
@@ -9688,11 +9924,13 @@ function wrMarketHtml(){
     fasce.forEach(f=>{
       const temp=computeMarketTemperature(r,f);
       const lowConf = temp.confidence==='bassa' ? ' low-confidence' : '';
-      const tip = temp.count ? `${ROLE_LABEL[r]} ${f}: ${TEMP_LABELS[temp.level].label} · ${temp.count} vendite confrontate${temp.confidence==='bassa'?' — ancora poche, dato indicativo':''}` : `${ROLE_LABEL[r]} ${f}: ${TEMP_LABELS[temp.level].label} — nessuna vendita ancora in questa fascia`;
-      grid+=`<div class="wr-mkt-cell wr-mkt-${temp.level}${lowConf}" title="${tip}">${TEMP_LABELS[temp.level].icon}</div>`;
+      const pers = temp.personalizzata ? ' · soglie di '+(temp.nomeFantallenatore||'fantallenatore')+' (idx '+avversariFmt(temp.indiceFantallenatore)+')' : '';
+      const tip = temp.count ? `${ROLE_LABEL[r]} ${f}: ${TEMP_LABELS[temp.level].label} · ${temp.count} vendite confrontate${temp.confidence==='bassa'?' — ancora poche, dato indicativo':''}${pers} — click per il dettaglio` : `${ROLE_LABEL[r]} ${f}: ${TEMP_LABELS[temp.level].label} — nessuna vendita ancora in questa fascia`;
+      grid+=`<div class="wr-mkt-cell wr-mkt-${temp.level}${lowConf}" data-rep="${r}" data-fascia="${escapeHtml(f)}" title="${escapeHtml(tip)}">${TEMP_LABELS[temp.level].icon}</div>`;
     });
   });
-  return `<div class="wr-card"><div class="wr-card-title">🌡️ Temperatura mercato</div><div class="wr-mkt-grid">${grid}</div><div class="wr-mkt-legend"><span>🔴 caldo</span><span>🟡 normale</span><span>🟢 freddo</span><span>⚪ n/d</span><span>? poche vendite, dato indicativo</span></div></div>`;
+  const notaPers = computeMarketTemperature('P', fasce[0]).personalizzata ? '<span style="color:var(--amber);">🌡️ soglie personalizzate per fantallenatore (click su una cella per il dettaglio)</span>' : '<span>click su una cella per il dettaglio</span>';
+  return `<div class="wr-card"><div class="wr-card-title">🌡️ Temperatura mercato</div><div class="wr-mkt-grid">${grid}</div><div class="wr-mkt-legend"><span>🔴 caldo</span><span>🟡 normale</span><span>🟢 freddo</span><span>⚪ n/d</span><span>? poche vendite, dato indicativo</span>${notaPers}</div></div>`;
 }
 
 function wrRenderPlancia(sec){
@@ -9739,6 +9977,13 @@ function wrRenderPlancia(sec){
   html+=wrMarketHtml();
   sec.innerHTML=html;
   sec.querySelectorAll('.wr-war-row').forEach(el=>{ el.onclick=()=>openTeamRosterDetail(el.dataset.team); });
+  // Dossier avversari: azioni dentro le card profilo storico (fanta-squadra attiva / scheda completa)
+  if(typeof bindAvversariProfileActions==='function') bindAvversariProfileActions(sec);
+  // celle della griglia temperatura: click = dettaglio con soglie personalizzate
+  sec.querySelectorAll('.wr-mkt-cell[data-rep]').forEach(el=>{
+    el.style.cursor='pointer';
+    el.onclick=()=>dossierAvversariTempDetailModal(el.getAttribute('data-rep'), el.getAttribute('data-fascia'));
+  });
 }
 
 function wrRenderAcquisti(sec){
@@ -10599,6 +10844,8 @@ function wrRenderPiano(sec){
     h+=pianoRenderForkSection(rep, si, sl);
     // SEZIONE CANDIDATI LIBERI
     h+=pianoRenderCandSection(rep, si, sl);
+    // SEZIONE AVVERSARI (Dossier avversari): chi paga di più storicamente in questa fascia
+    if(typeof pianoRenderAvversariSection==='function') h+=pianoRenderAvversariSection(rep, si, sl);
     h+="</div>";
   }
   h+="</div></div>";
@@ -11977,6 +12224,9 @@ function bindPianoEvents(sec){
       pianoOpenSearchResults(rep, idx);
     };
   });
+
+  // Dossier avversari: toggle avvisi + chip profilo negli slot
+  bindAvversariPianoEvents(sec);
 }
 try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"public",table:"roster_plans"},function(){
   loadRosterPlans().then(function(){
@@ -12020,6 +12270,1315 @@ try{sb.channel("roster_plans_rt").on("postgres_changes",{event:"*",schema:"publi
 //   - il wrapper di checkPianoMatch (la logica fork è integrata direttamente
 //     nella funzione checkPianoMatch)
 // ===== FINE KIT v20 RIMOSSO =====
+
+// ============================================================
+// DOSSIER AVVERSARI — analisi storica del comportamento d'asta
+// ============================================================
+// Import di Dossier_avversari_analisi_asta.xlsx (SheetJS lato client), matching
+// per nome FANTALLENATORE (mai per nome fanta-squadra, cambia ogni stagione),
+// profilo storico per squadra, previsioni prezzo e temperature personalizzate,
+// avvisi "avversari pericolosi" nel Piano Rosa.
+// Regole architetturali (vedi docs/ARCHITETTURA.md § Dossier Avversari):
+//  - matching per fantaAllenatore, split "X e Y" = merge profili (media ponderata per N giocatori)
+//  - gli indici storici NON vengono ricalcolati: restano come tratto del fantallenatore
+//  - durante l'asta la previsione viene normalizzata sulla mediana di lega dinamica (>=5 vendite)
+//  - import = upsert a fusione su stagione+fantaAllenatore, MAI delete+insert
+//  - nessun breaking change: senza file importato tutto funziona come prima
+
+const AVV_STAGIONE_STORICA_DEFAULT = '2025-26';
+const AVV_STAGIONE_NUOVA_DEFAULT = '2026-27';
+const AVV_N_SQUADRE_STORICA_DEFAULT = 14;
+const AVV_PERICOLOSO_SOGLIA = 1.2;      // sopra questa soglia un avversario è "caro" in una fascia
+const AVV_VENDITE_MEDIANA_AFFIDABILE = 5; // vendite minime per la mediana dinamica della nuova lega
+// Soglie FVM (base 500) di fallback per derivare la "fascia" dei giocatori storici per ruolo.
+// All'import vengono ricalcolate dai quantili reali del file (20/40/65/85 ° percentile) e
+// salvate nella riga _settings; queste valgono solo se mancano.
+const AVV_FASCIA_FVM_DEFAULT = {
+  P: [{min:35,f:'Top'},{min:18,f:'Semitop'},{min:9,f:'Medio'},{min:5,f:'Regolarista'},{min:0,f:'Scommessa'}],
+  D: [{min:14,f:'Top'},{min:8,f:'Semitop'},{min:5.5,f:'Medio'},{min:5,f:'Regolarista'},{min:0,f:'Scommessa'}],
+  C: [{min:25,f:'Top'},{min:12,f:'Semitop'},{min:7,f:'Medio'},{min:5,f:'Regolarista'},{min:0,f:'Scommessa'}],
+  A: [{min:40,f:'Top'},{min:18,f:'Semitop'},{min:9,f:'Medio'},{min:5,f:'Regolarista'},{min:0,f:'Scommessa'}]
+};
+// chiavi numeriche del riepilogo usate per il merge ponderato
+const AVV_METRICHE_NUMERICHE = ['indiceGenerale','indiceNuoviArrivi','indiceConfermati','indiceBigClub','indiceClubMinori','pctSpesaBigClub','indiceGiovani','indiceAdulti','indiceVeterani','pctBudgetPortieri','pctBudgetDifesa','pctBudgetCentrocampo','pctBudgetAttacco','concentrazioneDifesa','concentrazioneCentro','concentrazioneAttacco','nGiocatoriNeopromosse','spesaNeopromosse','pctSpesaNeopromosse','etaMedia','pctUnder23','clubRealiDiversi','giocatoriPerClub','efficienza','nGiocatori','spesaTotale','spesaMedia'];
+var avversariBucketCache = {}; // cache prezzi storici medi per ruolo+fascia
+
+function avversariNorm(s){ return String(s==null?'':s).trim().toLowerCase(); }
+function avversariNum(v){
+  if(v==null || v==='') return null;
+  var n = Number(String(v).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+function avversariBool(v){
+  if(v==null || v==='') return false;
+  if(v===true) return true;
+  var s = avversariNorm(v);
+  return s==='sì' || s==='si' || s==='yes' || s==='true' || s==='1' || s==='x';
+}
+function avversariFmt(v, dec){
+  var n = avversariNum(v);
+  if(n==null) return '—';
+  return n.toFixed(dec==null?2:dec);
+}
+// classe colore per un indice: >1.2 rosso (caro), <0.8 verde (economico), altrimenti neutro
+function avversariIdxClass(idx){
+  var n = avversariNum(idx);
+  if(n==null) return 'flat';
+  if(n>1.2) return 'up';
+  if(n<0.8) return 'down';
+  return 'flat';
+}
+function avversariIdxArrow(idx){
+  var n = avversariNum(idx);
+  if(n==null) return '';
+  return n>1 ? '▲' : (n<1 ? '▼' : '');
+}
+function avversariSettingsValue(key){
+  for(var i=0;i<auctionHistory.length;i++){
+    if(auctionHistory[i].id==='_settings') return auctionHistory[i][key];
+  }
+  return null;
+}
+function avversariSettingsRow(){
+  for(var i=0;i<auctionHistory.length;i++){ if(auctionHistory[i].id==='_settings') return auctionHistory[i]; }
+  return null;
+}
+function dossierAvversariStagioneCorrente(){
+  return avversariSettingsValue('stagioneNuova') || AVV_STAGIONE_NUOVA_DEFAULT;
+}
+function dossierAvversariHaDati(){
+  return auctionHistory.some(function(r){ return r.id!=='_settings' && r.riepilogo; });
+}
+
+// ---------- lettura fogli (indipendente da XLSX.utils: testabile in jsdom) ----------
+function avversariColName(idx){
+  var s=''; idx=idx+1;
+  while(idx>0){ var m=(idx-1)%26; s=String.fromCharCode(65+m)+s; idx=Math.floor((idx-1)/26); }
+  return s;
+}
+function avversariDecodeRange(ref){
+  function parseOne(a){
+    var m=/^([A-Z]+)(\d+)$/.exec(String(a).toUpperCase());
+    if(!m) return {c:0,r:0};
+    var c=0; var letters=m[1];
+    for(var i=0;i<letters.length;i++){ c = c*26 + (letters.charCodeAt(i)-64); }
+    return {c:c-1, r:parseInt(m[2],10)-1};
+  }
+  var parts = String(ref).split(':');
+  var a = parseOne(parts[0]);
+  var b = parts[1] ? parseOne(parts[1]) : a;
+  return { s:{c:a.c, r:a.r}, e:{c:b.c, r:b.r} };
+}
+// converte un worksheet (SheetJS o fixture con celle indirizzate "A1") in matrice di righe
+function avversariSheetRows(ws){
+  if(!ws) return [];
+  if(ws.__rows && ws.__rows.length) return ws.__rows.map(function(r){ return r.slice(); }); // fixture jsdom
+  var ref = ws['!ref'];
+  if(!ref) return [];
+  var range = avversariDecodeRange(ref);
+  var rows=[];
+  for(var R=range.s.r; R<=range.e.r; R++){
+    var row=[];
+    for(var C=range.s.c; C<=range.e.c; C++){
+      var cell = ws[avversariColName(C)+(R+1)];
+      row.push(cell ? (cell.v!=null ? cell.v : (cell.w!=null?cell.w:null)) : null);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+// normalizza un header di colonna per il matching (minuscolo, senza spazi, senza *, senza accenti)
+function avversariHeaderKey(s){
+  return String(s==null?'':s)
+    .toLowerCase()
+    .replace(/\*/g,'')
+    .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìíî]/g,'i').replace(/[òóô]/g,'o').replace(/[ùúû]/g,'u')
+    .replace(/\s+/g,'')
+    .trim();
+}
+function avversariHeaderIndex(header, wanted){
+  var keys = wanted.map(avversariHeaderKey);
+  for(var i=0;i<header.length;i++){
+    var hk = avversariHeaderKey(header[i]);
+    if(!hk) continue;
+    if(keys.indexOf(hk)>=0) return i;
+  }
+  return -1;
+}
+
+// ---------- PARSER xlsx ----------
+// ritorna { ok, righeDati, riepiloghi, squadreNuove, parametri, giocatoriPerSquadra, esclusi, stagioneNuova, warnings }
+function dossierAvversariParseWorkbook(wb){
+  var out = { ok:false, righeDati:[], riepiloghi:[], squadreNuove:[], parametri:null, giocatoriPerSquadra:{}, esclusi:[], stagioneNuova:null, warnings:[] };
+  if(!wb || !wb.SheetNames || !wb.SheetNames.length){
+    out.warnings.push('File non riconosciuto come cartella di lavoro Excel.');
+    return out;
+  }
+  function findSheet(re, excludeRe){
+    var names = wb.SheetNames.filter(function(n){
+      var nn = avversariNorm(n);
+      if(excludeRe && excludeRe.test(nn)) return false;
+      return re.test(nn);
+    });
+    return names.length ? names[0] : null;
+  }
+  var nameDati = findSheet(/dati.*giocatori|^giocatori$/);
+  var nameRiep = findSheet(/riepilogo/);
+  var nameNuove = findSheet(/squadre.*stagione|stagione.*20\d{4}/);
+  var namePar = findSheet(/parametri/);
+  var nameEsc = findSheet(/esclusi/);
+  if(!nameDati) out.warnings.push('Foglio "Dati giocatori" non trovato.');
+  if(!nameRiep) out.warnings.push('Foglio "Riepilogo squadre" non trovato.');
+  if(!nameNuove) out.warnings.push('Foglio "Squadre stagione <aaaa>" non trovato.');
+
+  // --- Squadre stagione nuova (prima: serve per stagioneNuova) ---
+  if(nameNuove){
+    var mStag = /(\d{2})(\d{2})(\d{2})/.exec((nameNuove.match(/\d{4,6}/)||[''])[0]);
+    if(mStag) out.stagioneNuova = '20'+mStag[2]+'-'+mStag[3];
+    var rowsN = avversariSheetRows(wb.Sheets[nameNuove]);
+    var hdrN = rowsN[0]||[];
+    var iSq = avversariHeaderIndex(hdrN, ['FantaSquadra']);
+    var iMan = avversariHeaderIndex(hdrN, ['FantaAllenatori','FantaAllenatore']);
+    for(var r=1;r<rowsN.length;r++){
+      var row = rowsN[r];
+      var sq = row[iSq]!=null ? String(row[iSq]).trim() : '';
+      if(!sq) continue;
+      out.squadreNuove.push({ fantaSquadra: sq, fantaAllenatori: (row[iMan]!=null?String(row[iMan]).trim():'') });
+    }
+  }
+
+  // --- Dati giocatori ---
+  if(nameDati){
+    var rowsD = avversariSheetRows(wb.Sheets[nameDati]);
+    var hdrD = rowsD[0]||[];
+    var col = {
+      nome: avversariHeaderIndex(hdrD, ['Nome']),
+      ruolo: avversariHeaderIndex(hdrD, ['Ruolo']),
+      squadra: avversariHeaderIndex(hdrD, ['Squadra attuale']),
+      squadra2025: avversariHeaderIndex(hdrD, ['Squadra 2025']),
+      eta: avversariHeaderIndex(hdrD, ['Età','Eta']),
+      fantaSquadra: avversariHeaderIndex(hdrD, ['FantaSquadra']),
+      costo: avversariHeaderIndex(hdrD, ['Costo']),
+      fvm1000: avversariHeaderIndex(hdrD, ['FVM/1000']),
+      fvmBase500: avversariHeaderIndex(hdrD, ['FVM base 500']),
+      rapporto: avversariHeaderIndex(hdrD, ['Rapporto']),
+      indiceLega: avversariHeaderIndex(hdrD, ['Indice di lega']),
+      nuovoArrivo: avversariHeaderIndex(hdrD, ['Nuovo arrivo']),
+      bigClub: avversariHeaderIndex(hdrD, ['Big club']),
+      neopromossa: avversariHeaderIndex(hdrD, ['Neopromossa']),
+      fasciaEta: avversariHeaderIndex(hdrD, ['Fascia età','Fascia eta'])
+    };
+    for(var r2=1;r2<rowsD.length;r2++){
+      var rowD = rowsD[r2];
+      var nome = rowD[col.nome]!=null ? String(rowD[col.nome]).trim() : '';
+      if(!nome) continue;
+      var g = {
+        nome: nome,
+        ruolo: (rowD[col.ruolo]!=null?String(rowD[col.ruolo]).trim().toUpperCase():''),
+        squadra: (rowD[col.squadra]!=null?String(rowD[col.squadra]).trim():''),
+        squadra2025: (rowD[col.squadra2025]!=null?String(rowD[col.squadra2025]).trim():''),
+        eta: avversariNum(rowD[col.eta]),
+        fantaSquadra: (rowD[col.fantaSquadra]!=null?String(rowD[col.fantaSquadra]).trim():''),
+        costo: avversariNum(rowD[col.costo]),
+        fvm1000: avversariNum(rowD[col.fvm1000]),
+        fvmBase500: avversariNum(rowD[col.fvmBase500]),
+        rapporto: avversariNum(rowD[col.rapporto]),
+        indiceLega: avversariNum(rowD[col.indiceLega]),
+        nuovoArrivo: avversariBool(rowD[col.nuovoArrivo]),
+        bigClub: avversariBool(rowD[col.bigClub]),
+        neopromossa: avversariBool(rowD[col.neopromossa]),
+        fasciaEta: (rowD[col.fasciaEta]!=null?String(rowD[col.fasciaEta]).trim():'')
+      };
+      out.righeDati.push(g);
+    }
+  }
+
+  // --- Riepilogo squadre (mappatura per NOME COLONNA, non per posizione) ---
+  var HEADER_MAP = {
+    'fantasquadra':'fantaSquadra','fantaallenatori':'fantaAllenatori','fantaallenatore':'fantaAllenatori',
+    'ngiocatori':'nGiocatori','spesatotale':'spesaTotale','spesamedia/giocatore':'spesaMedia','spesamedia':'spesaMedia',
+    'indicegenerale':'indiceGenerale','indicenuoviarrivi':'indiceNuoviArrivi','indiceconfermati':'indiceConfermati',
+    'indicebigclub':'indiceBigClub','indiceclubminori':'indiceClubMinori','%spesasubigclub':'pctSpesaBigClub',
+    'indicegiovani(<=23)':'indiceGiovani','indiceadulti(24-29)':'indiceAdulti','indiceveterani(30+)':'indiceVeterani',
+    '%budgetportieri':'pctBudgetPortieri','%budgetdifesa':'pctBudgetDifesa','%budgetcentrocampo':'pctBudgetCentrocampo','%budgetattacco':'pctBudgetAttacco',
+    'concentrazionedifesa(top1)':'concentrazioneDifesa','concentrazione centro(top1)':'concentrazioneCentro','concentrazione centro(top1) ':'concentrazioneCentro','concentrazionecentro(top1)':'concentrazioneCentro','concentrazioneattacco(top1)':'concentrazioneAttacco',
+    'ngiocatorineopromosse':'nGiocatoriNeopromosse','spesaneopromosse':'spesaNeopromosse','%spesaneopromosse':'pctSpesaNeopromosse',
+    'etàmedia':'etaMedia','etamedia':'etaMedia','%under23':'pctUnder23','clubrealidiversi':'clubRealiDiversi',
+    'giocatoriperclub':'giocatoriPerClub','efficienza(fvmtot/spesatot)':'efficienza','efficienza':'efficienza',
+    'miglioracquisto':'migliorAcquisto','peggioracquisto':'peggiorAcquisto'
+  };
+  if(nameRiep){
+    var rowsR = avversariSheetRows(wb.Sheets[nameRiep]);
+    var hdrR = rowsR[0]||[];
+    var colMapR = [];
+    for(var c=0;c<hdrR.length;c++){
+      var hk = avversariHeaderKey(hdrR[c]);
+      colMapR.push(HEADER_MAP[hk] || null);
+    }
+    for(var r3=1;r3<rowsR.length;r3++){
+      var rowR = rowsR[r3];
+      var rec = {};
+      var hasName = false;
+      for(var c2=0;c2<colMapR.length;c2++){
+        var key = colMapR[c2];
+        if(!key) continue;
+        var v = rowR[c2];
+        if(key==='fantaSquadra'){ rec.fantaSquadra = v!=null?String(v).trim():''; if(rec.fantaSquadra) hasName=true; }
+        else if(key==='fantaAllenatori'){ rec.fantaAllenatori = v!=null?String(v).trim():''; }
+        else {
+          var num = avversariNum(v);
+          if(num==null && v!=null && String(v).trim()!==''){ rec[key] = String(v).trim(); } // Miglior/peggior acquisto "Nome (rapporto)"
+          else { rec[key] = num; }
+        }
+      }
+      if(hasName) out.riepiloghi.push(rec);
+    }
+  }
+
+  // --- Parametri ---
+  var parametri = {
+    medianaLega: null,
+    bigClubs: [],
+    neopromosse: [],
+    fasceEta: { giovaneFinoA: 23, adultoFinoA: 29 },
+    nSquadreLegaStorica: out.riepiloghi.length || AVV_N_SQUADRE_STORICA_DEFAULT
+  };
+  if(namePar){
+    var rowsP = avversariSheetRows(wb.Sheets[namePar]);
+    var bigCol = -1, neoCol = -1, bigStart = -1, neoStart = -1;
+    for(var rp=0;rp<rowsP.length;rp++){
+      var rowP = rowsP[rp];
+      for(var cp=0;cp<rowP.length;cp++){
+        var cell = rowP[cp];
+        if(cell==null) continue;
+        var cs = avversariHeaderKey(cell); // minuscolo, senza spazi/accenti: confronti tolleranti
+        if(parametri.medianaLega==null && cs.indexOf('medianadilega')===0){
+          for(var k=cp+1;k<rowP.length;k++){ var n=avversariNum(rowP[k]); if(n!=null){ parametri.medianaLega=n; break; } }
+        }
+        if(bigCol<0 && /^squadre.{0,4}big/.test(cs)){ bigCol=cp; bigStart=rp+1; }
+        if(neoCol<0 && cs.indexOf('squadreneopromosse')===0){ neoCol=cp; neoStart=rp+1; }
+        if(cs.indexOf('giovane:fino')>=0){ for(var k2=cp+1;k2<rowP.length;k2++){ var n2=avversariNum(rowP[k2]); if(n2!=null){ parametri.fasceEta.giovaneFinoA=n2; break; } } }
+        if(cs.indexOf('adulto:fino')>=0){ for(var k3=cp+1;k3<rowP.length;k3++){ var n3=avversariNum(rowP[k3]); if(n3!=null){ parametri.fasceEta.adultoFinoA=n3; break; } } }
+      }
+    }
+    function readList(colIdx, startRow){
+      var list=[];
+      if(colIdx<0) return list;
+      for(var rr=startRow; rr<rowsP.length; rr++){
+        var v = rowsP[rr][colIdx];
+        if(v==null || String(v).trim()==='') continue; // salta righe vuote
+        var s = String(v).trim();
+        // gli elementi validi sono nomi di squadra puliti: le intestazioni di sezione
+        // ("Fasce età (modificabili)", "Giovane: fino a", ...) contengono parentesi/due punti
+        if(s.indexOf('(')>=0 || s.indexOf(':')>=0 || s.length>30) break;
+        list.push(s);
+      }
+      return list;
+    }
+    parametri.bigClubs = readList(bigCol, bigStart);
+    parametri.neopromosse = readList(neoCol, neoStart);
+  }
+  // fallback parametri da righe esistenti (re-import senza foglio parametri)
+  var prevSettings = avversariSettingsRow();
+  if(parametri.medianaLega==null && prevSettings && prevSettings.medianaLega!=null) parametri.medianaLega = prevSettings.medianaLega;
+  if(!parametri.bigClubs.length && prevSettings && prevSettings.bigClubs) parametri.bigClubs = prevSettings.bigClubs;
+  if(!parametri.neopromosse.length && prevSettings && prevSettings.neopromosse) parametri.neopromosse = prevSettings.neopromosse;
+  out.parametri = parametri;
+
+  // --- Esclusi (solo per statistiche "complete", NON per gli indici) ---
+  if(nameEsc){
+    var rowsE = avversariSheetRows(wb.Sheets[nameEsc]);
+    var hdrE = rowsE[0]||[];
+    // nel foglio Esclusi l'header può stare a riga 4: trova la riga con "Nome"
+    var hdrIdx = 0;
+    for(var re=0;re<Math.min(rowsE.length,8);re++){
+      if(avversariHeaderIndex(rowsE[re]||[], ['Nome'])>=0){ hdrIdx = re; break; }
+    }
+    var hdrE2 = rowsE[hdrIdx]||[];
+    var eNome = avversariHeaderIndex(hdrE2, ['Nome']);
+    var eRuolo = avversariHeaderIndex(hdrE2, ['Ruolo']);
+    var eSq = avversariHeaderIndex(hdrE2, ['Squadra attuale']);
+    var eFanta = avversariHeaderIndex(hdrE2, ['FantaSquadra']);
+    var eCosto = avversariHeaderIndex(hdrE2, ['Costo']);
+    var eFvm = avversariHeaderIndex(hdrE2, ['FVM/1000']);
+    for(var r4=hdrIdx+1;r4<rowsE.length;r4++){
+      var rowE = rowsE[r4];
+      var nE = rowE[eNome]!=null?String(rowE[eNome]).trim():'';
+      if(!nE) continue;
+      out.esclusi.push({
+        nome:nE,
+        ruolo:(eRuolo>=0&&rowE[eRuolo]!=null?String(rowE[eRuolo]).trim().toUpperCase():''),
+        squadra:(eSq>=0&&rowE[eSq]!=null?String(rowE[eSq]).trim():''),
+        fantaSquadra:(eFanta>=0&&rowE[eFanta]!=null?String(rowE[eFanta]).trim():''),
+        costo:avversariNum(rowE[eCosto]),
+        fvm1000:avversariNum(rowE[eFvm])
+      });
+    }
+  }
+
+  // --- giocatori raggruppati per fanta-squadra + soglie fascia da quantili ---
+  out.righeDati.forEach(function(g){
+    var k = avversariNorm(g.fantaSquadra);
+    if(!k) return;
+    if(!out.giocatoriPerSquadra[k]) out.giocatoriPerSquadra[k]=[];
+    out.giocatoriPerSquadra[k].push(g);
+  });
+  out.parametri.fasciaFvmThresholds = avversariCalcolaSoglieFascia(out.righeDati);
+  // etichetta fascia applicativa (ruolo + fascia) su ogni giocatore, serve per "acquisti simili"
+  out.righeDati.forEach(function(g){ g.fasciaApp = avversariFasciaDaFvm(g.ruolo, g.fvmBase500, out.parametri.fasciaFvmThresholds); });
+
+  out.ok = out.riepiloghi.length>0 && out.squadreNuove.length>0;
+  if(!out.ok && !out.warnings.length) out.warnings.push('Il file non contiene i dati attesi (riepiloghi o squadre della nuova stagione vuoti).');
+  return out;
+}
+// soglie fascia per ruolo dai quantili dei valori FVM base 500 dei giocatori storici
+function avversariCalcolaSoglieFascia(righeDati){
+  var out={};
+  ['P','D','C','A'].forEach(function(rep){
+    var vals = (righeDati||[]).filter(function(g){ return g.ruolo===rep && g.fvmBase500!=null; })
+      .map(function(g){ return Number(g.fvmBase500); })
+      .sort(function(a,b){ return a-b; });
+    if(!vals.length) return;
+    function q(p){ return vals[Math.min(vals.length-1, Math.max(0, Math.round(p*(vals.length-1))))]; }
+    out[rep]=[ {min:q(0.85),f:'Top'}, {min:q(0.65),f:'Semitop'}, {min:q(0.40),f:'Medio'}, {min:q(0.20),f:'Regolarista'}, {min:0,f:'Scommessa'} ];
+  });
+  return out;
+}
+// deriva la fascia applicativa (Top/Semitop/Medio/Regolarista/Scommessa) di un giocatore storico dal suo FVM base 500
+function avversariFasciaDaFvm(ruolo, fvmBase500, thresholds){
+  var v = avversariNum(fvmBase500);
+  if(v==null) return 'Scommessa';
+  var th = (thresholds && thresholds[ruolo]) || (avversariSettingsValue('fasciaFvmThresholds')||{})[ruolo] || AVV_FASCIA_FVM_DEFAULT[ruolo] || AVV_FASCIA_FVM_DEFAULT.C;
+  for(var i=0;i<th.length;i++){ if(v>=th[i].min) return th[i].f; }
+  return 'Scommessa';
+}
+
+
+// ---------- MATCHING per FANTALLENATORE ----------
+// normalize(s) = trim().toLowerCase()
+// 1. match esatto dell'intero nome (case insensitive)
+// 2. se contiene " e " (es. "Davide e Daniele") → split: se almeno una parte matcha un
+//    fantallenatore storico, la nuova squadra eredita i profili delle parti (merge).
+// 3. "Alessio e Johnatan" identico in entrambe le stagioni → match esatto al passo 1.
+// ritorna { fantaSquadraNuova: { fantaSquadra, fantaAllenatori, match:[riepilogo...], merged, modalita } }
+function dossierAvversariMatchManagers(squadreNuove, riepiloghi){
+  var storici = {}; // norm(manager) → [riepilogo, ...]
+  (riepiloghi||[]).forEach(function(r){
+    var man = String(r.fantaAllenatori||'').trim();
+    if(!man) return;
+    var k = avversariNorm(man);
+    if(!storici[k]) storici[k]=[];
+    storici[k].push(r);
+  });
+  var map = {};
+  (squadreNuove||[]).forEach(function(sq){
+    var nome = String(sq.fantaAllenatori||'').trim();
+    var k = avversariNorm(nome);
+    var res = { fantaSquadra: sq.fantaSquadra, fantaAllenatori: nome, match: [], merged: false, modalita: 'nessuno' };
+    if(k && storici[k]){
+      res.match = storici[k].slice();
+      res.modalita = 'esatto';
+    } else if(k && /(^|\s)e\s/i.test(' '+nome+' ')){
+      var parts = nome.split(/\s+e\s+/i).map(function(x){ return x.trim(); }).filter(Boolean);
+      var hits = [];
+      parts.forEach(function(p){
+        var rows = storici[avversariNorm(p)];
+        if(rows && rows.length && hits.indexOf(rows[0])<0) hits.push(rows[0]);
+      });
+      if(hits.length){
+        res.match = hits;
+        res.merged = hits.length>1;
+        res.modalita = hits.length>1 ? 'merge' : 'parziale';
+      }
+    }
+    map[sq.fantaSquadra] = res;
+  });
+  return map;
+}
+
+// ---------- COSTRUZIONE PROFILI (con merge per media ponderata) ----------
+// fonde N righe di auction_history in un profilo: metriche numeriche = media PONDERATA per
+// nGiocatori; miglior/peggior acquisto = il migliore/peggiore tra i componenti (per rapporto).
+function dossierAvversariMergeProfiles(rows){
+  if(!rows || !rows.length) return { hasHistoricalData:false, managers:[], merged:false, components:[] };
+  var comps = rows.map(function(h){
+    return {
+      fantaSquadra: h.fantaSquadra || '',
+      fantaAllenatore: h.fantaAllenatore || '',
+      stagione: h.stagione || AVV_STAGIONE_STORICA_DEFAULT,
+      nGiocatori: (h.riepilogo && h.riepilogo.nGiocatori!=null) ? Number(h.riepilogo.nGiocatori) : (h.giocatori ? h.giocatori.length : 0),
+      riepilogo: h.riepilogo || {}
+    };
+  });
+  var merged = comps.length>1;
+  var R = {};
+  AVV_METRICHE_NUMERICHE.forEach(function(key){
+    var tot=0, w=0;
+    comps.forEach(function(c){
+      var v = avversariNum(c.riepilogo[key]);
+      if(v!=null){ var wgt = c.nGiocatori||1; tot += v*wgt; w += wgt; }
+    });
+    R[key] = w>0 ? tot/w : null;
+  });
+  // Miglior/peggior acquisto: parse "Nome (rapporto)" → sceglie per rapporto; label concatena se merge
+  function parseDeal(s){
+    if(!s) return null;
+    var m = /^(.*?)\s*\(([-0-9.,]+)\)\s*$/.exec(String(s));
+    if(!m) return { nome:String(s), rapporto:null };
+    return { nome:m[1].trim(), rapporto:avversariNum(m[2]) };
+  }
+  var best=null, worst=null, bestAll=[], worstAll=[];
+  comps.forEach(function(c){
+    var mb = parseDeal(c.riepilogo.migliorAcquisto);
+    var mw = parseDeal(c.riepilogo.peggiorAcquisto);
+    if(mb){ bestAll.push(mb); if(!best || (mb.rapporto!=null && (best.rapporto==null || mb.rapporto<best.rapporto))) best=mb; }
+    if(mw){ worstAll.push(mw); if(!worst || (mw.rapporto!=null && (worst.rapporto==null || mw.rapporto>worst.rapporto))) worst=mw; }
+  });
+  R.migliorAcquisto = best ? (best.rapporto!=null ? best.nome+' ('+Number(best.rapporto).toFixed(2)+')' : best.nome) : null;
+  R.peggiorAcquisto = worst ? (worst.rapporto!=null ? worst.nome+' ('+Number(worst.rapporto).toFixed(2)+')' : worst.nome) : null;
+  R._miglioriTutti = bestAll; R._peggioriTutti = worstAll;
+
+  var stag = rows[0].stagione || AVV_STAGIONE_STORICA_DEFAULT;
+  var nSq = rows[0].nSquadreLega!=null ? Number(rows[0].nSquadreLega) : (avversariSettingsValue('nSquadreLegaStorica') || AVV_N_SQUADRE_STORICA_DEFAULT);
+  var manNames = comps.map(function(c){ return c.fantaAllenatore || c.fantaSquadra || '?'; });
+  var prof = {
+    hasHistoricalData: true,
+    merged: merged,
+    managers: manNames,
+    components: comps,
+    stagione: stag,
+    nSquadreLega: nSq,
+    medianaLega: rows[0].medianaLega!=null ? Number(rows[0].medianaLega) : null,
+    etichettaStagione: 'Stagione '+String(stag).replace('-','/')+' · '+nSq+' squadre'
+  };
+  for(var k in R){ if(Object.prototype.hasOwnProperty.call(R,k)) prof[k]=R[k]; }
+  return prof;
+}
+function dossierAvversariProfiloSenzaStorico(fantaAllenatori, fantaSquadra){
+  return {
+    hasHistoricalData:false, merged:false, managers:[], components:[],
+    fantaAllenatori: fantaAllenatori||'', fantaSquadra: fantaSquadra||'',
+    etichettaStagione: 'Prima stagione in lega'
+  };
+}
+// ricostruisce avversariProfiles / avversariProfilesBySquadra da auctionHistory + leagueSeasons
+// (cache in memoria, invalidata solo qui: load iniziale o realtime change)
+function dossierAvversariRebuildProfiles(){
+  avversariProfiles = {};
+  avversariProfilesBySquadra = {};
+  avversariBucketCache = {};
+  var perManager = {};
+  auctionHistory.forEach(function(h){
+    if(h.id==='_settings' || !h.riepilogo) return;
+    var man = String(h.fantaAllenatore||'').trim();
+    var keys = [];
+    if(man) keys.push(avversariNorm(man));
+    if(man && /(^|\s)e\s/i.test(' '+man+' ')){
+      man.split(/\s+e\s+/i).forEach(function(p){ var kk=avversariNorm(p); if(kk && keys.indexOf(kk)<0) keys.push(kk); });
+    }
+    keys.forEach(function(kk){
+      if(!perManager[kk]) perManager[kk]=[];
+      perManager[kk].push(h);
+    });
+  });
+  // profili "senza storico" per chi non ha righe di history ma è nel file
+  var managerStorici = {};
+  Object.keys(perManager).forEach(function(k){ managerStorici[k]=true; });
+  leagueSeasons.forEach(function(s){
+    if(s.id==='_settings') return;
+    var nomeComp = String(s.fantaAllenatori||'').trim();
+    var matched = (s.matchedHistoricalManagers || []).slice();
+    var comps = [];
+    matched.forEach(function(m){
+      var rows = perManager[avversariNorm(m)];
+      if(rows && rows.length && comps.indexOf(rows[0])<0) comps.push(rows[0]);
+    });
+    var prof;
+    if(comps.length){
+      prof = dossierAvversariMergeProfiles(comps);
+      if(comps.length>1 && !prof.merged) prof.merged = true;
+    } else {
+      prof = dossierAvversariProfiloSenzaStorico(nomeComp, s.fantaSquadra);
+    }
+    prof.fantaSquadraCorrente = s.fantaSquadra || '';
+    // chiavi: ogni manager (anche le parti di un nome composto) + nome composto
+    var keys = [];
+    matched.forEach(function(m){ var kk=avversariNorm(m); if(kk && keys.indexOf(kk)<0) keys.push(kk); });
+    if(nomeComp){ var kc=avversariNorm(nomeComp); if(keys.indexOf(kc)<0) keys.push(kc); }
+    // parti del nome composto senza match ("prima stagione" per Michele)
+    if(nomeComp && /(^|\s)e\s/i.test(' '+nomeComp+' ')){
+      nomeComp.split(/\s+e\s+/i).forEach(function(p){ var kk=avversariNorm(p); if(kk && keys.indexOf(kk)<0) keys.push(kk); });
+    }
+    keys.forEach(function(kk){ if(!avversariProfiles[kk]) avversariProfiles[kk]=prof; });
+    if(s.fantaSquadra) avversariProfilesBySquadra[avversariNorm(s.fantaSquadra)] = prof;
+  });
+  // alias per fanta-squadra storica (per aprire profili anche fuori dal contesto stagione nuova)
+  auctionHistory.forEach(function(h){
+    if(h.id==='_settings' || !h.riepilogo || !h.fantaSquadra) return;
+    var k = avversariNorm(h.fantaSquadra);
+    if(!avversariProfilesBySquadra[k]) avversariProfilesBySquadra[k] = dossierAvversariMergeProfiles([h]);
+  });
+}
+// profilo per nome fantallenatore (gestisce merge: chiave composta o singola parte)
+function dossierAvversariGetProfile(fantaAllenatoreNome){
+  var k = avversariNorm(fantaAllenatoreNome);
+  if(!k) return null;
+  if(avversariProfiles[k]) return avversariProfiles[k];
+  if(/(^|\s)e\s/i.test(' '+String(fantaAllenatoreNome||'')+' ')){
+    var parts = String(fantaAllenatoreNome).split(/\s+e\s+/i).map(function(x){ return avversariNorm(x); }).filter(Boolean);
+    var found = [];
+    parts.forEach(function(p){ if(avversariProfiles[p] && found.indexOf(avversariProfiles[p])<0) found.push(avversariProfiles[p]); });
+    if(found.length===1) return found[0];
+  }
+  return null;
+}
+// profilo per squadra della lega corrente (matching per nome fanta-squadra nella stagione nuova;
+// la squadra corrente non esiste ancora nell'anno storico, quindi si passa dai manager)
+function dossierAvversariProfiloPerTeamLega(nomeTeam){
+  var k = avversariNorm(nomeTeam);
+  if(!k) return null;
+  for(var i=0;i<leagueSeasons.length;i++){
+    var s = leagueSeasons[i];
+    if(s.id==='_settings') continue;
+    if(avversariNorm(s.fantaSquadra)===k){
+      var prof = dossierAvversariGetProfile(s.fantaAllenatori);
+      return prof || dossierAvversariProfiloSenzaStorico(s.fantaAllenatori, s.fantaSquadra);
+    }
+  }
+  return avversariProfilesBySquadra[k] || null;
+}
+
+// ---------- LOAD + PERSIST (upsert a fusione, mai delete) ----------
+async function dossierAvversariLoad(){
+  try{
+    var r1 = await sb.from('auction_history').select('*');
+    if(r1.error) throw r1.error;
+    auctionHistory = (r1.data||[]).map(function(x){ return Object.assign({ id:x.id }, x.data||{}); });
+    var r2 = await sb.from('league_seasons').select('*');
+    if(r2.error) throw r2.error;
+    leagueSeasons = (r2.data||[]).map(function(x){ return Object.assign({ id:x.id }, x.data||{}); });
+    dossierAvversariRebuildProfiles();
+    avversariLoadActiveTeam();
+    return true;
+  }catch(e){
+    console.warn('Dossier avversari: dati storici non disponibili ('+(e.message||e)+'). L\'app continua a funzionare senza profili.');
+    auctionHistory=[]; leagueSeasons=[]; avversariProfiles={}; avversariProfilesBySquadra={}; avversariBucketCache={};
+    return false;
+  }
+}
+// costruisce le righe da salvare (auction_history + _settings + league_seasons) — usata da
+// dossierAvversariPersist e dai test: nessun side-effect su Supabase.
+function dossierAvversariBuildLocalRows(parsed, matches){
+  var stag = AVV_STAGIONE_STORICA_DEFAULT;
+  var stagNuova = parsed.stagioneNuova || dossierAvversariStagioneCorrente();
+  var settings = {
+    isAvversariSettings: true,
+    stagioneStorica: stag,
+    stagioneNuova: stagNuova,
+    medianaLega: parsed.parametri ? parsed.parametri.medianaLega : null,
+    bigClubs: parsed.parametri ? parsed.parametri.bigClubs : [],
+    neopromosse: parsed.parametri ? parsed.parametri.neopromosse : [],
+    fasceEta: parsed.parametri ? parsed.parametri.fasceEta : { giovaneFinoA:23, adultoFinoA:29 },
+    nSquadreLegaStorica: parsed.parametri ? parsed.parametri.nSquadreLegaStorica : AVV_N_SQUADRE_STORICA_DEFAULT,
+    fasciaFvmThresholds: parsed.parametri ? parsed.parametri.fasciaFvmThresholds : null,
+    importedAt: new Date().toISOString(),
+    importedBy: (typeof myName!=='undefined' && myName) ? myName : 'anonimo'
+  };
+  var histRows = (parsed.riepiloghi||[]).map(function(r){
+    var nomeSq = r.fantaSquadra || '';
+    var man = String(r.fantaAllenatori||'').trim();
+    var giocatori = ((parsed.giocatoriPerSquadra||{})[avversariNorm(nomeSq)]||[]).map(function(g){
+      return {
+        nome:g.nome, ruolo:g.ruolo, squadra:g.squadra, eta:g.eta, costo:g.costo,
+        fvm1000:g.fvm1000, fvmBase500:g.fvmBase500, rapporto:g.rapporto, indiceLega:g.indiceLega,
+        nuovoArrivo:g.nuovoArrivo, bigClub:g.bigClub, neopromossa:g.neopromossa, fasciaEta:g.fasciaEta,
+        fasciaApp:g.fasciaApp
+      };
+    });
+    var riep = {};
+    for(var k in r){ if(k!=='fantaSquadra' && k!=='fantaAllenatori' && Object.prototype.hasOwnProperty.call(r,k)) riep[k]=r[k]; }
+    riep.nGiocatori = riep.nGiocatori!=null ? riep.nGiocatori : giocatori.length;
+    return { id: stag+'_'+(man||nomeSq), data: {
+      stagione: stag,
+      fantaAllenatore: man,
+      fantaSquadra: nomeSq,
+      nSquadreLega: (parsed.parametri && parsed.parametri.nSquadreLegaStorica) || AVV_N_SQUADRE_STORICA_DEFAULT,
+      medianaLega: parsed.parametri ? parsed.parametri.medianaLega : null,
+      riepilogo: riep,
+      giocatori: giocatori
+    }};
+  });
+  var seasonRows = (parsed.squadreNuove||[]).map(function(sq){
+    var m = (matches && matches[sq.fantaSquadra]) || { match:[], merged:false };
+    return { id: stagNuova+'_'+sq.fantaSquadra, data: {
+      stagione: stagNuova,
+      fantaSquadra: sq.fantaSquadra,
+      fantaAllenatori: sq.fantaAllenatori || '',
+      matchedHistoricalManagers: (m.match||[]).map(function(r){ return r.fantaAllenatori || r.fantaSquadra || ''; }).filter(Boolean),
+      hasHistoricalData: (m.match||[]).length>0
+    }};
+  });
+  return { settingsRow: { id:'_settings', data: settings }, histRows: histRows, seasonRows: seasonRows, stagioneNuova: stagNuova };
+}
+async function dossierAvversariPersist(parsed, matches){
+  var rows = dossierAvversariBuildLocalRows(parsed, matches);
+  var tasks = [];
+  rows.histRows.forEach(function(row){ tasks.push(function(){ return mergeSaveRow('auction_history', row.id, row.data); }); });
+  tasks.push(function(){ return mergeSaveRow('auction_history', rows.settingsRow.id, rows.settingsRow.data); });
+  rows.seasonRows.forEach(function(row){ tasks.push(function(){ return mergeSaveRow('league_seasons', row.id, row.data); }); });
+  var errors = 0;
+  await Promise.all(tasks.map(function(t){
+    return t().catch(function(e){ errors++; console.warn('Dossier avversari: errore salvataggio riga:', e.message||e); });
+  }));
+  // ricarica lo stato locale dalla fonte di verità (e ricostruisce i profili)
+  await dossierAvversariLoad();
+  return { ok: errors===0, errors: errors, nHistory: rows.histRows.length, nSeasons: rows.seasonRows.length, stagioneNuova: rows.stagioneNuova };
+}
+
+// ---------- MEDIANA DINAMICA della nuova lega (update dopo ogni vendita) ----------
+// All'inizio dell'asta non ci sono vendite: si usa l'indice storico del fantallenatore.
+// Dopo ogni vendita la mediana di lega 2026/27 = MEDIANA dei Costo/FVM_base_500 delle vendite
+// fatte finora; con almeno 5 vendite è affidabile e serve a normalizzare le previsioni.
+function dossierAvversariMedianaDinamica(){
+  var ratios = [];
+  (typeof players!=='undefined' ? players : []).forEach(function(p){
+    if(!p.asta || p.asta.prezzo==null || Number(p.asta.prezzo)<=0) return;
+    var ref = referencePrice(p);
+    if(!ref || !ref.value) return;
+    ratios.push(Number(p.asta.prezzo)/ref.value);
+  });
+  if(!ratios.length) return { mediana: null, n: 0 };
+  ratios.sort(function(a,b){ return a-b; });
+  var n = ratios.length;
+  var med = (n%2===1) ? ratios[(n-1)/2] : (ratios[n/2-1]+ratios[n/2])/2;
+  return { mediana: med, n: n };
+}
+
+// ---------- 3.4.1 PREVISIONE PREZZO personalizzata per fantallenatore ----------
+function prevediPrezzoPerFantallenatore(player, fantaAllenatoreNome){
+  // 1. prezzo base: la tua stima manuale, altrimenti FVM base 500 (stessa semantica di referencePrice)
+  var ref = referencePrice(player);
+  var prezzoBase = ref ? ref.value : null;
+  if(!prezzoBase) return null;
+  // 2. profilo storico del fantallenatore
+  var profilo = dossierAvversariGetProfile(fantaAllenatoreNome);
+  if(!profilo || !profilo.hasHistoricalData){
+    return { prezzo: Math.round(prezzoBase), prezzoBase: Math.round(prezzoBase), moltiplicatore: 1, indiceFantallenatore: null, fonte: 'FVM (no storico)' };
+  }
+  // 3. indice storico come moltiplicatore (clamp 0.5–2.0)
+  var idx = avversariNum(profilo.indiceGenerale);
+  if(idx==null) idx = 1;
+  var moltiplicatore = Math.max(0.5, Math.min(2.0, idx));
+  // 4. normalizzazione sulla NUOVA mediana di lega (dinamica): l'indice storico dice quanto
+  //    pagava NELLA vecchia lega; se la nuova lega sta pagando in media diversa, si corregge.
+  var fattore = 1;
+  var dyn = dossierAvversariMedianaDinamica();
+  var medianaStorica = avversariNum(profilo.medianaLega);
+  if(dyn && dyn.mediana!=null && dyn.n>=AVV_VENDITE_MEDIANA_AFFIDABILE && medianaStorica && medianaStorica>0){
+    fattore = Math.max(0.6, Math.min(1.6, dyn.mediana/medianaStorica));
+  }
+  var prezzoPrevisto = Math.round(prezzoBase * moltiplicatore * fattore);
+  return {
+    prezzo: prezzoPrevisto,
+    prezzoBase: Math.round(prezzoBase),
+    moltiplicatore: moltiplicatore,
+    indiceFantallenatore: idx,
+    fattoreNormalizzazione: fattore,
+    fonte: fattore!==1 ? 'FVM × indice storico × normalizzazione mediana' : 'FVM × indice storico'
+  };
+}
+
+// ---------- 3.4.2 SOGLIE TEMPERATURA dinamiche per fantallenatore ----------
+// Il manager considerato: la fanta-squadra "attiva" selezionata (se c'è), altrimenti il
+// manager della squadra con isMine=true — così la griglia mostra il mercato rispetto a come
+// paga chi ci interessa. Senza storico (o con toggle OFF) restano le soglie standard.
+function avversariManagerPerTemperature(){
+  if(typeof avversariFantaSquadraAttiva!=='undefined' && avversariFantaSquadraAttiva){
+    var s = leagueSeasons.find(function(x){ return x.id!=='_settings' && avversariNorm(x.fantaSquadra)===avversariNorm(avversariFantaSquadraAttiva); });
+    if(s) return s.fantaAllenatori || '';
+  }
+  var mine = (typeof leagueTeams!=='undefined') ? leagueTeams.find(function(t){ return t.isMine; }) : null;
+  if(!mine) return '';
+  var ls = leagueSeasons.find(function(x){ return x.id!=='_settings' && avversariNorm(x.fantaSquadra)===avversariNorm(mine.nome); });
+  return ls ? (ls.fantaAllenatori||'') : '';
+}
+function soglieTemperaturaPerFantallenatore(fantaAllenatoreNome, soglieBase){
+  soglieBase = soglieBase || {};
+  var baseCaldo = soglieBase.sogliaCaldo!=null ? Number(soglieBase.sogliaCaldo) : (auctionSettings.tempSogliaCalda!=null ? Number(auctionSettings.tempSogliaCalda) : 1.15);
+  var baseFreddo = soglieBase.sogliaFreddo!=null ? Number(soglieBase.sogliaFreddo) : (auctionSettings.tempSogliaFredda!=null ? Number(auctionSettings.tempSogliaFredda) : 0.85);
+  var out = { sogliaCaldo: baseCaldo, sogliaFreddo: baseFreddo, personalizzata: false, indiceFantallenatore: null, nomeFantallenatore: '' };
+  if(auctionSettings.tempPersonalizzata === false) return out;
+  var profilo = dossierAvversariGetProfile(fantaAllenatoreNome);
+  if(!profilo || !profilo.hasHistoricalData || profilo.indiceGenerale==null) return out;
+  var idx = Number(profilo.indiceGenerale);
+  var delta = idx - 1.0; // >0 caro, <0 economico
+  var shift = Math.max(-0.3, Math.min(0.3, delta*0.5));
+  out.sogliaCaldo = +(baseCaldo + shift).toFixed(3);
+  out.sogliaFreddo = +(baseFreddo + shift).toFixed(3);
+  out.personalizzata = true;
+  out.indiceFantallenatore = idx;
+  out.nomeFantallenatore = (profilo.components||[]).map(function(c){ return c.fantaAllenatore; }).filter(Boolean).join(' + ') || String(fantaAllenatoreNome||'');
+  return out;
+}
+
+// ---------- 3.4.3 AVVERSARI PERICOLOSI per slot del Piano ----------
+// Per la fascia dello slot sceglie l'indice più pertinente:
+//  Top/Semitop → indiceBigClub, Regolarista/Scommessa → indiceClubMinori, Medio → indiceGenerale.
+function avversariPericolosiPerSlot(reparto, fascia){
+  var avversari = [];
+  var stagCorrente = dossierAvversariStagioneCorrente();
+  leagueSeasons.forEach(function(s){
+    if(s.id==='_settings') return;
+    if(s.stagione && stagCorrente && s.stagione!==stagCorrente) return;
+    var nome = String(s.fantaAllenatori||'').trim();
+    var profilo = dossierAvversariGetProfile(nome);
+    if(!profilo || !profilo.hasHistoricalData) return;
+    var idx;
+    if(fascia==='Top' || fascia==='Semitop'){
+      idx = (profilo.indiceBigClub!=null) ? profilo.indiceBigClub : profilo.indiceGenerale;
+    } else if(fascia==='Regolarista' || fascia==='Scommessa'){
+      idx = (profilo.indiceClubMinori!=null) ? profilo.indiceClubMinori : profilo.indiceGenerale;
+    } else {
+      idx = profilo.indiceGenerale;
+    }
+    if(idx==null || isNaN(Number(idx))) return;
+    avversari.push({
+      nome: nome,
+      indice: Number(idx),
+      indiceGenerale: profilo.indiceGenerale!=null ? Number(profilo.indiceGenerale) : null,
+      indiceBigClub: profilo.indiceBigClub!=null ? Number(profilo.indiceBigClub) : null,
+      indiceClubMinori: profilo.indiceClubMinori!=null ? Number(profilo.indiceClubMinori) : null,
+      fantaSquadra: s.fantaSquadra || '',
+      reparto: reparto, fascia: fascia || ''
+    });
+  });
+  avversari.sort(function(a,b){ return b.indice - a.indice; }); // i più "pericolosi" primi
+  return avversari;
+}
+
+// ---------- 3.4.4 Acquisti simili (stesso ruolo + stessa fascia) ----------
+function avversariGiocatoriSimili(reparto, fascia){
+  var out = [];
+  auctionHistory.forEach(function(h){
+    if(h.id==='_settings' || !h.giocatori || !h.giocatori.length) return;
+    h.giocatori.forEach(function(g){
+      if(reparto && g.ruolo!==reparto) return;
+      if(fascia){
+        var f = g.fasciaApp || avversariFasciaDaFvm(g.ruolo, g.fvmBase500);
+        if(f!==fascia) return;
+      }
+      var extra = Object.assign({}, g);
+      extra.fasciaApp = g.fasciaApp || avversariFasciaDaFvm(g.ruolo, g.fvmBase500);
+      extra.fantaSquadra = h.fantaSquadra || '';
+      extra.fantaAllenatore = h.fantaAllenatore || '';
+      out.push(extra);
+    });
+  });
+  return out;
+}
+function avversariPrezzoStoricoMedio(reparto, fascia){
+  if(!dossierAvversariHaDati()) return null;
+  var key = (reparto||'-')+'|'+(fascia||'-');
+  if(avversariBucketCache[key]) return avversariBucketCache[key];
+  var sim = avversariGiocatoriSimili(reparto, fascia);
+  if(!sim.length){ avversariBucketCache[key] = null; return null; }
+  var s = 0;
+  sim.forEach(function(g){ s += Number(g.costo)||0; });
+  var res = { media: s/sim.length, n: sim.length };
+  avversariBucketCache[key] = res;
+  return res;
+}
+
+
+// ============================================================
+// DOSSIER AVVERSARI — UI
+// ============================================================
+
+// ---------- CARD PROFILO STORICO ----------
+// opts: { openDefault:bool (aperta di default se c'è storico), target:nome per il modale }
+function avversariProfiloHtml(nomeTeam, opts){
+  opts = opts || {};
+  var prof = dossierAvversariProfiloPerTeamLega(nomeTeam) || dossierAvversariGetProfile(nomeTeam);
+  if(!prof){
+    if(opts.compact) return '';
+    return '<details class="avv-profile"><summary><span class="avv-caret">▸</span>📊 Profilo storico</summary><div class="avv-profile-body"><div class="avv-empty">Nessun profilo: importa il Dossier avversari (file .xlsx) dall\'header di questa tab.</div></div></details>';
+  }
+  var open = (opts.openDefault!=null) ? !!opts.openDefault : !!prof.hasHistoricalData;
+  var titolo = '📊 Profilo storico';
+  if(prof.hasHistoricalData){
+    titolo += ' ('+escapeHtml(prof.etichettaStagione||'')+')';
+    if(prof.merged) titolo += ' · merge';
+  }
+  var h = '<details class="avv-profile"'+(open?' open':'')+'>';
+  h += '<summary><span class="avv-caret">▸</span>'+titolo+(prof.hasHistoricalData?'<span style="margin-left:auto;" class="avv-idx-note">'+escapeHtml((prof.managers||[]).join(' + '))+'</span>':'')+'</summary>';
+  h += '<div class="avv-profile-body">';
+  if(!prof.hasHistoricalData){
+    h += '<div class="avv-empty">⚪ Prima stagione in lega — niente dati storici'+(prof.fantaAllenatori?(' ('+escapeHtml(prof.fantaAllenatori)+')'):'')+'.</div>';
+    h += '</div></details>';
+    return h;
+  }
+  var idxCls = avversariIdxClass(prof.indiceGenerale);
+  var idxLabel = prof.indiceGenerale>1.2 ? 'caro' : (prof.indiceGenerale<0.8 ? 'economico' : 'in linea');
+  // selezione fanta-squadra attiva per le previsioni personalizzate
+  var isActive = (typeof avversariFantaSquadraAttiva!=='undefined') && avversariFantaSquadraAttiva && avversariNorm(avversariFantaSquadraAttiva)===avversariNorm(nomeTeam);
+  h += '<div class="avv-profile-headline">';
+  h += '<div><span class="avv-idx-big '+idxCls+'">'+avversariFmt(prof.indiceGenerale)+' '+avversariIdxArrow(prof.indiceGenerale)+'</span> <span class="avv-idx-note">Indice generale ('+idxLabel+') · 1.0 = paga la media lega</span></div>';
+  h += '<div class="avv-idx-note">Efficienza: <b>'+avversariFmt(prof.efficienza)+'</b> · Spesa <b>'+avversariFmt(prof.spesaTotale,0)+'</b> · '+avversariFmt(prof.nGiocatori,0)+' giocatori</div>';
+  h += '</div>';
+  h += '<div class="avv-mini-grid">';
+  function row(lbl, v){ return '<div class="avv-mini-row"><span>'+lbl+'</span><b class="'+avversariIdxClass(v)+'">'+avversariFmt(v)+'</b></div>'; }
+  h += row('Big club', prof.indiceBigClub);
+  h += row('Nuovi arrivi', prof.indiceNuoviArrivi);
+  h += row('Confermati', prof.indiceConfermati);
+  h += row('Club minori', prof.indiceClubMinori);
+  h += row('Giovani (≤23)', prof.indiceGiovani);
+  h += row('Adulti (24-29)', prof.indiceAdulti);
+  h += row('Veterani (30+)', prof.indiceVeterani);
+  h += row('% spesa big club', prof.pctSpesaBigClub);
+  h += '</div>';
+  // Budget per reparto (barre P/D/C/A)
+  h += '<div class="avv-dept-block"><div class="avv-dept-title">Budget per reparto</div>';
+  [{r:'P',k:'pctBudgetPortieri',lbl:'P'},{r:'D',k:'pctBudgetDifesa',lbl:'D'},{r:'C',k:'pctBudgetCentrocampo',lbl:'C'},{r:'A',k:'pctBudgetAttacco',lbl:'A'}].forEach(function(d){
+    var pct = avversariNum(prof[d.k]);
+    var w = pct!=null ? Math.max(0, Math.min(100, pct*100)) : 0;
+    h += '<div class="avv-dept-row"><span class="avv-dept-label">'+d.lbl+'</span><div class="avv-dept-bar"><div class="avv-dept-fill rep-'+d.r+'" style="width:'+w.toFixed(1)+'%;"></div></div><span class="avv-dept-pct">'+(pct!=null?Math.round(pct*100)+'%':'—')+'</span></div>';
+  });
+  h += '</div>';
+  h += '<div class="avv-deal-row"><span>Miglior affare: <b>'+escapeHtml(prof.migliorAcquisto||'—')+'</b></span></div>';
+  h += '<div class="avv-deal-row"><span>Peggior acquisto: <b>'+escapeHtml(prof.peggiorAcquisto||'—')+'</b></span></div>';
+  h += '<div class="avv-meta-line">Età media: '+avversariFmt(prof.etaMedia,1)+' · Club diversi: '+avversariFmt(prof.clubRealiDiversi,0)+' · G per club: '+avversariFmt(prof.giocatoriPerClub,2)+' · Under 23: '+(avversariNum(prof.pctUnder23)!=null?Math.round(prof.pctUnder23*100)+'%':'—')+'</div>';
+  if(prof.merged && prof.components && prof.components.length>1){
+    h += '<div class="avv-merge-note">⚠️ Profilo combinato (media ponderata per N giocatori) di:';
+    h += '<ul>';
+    prof.components.forEach(function(c){
+      var idxC = c.riepilogo ? c.riepilogo.indiceGenerale : null;
+      h += '<li><b>'+escapeHtml(c.fantaAllenatore||c.fantaSquadra||'?')+'</b> ('+escapeHtml(c.fantaSquadra||'')+' '+escapeHtml(String(c.stagione||'').replace('-','/'))+' · indice '+avversariFmt(idxC)+' · '+avversariFmt(c.nGiocatori,0)+' gioc.)</li>';
+    });
+    h += '</ul></div>';
+  }
+  h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">';
+  h += '<button type="button" class="btn small'+(isActive?' primary':'')+'" data-avv-set-active="'+escapeHtml(nomeTeam)+'" title="Personalizza le previsioni prezzo e la temperatura per questa fanta-squadra">'+(isActive?'✓ fanta-squadra attiva':'🎯 previsioni per lui')+'</button>';
+  h += '<button type="button" class="btn small" data-avv-open-profile="'+escapeHtml(nomeTeam)+'" title="Apri il profilo in una finestra">🔎 scheda completa</button>';
+  h += '</div>';
+  h += '</div></details>';
+  return h;
+}
+// modale con la scheda completa del profilo (usata dai chip ⚠️ del Piano e dalle card)
+function dossierAvversariOpenProfileModal(nomeTeam){
+  var prof = dossierAvversariProfiloPerTeamLega(nomeTeam) || dossierAvversariGetProfile(nomeTeam);
+  var sRow = leagueSeasons.find(function(x){ return x.id!=='_settings' && avversariNorm(x.fantaSquadra)===avversariNorm(nomeTeam); });
+  var overlay = document.createElement('div');
+  overlay.className='overlay'; overlay.id='avvProfileOverlay';
+  var head = '<h2>📊 Profilo storico — '+escapeHtml(nomeTeam)+'</h2><button class="close-x" id="avvProfileClose">✕</button>';
+  var sub = '';
+  if(sRow) sub = '<div class="save-status">'+escapeHtml(sRow.fantaSquadra||'')+' · '+escapeHtml(sRow.fantaAllenatori||'?')+(sRow.stagione?(' · stagione '+escapeHtml(sRow.stagione)):'')+'</div>';
+  overlay.innerHTML = '<div class="modal" style="max-width:560px;">'+head+sub+
+    '<div style="max-height:60vh; overflow-y:auto; padding:4px 14px 10px;">'+avversariProfiloHtml(nomeTeam, {openDefault:true})+'</div>'+
+    '<div class="modal-actions"><button class="btn" id="avvProfileClose2" style="flex:1;">Chiudi</button></div></div>';
+  document.body.appendChild(overlay);
+  var closeFn = function(){ overlay.remove(); };
+  overlay.querySelector('#avvProfileClose').onclick = closeFn;
+  overlay.querySelector('#avvProfileClose2').onclick = closeFn;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeFn(); });
+  bindAvversariProfileActions(overlay);
+}
+// azioni comuni dentro le card profilo (set active + open modal)
+function bindAvversariProfileActions(root){
+  root.querySelectorAll('[data-avv-set-active]').forEach(function(btn){
+    btn.onclick = function(e){
+      e.stopPropagation();
+      setAvversariFantaSquadraAttiva(btn.getAttribute('data-avv-set-active'));
+    };
+  });
+  root.querySelectorAll('[data-avv-open-profile]').forEach(function(btn){
+    btn.onclick = function(e){
+      e.stopPropagation();
+      dossierAvversariOpenProfileModal(btn.getAttribute('data-avv-open-profile'));
+    };
+  });
+}
+
+// ---------- FANTA-SQUADRA ATTIVA (previsioni personalizzate) ----------
+function avversariLoadActiveTeam(){
+  try{ avversariFantaSquadraAttiva = localStorage.getItem('df_avv_active_team') || ''; }catch(e){ avversariFantaSquadraAttiva=''; }
+  // valida: la squadra deve esistere ancora in league_seasons
+  if(avversariFantaSquadraAttiva && leagueSeasons.length){
+    var found = leagueSeasons.some(function(s){ return s.id!=='_settings' && avversariNorm(s.fantaSquadra)===avversariNorm(avversariFantaSquadraAttiva); });
+    if(!found) avversariFantaSquadraAttiva='';
+  }
+}
+function setAvversariFantaSquadraAttiva(nomeTeam){
+  if(avversariFantaSquadraAttiva && avversariNorm(avversariFantaSquadraAttiva)===avversariNorm(nomeTeam||'')){
+    avversariFantaSquadraAttiva = '';
+  } else {
+    avversariFantaSquadraAttiva = nomeTeam || '';
+  }
+  try{
+    if(avversariFantaSquadraAttiva) localStorage.setItem('df_avv_active_team', avversariFantaSquadraAttiva);
+    else localStorage.removeItem('df_avv_active_team');
+  }catch(e){}
+  showToast(avversariFantaSquadraAttiva ? ('🎯 Previsioni personalizzate per '+avversariFantaSquadraAttiva) : 'Previsioni personalizzate disattivate');
+  refreshAvversariInEditors();
+  try{ if(currentTab==='warroom' && wrActiveSection==='plancia') renderWarRoom(); }catch(e){}
+  try{ if(currentTab==='asta') renderAsta(); }catch(e){}
+}
+function avversariActiveManagerSelectHtml(idAttr){
+  var id = idAttr || 'avvActiveMgrSelect';
+  var n = 0;
+  var opts = '<option value="">🎯 fanta-squadra attiva: nessuna (previsioni standard)</option>';
+  leagueSeasons.forEach(function(s){
+    if(s.id==='_settings') return;
+    n++;
+    var label = (s.fantaSquadra||'')+' · '+(s.fantaAllenatori||'?')+((s.hasHistoricalData===false)?' (prima stagione)':'');
+    var sel = avversariFantaSquadraAttiva && avversariNorm(avversariFantaSquadraAttiva)===avversariNorm(s.fantaSquadra||'');
+    opts += '<option value="'+escapeHtml(s.fantaSquadra||'')+'"'+(sel?' selected':'')+'>'+escapeHtml(label)+'</option>';
+  });
+  if(!n) return '';
+  return '<div class="avv-active-mgr"><select id="'+id+'">'+opts+'</select></div>';
+}
+function bindAvversariActiveManagerSelect(selectEl){
+  if(!selectEl) return;
+  selectEl.onchange = function(){
+    setAvversariFantaSquadraAttiva(selectEl.value);
+  };
+}
+// box "Previsione per [fanta-squadra attiva]" nel dettaglio giocatore
+function avversariPredBoxHtml(rec){
+  if(!auctionSettings.modalitaAsta) return '';
+  var mgrRow = leagueSeasons.find(function(x){ return x.id!=='_settings' && avversariNorm(x.fantaSquadra)===avversariNorm(avversariFantaSquadraAttiva||''); });
+  if(!avversariFantaSquadraAttiva){
+    var any = leagueSeasons.some(function(x){ return x.id!=='_settings' && x.hasHistoricalData; });
+    return any ? '<span style="color:var(--chalk-dim);">🎯 Previsione per avversario: scegli una fanta-squadra attiva per vedere quanto pagherebbe lei su questo giocatore.</span>' : '';
+  }
+  var nomeMgr = mgrRow ? (mgrRow.fantaAllenatori||avversariFantaSquadraAttiva) : avversariFantaSquadraAttiva;
+  var r = prevediPrezzoPerFantallenatore(rec, nomeMgr);
+  if(!r) return '<span style="color:var(--chalk-dim);">🎯 Previsione per '+escapeHtml(nomeMgr)+': serve un prezzo di riferimento (tua stima o FVM) per questo giocatore.</span>';
+  if(r.fonte==='FVM (no storico)'){
+    return '🎯 Previsione per '+escapeHtml(nomeMgr)+': <b>'+r.prezzo+' cr</b> <span style="color:var(--chalk-dim);">(riferimento FVM · '+escapeHtml(nomeMgr)+' è alla prima stagione, niente storico)</span>';
+  }
+  var extra = (r.fattoreNormalizzazione && r.fattoreNormalizzazione!==1) ? ' × normalizzazione mediana '+r.fattoreNormalizzazione.toFixed(2) : '';
+  return '🎯 Previsione per '+escapeHtml(nomeMgr)+': <b>'+r.prezzo+' cr</b> <span style="color:var(--chalk-dim);">(basato su FVM '+r.prezzoBase+' × indice storico '+avversariFmt(r.indiceFantallenatore)+extra+')</span>';
+}
+
+// ---------- 3.4.2 DETTAGLIO TEMPERATURA (click su cella griglia) ----------
+function dossierAvversariTempDetailModal(reparto, fascia){
+  var temp = computeMarketTemperature(reparto, fascia);
+  var t = TEMP_LABELS[temp.level];
+  var overlay = document.createElement('div');
+  overlay.className='overlay'; overlay.id='avvTempOverlay';
+  var personal = '';
+  if(temp.personalizzata){
+    var pct = Math.round(((temp.indiceFantallenatore||1)-1)*100);
+    var verso = pct>=0 ? ('sopra la media (paga ~'+pct+'% in più)') : ('sotto la media (paga ~'+Math.abs(pct)+'% in meno)');
+    personal = '<div class="avv-merge-note" style="margin-top:10px;">🌡️ <b>Soglie personalizzate per '+escapeHtml(temp.nomeFantallenatore||'il tuo fantallenatore')+'</b> (indice storico '+avversariFmt(temp.indiceFantallenatore)+'):<br>'+
+      'caldo &gt; '+avversariFmt(temp.soglieUsate.sogliaCaldo)+' · freddo &lt; '+avversariFmt(temp.soglieUsate.sogliaFreddo)+' (standard: '+avversariFmt(auctionSettings.tempSogliaCalda)+' / '+avversariFmt(auctionSettings.tempSogliaFredda)+').<br>'+
+      'Il mercato in questa fascia si valuta rispetto a come '+escapeHtml(temp.nomeFantallenatore||'lui')+' storicamente paga: '+escapeHtml(verso)+'.</div>';
+  } else if(dossierAvversariHaDati()){
+    personal = '<div class="avv-merge-note" style="margin-top:10px;">Soglie standard (nessuna personalizzazione: attivala in ⚙️ Impostazioni asta → 🌡️, oppure scegli una fanta-squadra attiva con storico).</div>';
+  }
+  overlay.innerHTML = '<div class="modal" style="max-width:460px;">'+
+    '<div class="modal-head"><h2>'+t.icon+' Temperatura '+escapeHtml(reparto)+'/'+escapeHtml(fascia)+'</h2><button class="close-x" id="avvTempClose">✕</button></div>'+
+    '<div class="save-status"><b>'+t.label+'</b> — '+escapeHtml(t.hint)+'</div>'+
+    '<div style="padding:4px 14px 6px; font-size:12.5px; color:var(--chalk-dim);">'+
+    'Rapporto medio prezzo/riferimento: <b style="color:var(--chalk);">'+(temp.avgRatio!=null?temp.avgRatio.toFixed(2):'—')+'</b> · '+
+    (temp.count?temp.count+' vendite confrontate'+(temp.confidence==='bassa'?' ⚠️ ancora poco affidabile':''):'nessuna vendita')+
+    '</div>'+personal+
+    '<div class="modal-actions"><button class="btn" id="avvTempClose2" style="flex:1;">Chiudi</button></div></div>';
+  document.body.appendChild(overlay);
+  var closeFn = function(){ overlay.remove(); };
+  overlay.querySelector('#avvTempClose').onclick = closeFn;
+  overlay.querySelector('#avvTempClose2').onclick = closeFn;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeFn(); });
+}
+
+// ---------- 3.4.4 STORIA ACQUISTI SIMILI (scheda giocatore) ----------
+function avversariSimiliHtml(rec){
+  if(!rec || !auctionHistory.length || !dossierAvversariHaDati()){
+    return '<div class="avv-empty">Importa il Dossier avversari per vedere qui chi ha comprato giocatori simili (stesso ruolo + fascia) l\'anno scorso e a quale prezzo.</div>';
+  }
+  var reparto = rec.posFanta;
+  var fascia = rec.fascia || '';
+  var sim = avversariGiocatoriSimili(reparto, fascia);
+  var perFascia = fascia ? '' : ' (nessuna fascia impostata: filtro solo per ruolo)';
+  if(!sim.length){
+    return '<div class="avv-empty">Nessun giocatore storico con stesso ruolo'+(fascia?'+fascia':'')+' nel dossier.'+perFascia+'</div>';
+  }
+  var costi = sim.map(function(g){ return Number(g.costo)||0; }).sort(function(a,b){ return a-b; });
+  var media = costi.reduce(function(a,b){ return a+b; },0)/costi.length;
+  var mediana = costi.length%2 ? costi[(costi.length-1)/2] : (costi[costi.length/2-1]+costi[costi.length/2])/2;
+  var max = costi[costi.length-1];
+  var h = '<div class="avv-sim-summary">Giocatori simili ('+escapeHtml(reparto)+(fascia?' · '+escapeHtml(fascia):'')+'): <b>'+sim.length+'</b> · media <b>'+media.toFixed(0)+' cr</b> · mediana <b>'+mediana.toFixed(0)+' cr</b> · max <b>'+max.toFixed(0)+' cr</b>'+perFascia+'</div>';
+  var sorted = sim.slice().sort(function(a,b){ return (Number(b.costo)||0)-(Number(a.costo)||0); });
+  var MAX_ROWS = 12;
+  h += '<table class="avv-sim-table"><thead><tr><th>Giocatore</th><th>Sq</th><th>Comprato da</th><th>Costo</th><th>Rap.</th></tr></thead><tbody>';
+  sorted.slice(0, MAX_ROWS).forEach(function(g){
+    var rc = avversariIdxClass(g.rapporto);
+    h += '<tr><td>'+escapeHtml(g.nome)+' <span style="color:var(--chalk-dim);font-size:10px;">'+escapeHtml(g.fasciaApp||'')+(g.nuovoArrivo?' · nuovo':'')+'</span></td>'+
+         '<td>'+escapeHtml(g.squadra||'—')+'</td>'+
+         '<td>'+escapeHtml(g.fantaSquadra||'—')+'</td>'+
+         '<td>'+(g.costo!=null?Number(g.costo).toFixed(0)+' cr':'—')+'</td>'+
+         '<td class="'+rc+'">'+avversariFmt(g.rapporto)+'</td></tr>';
+  });
+  h += '</tbody></table>';
+  if(sorted.length>MAX_ROWS) h += '<div class="avv-empty" style="margin-top:4px;">…e altri '+(sorted.length-MAX_ROWS)+' giocatori simili.</div>';
+  return h;
+}
+function renderAvversariSimiliInArea(area, rec){
+  if(!area) return;
+  area.innerHTML = avversariSimiliHtml(rec);
+}
+function refreshAvversariInEditors(){
+  // modale mobile
+  try{
+    if(editingType==='player' && editingId){
+      var p = players.find(function(x){ return x.id===editingId; });
+      var area = document.getElementById('avvSimArea');
+      if(p && area) renderAvversariSimiliInArea(area, p);
+      var box = document.getElementById('avvPredBox');
+      if(box && box.innerHTML!=='') box.innerHTML = avversariPredBoxHtml(p||{});
+    }
+  }catch(e){}
+  // finestre WM desktop
+  try{
+    if(typeof WM!=='undefined' && WM.windows){
+      WM.windows.forEach(function(w){
+        if(w.type!=='player' || !w.body) return;
+        var recId = w.state && w.state.recordId;
+        var p2 = recId ? players.find(function(x){ return x.id===recId; }) : null;
+        var area2 = w.body.querySelector('[data-field="avvSimArea"]');
+        if(area2) renderAvversariSimiliInArea(area2, p2);
+        var box2 = w.body.querySelector('[data-field="avvPredBox"]');
+        if(box2 && p2 && box2.innerHTML!=='') box2.innerHTML = avversariPredBoxHtml(p2);
+      });
+    }
+  }catch(e){}
+}
+
+
+// ---------- IMPORT: file picker + anteprima con match modificabili ----------
+function dossierAvversariPickAndImportFile(){
+  var inp = document.getElementById('avvImportFileInput');
+  if(!inp){
+    inp = document.createElement('input');
+    inp.type='file'; inp.id='avvImportFileInput'; inp.accept='.xlsx,.xls'; inp.style.display='none';
+    document.body.appendChild(inp);
+    inp.onchange = function(e){
+      var f = e.target.files && e.target.files[0];
+      if(f) dossierAvversariImportFile(f);
+      e.target.value='';
+    };
+  }
+  inp.click();
+}
+async function dossierAvversariImportFile(file){
+  if(typeof XLSX==='undefined'){
+    showToast('Libreria SheetJS non caricata (serve la connessione al CDN): riprova.');
+    return;
+  }
+  try{
+    showToast('Lettura del file…');
+    var buf = await file.arrayBuffer();
+    var wb = XLSX.read(new Uint8Array(buf), { type:'array' });
+    var parsed = dossierAvversariParseWorkbook(wb);
+    if(!parsed.ok){
+      showToast('File non valido: '+(parsed.warnings[0]||'fogli attesi non trovati'));
+      return;
+    }
+    dossierAvversariShowImportPreview(parsed);
+  }catch(e){
+    console.error('Errore import dossier avversari:', e);
+    showToast('Errore lettura file: '+(e.message||e));
+  }
+}
+// modale di anteprima: per ogni squadra 2026/27 mostra il matching proposto; l'utente può
+// aggiungere/togliere match manualmente (chips), poi confermare l'upsert.
+function dossierAvversariShowImportPreview(parsed){
+  var matches = dossierAvversariMatchManagers(parsed.squadreNuove, parsed.riepiloghi);
+  // stato editabile: fantaSquadra → [riepilogo storico, ...]
+  var edit = {};
+  Object.keys(matches).forEach(function(k){ edit[k] = (matches[k].match||[]).slice(); });
+  var overlay = document.createElement('div');
+  overlay.className='overlay'; overlay.id='avvImportOverlay';
+  var p = parsed.parametri||{};
+  var totGioc = parsed.righeDati.length;
+  var nMatch = Object.keys(matches).filter(function(k){ return matches[k].match.length; }).length;
+  var nMerge = Object.keys(matches).filter(function(k){ return matches[k].merged; }).length;
+  overlay.innerHTML =
+    '<div class="modal" style="max-width:680px;">'+
+    '<div class="modal-head"><h2>📥 Dossier avversari — anteprima import</h2><button class="close-x" id="avvImpClose">✕</button></div>'+
+    '<div class="settings-hint">Trovati <b>'+totGioc+'</b> giocatori, <b>'+(parsed.riepiloghi.length)+'</b> squadre storiche 2025/26, <b>'+parsed.squadreNuove.length+'</b> squadre della stagione '+(parsed.stagioneNuova||AVV_STAGIONE_NUOVA_DEFAULT)+', <b>'+parsed.esclusi.length+'</b> esclusi (FVM basso) · mediana di lega <b>'+avversariFmt(p.medianaLega)+'</b>. Il matching avviene per <b>nome fantallenatore</b>, non per nome squadra: verifica e correggi qui sotto prima di salvare.</div>'+
+    '<div style="max-height:46vh; overflow-y:auto; padding:8px 14px;" id="avvImpList"></div>'+
+    '<div class="settings-hint" style="margin:0 14px 8px;">'+nMatch+' squadre con storico · '+nMerge+' merge (profili uniti per media ponderata per N giocatori) · le altre risultano "prima stagione". Salvataggio come upsert: nessun dato esistente viene cancellato.</div>'+
+    '<div class="modal-actions"><button class="btn" id="avvImpCancel">Annulla</button><button class="btn primary" id="avvImpConfirm" style="flex:2;">Importa nel dossier</button></div></div>';
+  document.body.appendChild(overlay);
+
+  var listEl = overlay.querySelector('#avvImpList');
+  function chipFor(sqName, r){
+    var lbl = (r.fantaSquadra||'?')+' · '+(r.fantaAllenatori||'?')+' · idx '+(r.indiceGenerale!=null?Number(r.indiceGenerale).toFixed(2):'—');
+    return '<span class="piano-cand-chip" data-avv-chip="'+escapeHtml(sqName)+'" data-avv-chip-sq="'+escapeHtml(r.fantaSquadra||'')+'" title="Clicca ✕ per slegare questo profilo storico">⚡ '+escapeHtml(lbl)+'<span class="x" title="Slega">✕</span></span>';
+  }
+  function renderList(){
+    var h = '';
+    parsed.squadreNuove.forEach(function(sq){
+      var nomeSq = sq.fantaSquadra;
+      var arr = edit[nomeSq]||[];
+      var m = matches[nomeSq]||{};
+      var icon = arr.length>1 ? '⚗️' : (arr.length===1 ? '✓' : '✗');
+      var dettaglio = arr.length>1 ? 'merge: verranno uniti per media ponderata' :
+        (arr.length===1 ? 'storico: '+(arr[0].fantaSquadra||'') : 'nessun match · prima stagione');
+      h += '<div class="avv-match-row">';
+      h += '<span class="mk-icon">'+icon+'</span>';
+      h += '<span class="mk-name">'+escapeHtml(nomeSq)+'</span>';
+      h += '<span class="mk-detail">'+escapeHtml(sq.fantaAllenatori||'?')+' · '+escapeHtml(dettaglio)+'</span>';
+      h += '<span style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">';
+      arr.forEach(function(r){ h += chipFor(nomeSq, r); });
+      h += '<select class="avv-add-match" data-avv-add="'+escapeHtml(nomeSq)+'"><option value="">+ forza match…</option>';
+      parsed.riepiloghi.forEach(function(r){
+        var already = arr.some(function(x){ return (x.fantaSquadra||'')===(r.fantaSquadra||''); });
+        if(already) return;
+        h += '<option value="'+escapeHtml(r.fantaSquadra||'')+'">'+escapeHtml((r.fantaSquadra||'?')+' ('+(r.fantaAllenatori||'?')+')')+'</option>';
+      });
+      h += '</select>';
+      h += '</span></div>';
+    });
+    listEl.innerHTML = h;
+    bindList();
+  }
+  function bindList(){
+    listEl.querySelectorAll('[data-avv-chip]').forEach(function(chip){
+      chip.querySelector('.x').onclick = function(e){
+        e.stopPropagation();
+        var sq = chip.getAttribute('data-avv-chip');
+        var sqStorica = chip.getAttribute('data-avv-chip-sq');
+        edit[sq] = (edit[sq]||[]).filter(function(r){ return (r.fantaSquadra||'')!==sqStorica; });
+        renderList();
+      };
+    });
+    listEl.querySelectorAll('[data-avv-add]').forEach(function(sel){
+      sel.onchange = function(){
+        var sq = sel.getAttribute('data-avv-add');
+        var chosen = parsed.riepiloghi.find(function(r){ return (r.fantaSquadra||'')===sel.value; });
+        if(chosen){
+          edit[sq] = edit[sq]||[];
+          if(!edit[sq].some(function(r){ return (r.fantaSquadra||'')===(chosen.fantaSquadra||''); })) edit[sq].push(chosen);
+        }
+        renderList();
+      };
+    });
+  }
+  renderList();
+
+  var closeFn = function(){ overlay.remove(); };
+  overlay.querySelector('#avvImpClose').onclick = closeFn;
+  overlay.querySelector('#avvImpCancel').onclick = closeFn;
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeFn(); });
+  overlay.querySelector('#avvImpConfirm').onclick = async function(){
+    var btn = overlay.querySelector('#avvImpConfirm');
+    btn.disabled = true;
+    btn.textContent = 'Salvataggio…';
+    try{
+      var finalMatches = {};
+      Object.keys(edit).forEach(function(k){ finalMatches[k] = { match: edit[k], merged: edit[k].length>1 }; });
+      var res = await dossierAvversariPersist(parsed, finalMatches);
+      overlay.remove();
+      if(res.ok){
+        showToast('Dossier avversari importato: '+res.nHistory+' profili storici, '+res.nSeasons+' squadre '+res.stagioneNuova);
+      } else {
+        showToast('Importato con '+res.errors+' errori: riprova o controlla la console.');
+      }
+      dossierAvversariRefreshUI();
+    }catch(e){
+      console.error(e);
+      btn.disabled = false;
+      btn.textContent = 'Importa nel dossier';
+      showToast('Errore durante il salvataggio: '+(e.message||e));
+    }
+  };
+}
+
+// ---------- AVVISI AVVERSARI NEGLI SLOT DEL PIANO ----------
+function pianoRenderAvversariSection(rep, idx, slot){
+  if(!leagueSeasons.length || !dossierAvversariHaDati()) return '';
+  var fascia = (slot && slot.fascia) || '';
+  var top = avversariPericolosiPerSlot(rep, fascia).filter(function(a){ return a.indice>AVV_PERICOLOSO_SOGLIA; }).slice(0,3);
+  var h = '<div class="piano-avv-section">';
+  h += '<button type="button" class="piano-avv-toggle" data-avv-toggle="1">⚠️ Avversari'+(fascia?(' in '+escapeHtml(fascia)):'')+'</button>';
+  h += '<div class="piano-avv-list" data-avv-list style="display:none;">';
+  if(!top.length){
+    h += '<span class="piano-avv-empty">Nessun avversario storicamente "caro"'+(fascia?(' in '+escapeHtml(fascia)):' in questa fascia')+'.</span>';
+  } else {
+    h += '<span class="piano-avv-empty">Competitori in '+(fascia?escapeHtml(fascia):'qualsiasi fascia')+':</span>';
+    top.forEach(function(a){
+      var extra = '';
+      // per Top/Semitop il numero che conta è l'indice big club: mostriamolo in chiaro
+      // quando differisce dall'indice generale (es. "Marco (0.88 → solo big club: 0.99)")
+      if((fascia==='Top'||fascia==='Semitop') && a.indiceBigClub!=null && a.indiceGenerale!=null && a.indiceBigClub!==a.indiceGenerale){
+        extra = ' → solo big club: <span class="num">'+a.indiceBigClub.toFixed(2)+'</span>';
+        h += '<span class="piano-avv-chip" data-avv-profile="'+escapeHtml(a.fantaSquadra||a.nome)+'" title="Apri il profilo storico di '+escapeHtml(a.nome)+'">⚠️ '+escapeHtml(a.nome)+' (<span class="num">'+a.indiceGenerale.toFixed(2)+'</span>'+extra+')</span>';
+        return;
+      }
+      h += '<span class="piano-avv-chip" data-avv-profile="'+escapeHtml(a.fantaSquadra||a.nome)+'" title="Apri il profilo storico di '+escapeHtml(a.nome)+'">⚠️ '+escapeHtml(a.nome)+' (<span class="num">'+a.indice.toFixed(2)+'</span>)'+extra+'</span>';
+    });
+  }
+  h += '</div></div>';
+  return h;
+}
+function bindAvversariPianoEvents(sec){
+  if(!sec) return;
+  sec.querySelectorAll('[data-avv-toggle]').forEach(function(btn){
+    btn.onclick = function(e){
+      e.stopPropagation();
+      var list = btn.parentNode.querySelector('[data-avv-list]');
+      if(list) list.style.display = (list.style.display==='none' ? 'flex' : 'none');
+    };
+  });
+  sec.querySelectorAll('[data-avv-profile]').forEach(function(chip){
+    chip.onclick = function(e){
+      e.stopPropagation();
+      dossierAvversariOpenProfileModal(chip.getAttribute('data-avv-profile'));
+    };
+  });
+}
+
+// ---------- REFRESH UI DOPO LOAD/REALTIME ----------
+function dossierAvversariRefreshUI(){
+  try{ render(); }catch(e){}
+  try{ if(currentTab==='asta' || currentTab==='warroom') renderAsta(); }catch(e){}
+  try{
+    if(currentTab==='warroom' && wrActiveSection==='plancia') renderWarRoom();
+    else if(currentTab==='warroom' && wrActiveSection==='piano'){
+      var sec = document.getElementById('wrSection');
+      if(sec && sec.querySelector('.wr-piano-container')) wrRenderPiano(sec);
+    }
+  }catch(e){}
+  try{ if(currentTab==='compare') renderCompare(); }catch(e){}
+  try{ refreshAvversariInEditors(); }catch(e){}
+}
+
+// ---------- REALTIME (aggiorna i profili al volo) ----------
+try{
+  sb.channel('auction_history_rt').on('postgres_changes', { event:'*', schema:'public', table:'auction_history' }, function(){
+    dossierAvversariLoad().then(function(){ dossierAvversariRefreshUI(); });
+  }).subscribe();
+  sb.channel('league_seasons_rt').on('postgres_changes', { event:'*', schema:'public', table:'league_seasons' }, function(){
+    dossierAvversariLoad().then(function(){ dossierAvversariRefreshUI(); });
+  }).subscribe();
+}catch(e){ console.warn('Errore sottoscrizione realtime dossier avversari:', e.message); }
+
+// binding pulsanti import (header War Room/Asta esistono a load; il pulsante nel modale
+// impostazioni viene agganciato direttamente dentro openAstaSettings)
+(function bindAvversariImportButtons(){
+  ['wrAvversariBtn','astaAvversariBtn'].forEach(function(id){
+    var b = document.getElementById(id);
+    if(b && !b.__avvBound){ b.__avvBound = true; b.onclick = dossierAvversariPickAndImportFile; }
+  });
+})();
+
+// stato locale: fanta-squadra attiva salvata sul dispositivo (non condivisa)
+avversariLoadActiveTeam();
+// ============================================================
+// FINE DOSSIER AVVERSARI
+// ============================================================
 
 // Funzione per aggiunta rapida giocatore (pulsante nascosto)
 function openQuickAddPlayer() {
