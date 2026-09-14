@@ -1,0 +1,21 @@
+# Cargo config per DossierFanta M1.
+# Aggiunge i path del linker per le librerie GTK/WebKit scaricate in localprefix
+# (necessario su host Linux senza i dev packages installati system-wide).
+#
+# Su Windows questo file viene ignorato (i path non esistono), ma non causa errori
+# perché i flag `-L` sono solo opzionali: se la directory non esiste, gcc la salta.
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+  "-L", "/home/z/my-project/localprefix/usr/lib/x86_64-linux-gnu",
+  "-L", "/home/z/my-project/localprefix/usr/lib",
+]
+
+[build]
+# Path per pkg-config (rustc lo usa per risolvere le system deps)
+[env]
+PKG_CONFIG_PATH = "/home/z/my-project/localprefix/usr/lib/x86_64-linux-gnu/pkgconfig:/home/z/my-project/localprefix/usr/share/pkgconfig"
+LD_LIBRARY_PATH = "/home/z/my-project/localprefix/usr/lib/x86_64-linux-gnu"
+LIBRARY_PATH = "/home/z/my-project/localprefix/usr/lib/x86_64-linux-gnu"
+C_INCLUDE_PATH = "/home/z/my-project/localprefix/usr/include"
+CPLUS_INCLUDE_PATH = "/home/z/my-project/localprefix/usr/include"

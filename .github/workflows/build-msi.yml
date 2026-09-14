@@ -1,0 +1,67 @@
+# Build MSI (Windows) — chiusura M1 (WARN A5)
+#
+# Questo workflow builda l'installer .msi per Windows usando
+# tauri-apps/tauri-action@v0, che gestisce automaticamente:
+#   - installazione Rust target x86_64-pc-windows-msvc
+#   - WiX Toolset (necessario per .msi)
+#   - NSIS (fallback .exe installer)
+#   - upload del .msi come artifact scaricabile
+#
+# Trigger:
+#   - push di tag v*: builda e crea una Release draft con l'.msi allegato
+#   - workflow_dispatch: builda e uploada solo l'artifact (nessuna Release)
+#
+# Verifica manuale:
+#   1. Vai su GitHub → tab Actions → "Build MSI (Windows)"
+#   2. Clic "Run workflow" → scegli il branch (default: main)
+#   3. Attendi ~10-15 min
+#   4. Scarica l'artifact "DossierFanta-windows-msi" dalla pagina di esecuzione
+#   5. Verifica che il file .msi sia presente e > 1MB
+
+name: Build MSI (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # richiesto da tauri-action per creare Release su tag push
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'DossierFanta ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DossierFanta-windows-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

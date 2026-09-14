@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+
+# TypeScript build info cache (generato da tsc -b)
+*.tsbuildinfo
+# Vite compiled config (generato da tsc da vite.config.ts)
+vite.config.d.ts
+vite.config.js
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+# Nota: Cargo.lock VA committato per le app binarie (Tauri = binario, non libreria)
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

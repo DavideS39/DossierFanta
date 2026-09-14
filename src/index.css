@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   DossierFanta v2.2 — M1 base styling
+   Tema taccuino pulito (preview del design system completo M2).
+   Palette: paper #F4ECD8, ink #2B1B12, red #8B2E1F, green #4A6741,
+            amber #B8860B, blue #2C4A6B.
+   ============================================================ */
+
+:root {
+  --paper: #F4ECD8;
+  --paper-dim: #E8DEC4;
+  --ink: #2B1B12;
+  --ink-soft: #4A3A2E;
+  --red: #8B2E1F;
+  --green: #4A6741;
+  --amber: #B8860B;
+  --blue: #2C4A6B;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: "Courier Prime", "Courier New", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Subtle paper texture: faint horizontal lines like a taccuino */
+body {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 23px,
+    rgba(43, 27, 18, 0.04) 23px,
+    rgba(43, 27, 18, 0.04) 24px
+  );
+}
+
+/* Webkit search input cleanup */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  display: none;
+}
+
+/* Range slider thumb */
+input[type="range"] {
+  height: 6px;
+  background: rgba(43, 27, 18, 0.2);
+  border-radius: 3px;
+  appearance: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--red);
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Scrollbar taccuino */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--paper-dim);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(43, 27, 18, 0.35);
+  border-radius: 5px;
+  border: 2px solid var(--paper-dim);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(43, 27, 18, 0.55);
+}
+
+/* Select styling (cross-browser) */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%232B1B12' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  padding-right: 28px;
+}
