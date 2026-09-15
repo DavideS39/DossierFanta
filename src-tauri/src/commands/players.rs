@@ -454,14 +454,13 @@ pub fn update_player(state: State<'_, DbState>, input: UpdatePlayerInput) -> App
     // il check ensure_writable_db).
     let active_id = state.active_db_id()?;
     let db_id = state.with_conn(&active_id, |conn| {
-        let d: Option<String> = conn
+        let d: String = conn
             .query_row(
                 "SELECT db_id FROM players WHERE id = ?1",
                 params![&input.id],
                 |r| r.get(0),
             )
             .ok()
-            .flatten()
             .ok_or_else(|| {
                 AppError::NotFound(format!("giocatore id={} non trovato", input.id))
             })?;
@@ -551,14 +550,13 @@ pub fn delete_player(state: State<'_, DbState>, id: String) -> AppResult<bool> {
     // Trova db_id del player (per check writability + aprire conn giusta)
     let active_id = state.active_db_id()?;
     let db_id = state.with_conn(&active_id, |conn| {
-        let d: Option<String> = conn
+        let d: String = conn
             .query_row(
                 "SELECT db_id FROM players WHERE id = ?1",
                 params![&id],
                 |r| r.get(0),
             )
             .ok()
-            .flatten()
             .ok_or_else(|| AppError::NotFound(format!("giocatore id={} non trovato", id)))?;
         Ok(d)
     })?;
@@ -603,14 +601,13 @@ pub fn archive_player(
 
     let active_id = state.active_db_id()?;
     let db_id = state.with_conn(&active_id, |conn| {
-        let d: Option<String> = conn
+        let d: String = conn
             .query_row(
                 "SELECT db_id FROM players WHERE id = ?1",
                 params![&id],
                 |r| r.get(0),
             )
             .ok()
-            .flatten()
             .ok_or_else(|| AppError::NotFound(format!("giocatore id={} non trovato", id)))?;
         Ok(d)
     })?;

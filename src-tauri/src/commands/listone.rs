@@ -159,6 +159,7 @@ pub fn import_listone(
     // === Fase 1: processa ogni entry del listone ===
     let mut created = 0i64;
     let mut updated = 0i64;
+    let mut archived = 0i64; // Fase 2: player del DB attivo assenti dal listone
     let mut restored = 0i64;
     let mut errors = 0i64;
 
