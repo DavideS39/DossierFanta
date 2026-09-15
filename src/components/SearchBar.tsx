@@ -7,6 +7,9 @@ import { usePlayersStore } from "@/stores/usePlayersStore";
  *
  * Il debounce è lato componente (non store) per evitare di refreshare a
  * ogni keystroke durante la digitazione.
+ *
+ * M2: sostituito l'emoji 🔍 con glyph » (carattere tipografico, coerenza
+ * design system taccuino: niente emoji, solo glyph Unicode).
  */
 export function SearchBar() {
   const search = usePlayersStore((s) => s.search);
@@ -31,13 +34,14 @@ export function SearchBar() {
         value={local}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Cerca per nome o squadra…"
-        className="w-full pl-9 pr-3 py-2 font-body text-ink bg-paper-dim border border-ink/30 rounded shadow-sm focus:outline-none focus:border-ink focus:ring-2 focus:ring-ink/10 placeholder:text-ink-soft/60"
+        className="tacc-input pl-9"
       />
       <span
         aria-hidden
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft select-none"
+        className="absolute left-3 top-1/2 -translate-y-1/2 select-none text-ink-soft"
+        style={{ fontFamily: "var(--font-display)" }}
       >
-        🔍
+        »
       </span>
       {local && (
         <button

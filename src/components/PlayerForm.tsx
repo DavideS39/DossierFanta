@@ -42,9 +42,9 @@ const EMPTY: FormState = {
 };
 
 /**
- * Form di creazione/modifica giocatore.
+ * Form di creazione/modifica giocatore (M2 — design taccuino).
  *
- * Campi gestiti (dal requisito M1):
+ * Campi gestiti (dal requisito M1/M2):
  *   name, team, pos_fanta (P/D/C/A), pos_real, fascia, priority (0-5),
  *   fmil_spesi (integer, f₥), med (real 0-10, M), medv (real 0-10, MV),
  *   fvm (integer, FVM)
@@ -54,6 +54,11 @@ const EMPTY: FormState = {
  *   - med/medv 0-10
  *   - priority 0-5
  *   - pos_fanta/fascia enum
+ *
+ * M2 design:
+ *   - Usa classi `.tacc-modal`, `.tacc-input`, `.tacc-btn`
+ *   - Header nero + footer grigio dim (coerenza design system)
+ *   - Etichette in Special Elite (font-display)
  */
 export function PlayerForm({ player, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -83,7 +88,6 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
-    // clear error on type
     if (errors[k as string]) {
       setErrors((e) => {
         const n = { ...e };
@@ -127,7 +131,6 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
       const toInt = (s: string) => (s.trim() === "" ? null : parseInt(s, 10));
 
       if (player) {
-        // Edit mode: UpdatePlayerInput
         const input: UpdatePlayerInput = {
           id: player.id,
           name: form.name.trim(),
@@ -143,7 +146,6 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
         };
         await onSubmit(input);
       } else {
-        // Create mode: CreatePlayerInput
         const input: CreatePlayerInput = {
           name: form.name.trim(),
           team: form.team.trim() || null,
@@ -167,20 +169,17 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
+    <div className="tacc-modal-backdrop" onClick={onClose}>
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="bg-paper border-2 border-ink rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="tacc-modal w-full max-w-2xl max-h-[90vh] overflow-y-auto"
         aria-modal="true"
         role="dialog"
       >
-        <header className="sticky top-0 bg-ink text-paper px-5 py-3 flex items-center justify-between">
-          <h2 className="font-display text-lg font-bold">
-            {player ? `Modifica: ${player.name}` : "Nuovo giocatore"}
+        <header className="tacc-modal-header sticky top-0 z-10">
+          <h2 className="text-lg font-bold">
+            {player ? `» Modifica: ${player.name}` : "» Nuovo giocatore"}
           </h2>
           <button
             type="button"
@@ -192,20 +191,16 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
           </button>
         </header>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 tacc-bg">
           {/* Nome (required) */}
-          <Field
-            label="Nome *"
-            error={errors.name}
-            htmlFor="name"
-          >
+          <Field label="Nome *" error={errors.name} htmlFor="name">
             <input
               id="name"
               type="text"
               required
               value={form.name}
               onChange={(e) => update("name", e.target.value)}
-              className={inputCls(errors.name)}
+              className={`tacc-input ${errors.name ? "tacc-input--error" : ""}`}
               placeholder="Es. Marcus Thuram"
               autoFocus
             />
@@ -219,7 +214,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                 type="text"
                 value={form.team}
                 onChange={(e) => update("team", e.target.value)}
-                className={inputCls()}
+                className="tacc-input"
                 placeholder="Es. Inter"
                 list="teams-list"
               />
@@ -241,7 +236,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                 id="pos_fanta"
                 value={form.pos_fanta}
                 onChange={(e) => update("pos_fanta", e.target.value as PosFanta | "")}
-                className={inputCls(errors.pos_fanta)}
+                className={`tacc-input ${errors.pos_fanta ? "tacc-input--error" : ""}`}
               >
                 <option value="">—</option>
                 {POS_FANTA_VALUES.map((p) => (
@@ -261,7 +256,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                 type="text"
                 value={form.pos_real}
                 onChange={(e) => update("pos_real", e.target.value)}
-                className={inputCls()}
+                className="tacc-input"
                 placeholder="Es. Punta centrale / Ala destra"
               />
             </Field>
@@ -271,7 +266,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                 id="fascia"
                 value={form.fascia}
                 onChange={(e) => update("fascia", e.target.value as Fascia | "")}
-                className={inputCls(errors.fascia)}
+                className={`tacc-input ${errors.fascia ? "tacc-input--error" : ""}`}
               >
                 <option value="">—</option>
                 {FASCIA_VALUES.map((f) => (
@@ -284,7 +279,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
           </div>
 
           {/* Priorità slider */}
-          <Field label={`Priorità: ${form.priority} / 5`} htmlFor="priority">
+          <Field label={`Priorità: ${form.priority} / 5 ${form.priority === 5 ? "(□ pinzatrice)" : ""}`} htmlFor="priority">
             <input
               id="priority"
               type="range"
@@ -299,9 +294,12 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
 
           <hr className="border-ink/20" />
 
-          {/* Valori disambiguati v2.2 */}
-          <div className="bg-paper-dim/50 border border-ink/15 rounded p-3 space-y-3">
-            <div className="text-[11px] uppercase tracking-wider text-ink-soft font-body">
+          {/* Valori disambiguati */}
+          <div
+            className="border border-ink/15 p-3 space-y-3"
+            style={{ backgroundColor: "rgba(232, 222, 196, 0.5)" }}
+          >
+            <div className="text-[11px] uppercase tracking-wider text-ink-soft" style={{ fontFamily: "var(--font-display)" }}>
               Valori disambiguati v2.2
             </div>
 
@@ -314,7 +312,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                   step={1}
                   value={form.fmil_spesi}
                   onChange={(e) => update("fmil_spesi", e.target.value)}
-                  className={inputCls(errors.fmil_spesi)}
+                  className={`tacc-input ${errors.fmil_spesi ? "tacc-input--error" : ""}`}
                   placeholder="Es. 78"
                 />
               </Field>
@@ -327,7 +325,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                   step={1}
                   value={form.fvm}
                   onChange={(e) => update("fvm", e.target.value)}
-                  className={inputCls(errors.fvm)}
+                  className={`tacc-input ${errors.fvm ? "tacc-input--error" : ""}`}
                   placeholder="Es. 32"
                 />
               </Field>
@@ -341,7 +339,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                   step={0.01}
                   value={form.med}
                   onChange={(e) => update("med", e.target.value)}
-                  className={inputCls(errors.med)}
+                  className={`tacc-input ${errors.med ? "tacc-input--error" : ""}`}
                   placeholder="Es. 6.05"
                 />
               </Field>
@@ -355,7 +353,7 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
                   step={0.01}
                   value={form.medv}
                   onChange={(e) => update("medv", e.target.value)}
-                  className={inputCls(errors.medv)}
+                  className={`tacc-input ${errors.medv ? "tacc-input--error" : ""}`}
                   placeholder="Es. 6.85"
                 />
               </Field>
@@ -363,39 +361,23 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
           </div>
 
           {submitError && (
-            <div className="bg-red/10 border border-red/40 text-red px-3 py-2 font-body text-sm rounded">
+            <div className="bg-red/10 border border-red/40 text-red px-3 py-2 text-sm" style={{ fontFamily: "var(--font-body)" }}>
               <strong>Errore:</strong> {submitError}
             </div>
           )}
         </div>
 
-        <footer className="sticky bottom-0 bg-paper-dim border-t-2 border-ink/30 px-5 py-3 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 font-body text-sm text-ink border border-ink/30 rounded hover:bg-paper"
-          >
+        <footer className="tacc-modal-footer sticky bottom-0">
+          <button type="button" onClick={onClose} className="tacc-btn">
             Annulla
           </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 font-display text-sm font-bold text-paper bg-ink rounded hover:bg-ink-soft disabled:opacity-50"
-          >
+          <button type="submit" disabled={submitting} className="tacc-btn tacc-btn--primary">
             {submitting ? "Salvataggio…" : player ? "Salva modifiche" : "Crea giocatore"}
           </button>
         </footer>
       </form>
     </div>
   );
-}
-
-// ----- helpers -----
-
-function inputCls(err?: string): string {
-  const base =
-    "w-full px-3 py-2 font-body text-ink bg-paper border rounded focus:outline-none focus:ring-2 focus:ring-ink/10";
-  return err ? `${base} border-red` : `${base} border-ink/30 focus:border-ink`;
 }
 
 function labelForRole(r: PosFanta): string {
@@ -417,12 +399,17 @@ function Field({
     <div>
       <label
         htmlFor={htmlFor}
-        className="block font-body text-xs uppercase tracking-wider text-ink-soft mb-1"
+        className="block text-xs uppercase tracking-wider text-ink-soft mb-1"
+        style={{ fontFamily: "var(--font-display)" }}
       >
         {label}
       </label>
       {children}
-      {error && <div className="mt-1 text-xs text-red font-body">{error}</div>}
+      {error && (
+        <div className="mt-1 text-xs text-red" style={{ fontFamily: "var(--font-body)" }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

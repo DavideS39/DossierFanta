@@ -1,9 +1,9 @@
 {
-  "name": "dossierfanta-m1",
+  "name": "dossierfanta-m2",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "DossierFanta v2.2 — Milestone M1 (Tauri 2.0 desktop app)",
+  "description": "DossierFanta v2.2 — Milestone M2 (Tauri 2.0 desktop app: multi-DB workspace, archiviazione automatica, design taccuino)",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

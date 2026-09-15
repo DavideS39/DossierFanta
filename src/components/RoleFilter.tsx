@@ -5,6 +5,8 @@ import { ROLE_COLORS } from "@/lib/format";
 /**
  * Filtro ruolo: chip "Tutti" + chip per ogni ruolo (P/D/C/A).
  * Click su una chip setta roleFilter nello store, che triggera refresh().
+ *
+ * M2: stile taccuino applicato (font-family display, border angoli vivi).
  */
 export function RoleFilter() {
   const roleFilter = usePlayersStore((s) => s.roleFilter);
@@ -15,11 +17,9 @@ export function RoleFilter() {
       <button
         type="button"
         onClick={() => setRoleFilter(null)}
-        className={`px-3 py-1.5 font-body text-sm rounded border transition-colors ${
-          roleFilter === null
-            ? "bg-ink text-paper border-ink"
-            : "bg-paper text-ink border-ink/30 hover:border-ink"
-        }`}
+        className={`px-3 py-1 text-sm border transition-colors ${roleFilter === null ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/30 hover:border-ink"}`}
+        style={{ fontFamily: "var(--font-display)" }}
+        aria-pressed={roleFilter === null}
       >
         Tutti
       </button>
@@ -31,8 +31,9 @@ export function RoleFilter() {
             key={role}
             type="button"
             onClick={() => setRoleFilter(role)}
-            className="px-3 py-1.5 font-body text-sm rounded border transition-all"
+            className="px-3 py-1 text-sm border transition-all"
             style={{
+              fontFamily: "var(--font-display)",
               backgroundColor: active ? c.bg : "transparent",
               color: active ? c.fg : c.bg,
               borderColor: c.bg,

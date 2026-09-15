@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Dialog di conferma cancellazione.
+ * Dialog di conferma cancellazione (M2 — design taccuino).
  *
  * Vincolo HARD (specifica v2.2):
  *   "Niente cancellazioni automatiche di giocatori — solo esplicita con conferma"
@@ -19,6 +19,8 @@ interface Props {
  *   - Il nome del giocatore è mostrato in evidenza per evitare errori.
  *   - Gli eventuali record collegati (scouting_notes, auction_data) saranno
  *     cancellati a cascata dal FK ON DELETE CASCADE dello schema.
+ *
+ * M2 design: usa classi `.tacc-modal`, `.tacc-btn`, font taccuino.
  */
 export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
   const [confirmChecked, setConfirmChecked] = useState(false);
@@ -26,7 +28,6 @@ export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Focus management: chiudi con ESC, focus sul checkbox all'apertura
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
@@ -48,7 +49,7 @@ export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/50 flex items-center justify-center p-4"
+      className="tacc-modal-backdrop"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
@@ -57,28 +58,38 @@ export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
       <div
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
-        className="bg-paper border-2 border-red rounded-lg shadow-xl w-full max-w-md"
+        className="tacc-modal w-full max-w-md"
+        style={{ borderColor: "var(--red)" }}
       >
-        <header className="bg-red text-paper px-5 py-3 rounded-t">
-          <h2 id="del-title" className="font-display text-lg font-bold">
+        <header
+          className="tacc-modal-header"
+          style={{ backgroundColor: "var(--red)" }}
+        >
+          <h2 id="del-title" className="text-lg font-bold">
             ⚠ Conferma eliminazione
           </h2>
         </header>
 
-        <div className="p-5 space-y-3">
-          <p className="font-body text-ink">
+        <div className="p-5 space-y-3 tacc-bg">
+          <p className="text-ink" style={{ fontFamily: "var(--font-body)" }}>
             Stai per eliminare definitivamente il giocatore:
           </p>
-          <div className="bg-paper-dim border-l-4 border-red pl-3 py-2">
-            <div className="font-display text-lg font-bold text-ink">{player.name}</div>
-            <div className="font-body text-xs text-ink-soft">
+          <div
+            className="border-l-4 pl-3 py-2"
+            style={{ borderColor: "var(--red)", backgroundColor: "var(--paper-dim)" }}
+          >
+            <div className="text-lg font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+              {player.name}
+            </div>
+            <div className="text-xs text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
               {player.team ?? "—"} · {player.pos_fanta ?? "?"}
               {player.fascia ? ` · ${player.fascia}` : ""}
             </div>
           </div>
-          <p className="font-body text-xs text-ink-soft">
+          <p className="text-xs text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
             Verranno rimossi anche eventuali note di scouting e dati asta collegati
-            (cascade dal FK). L'operazione è irreversibile.
+            (cascade dal FK). L'operazione è irreversibile. Per nascondere il
+            giocatore senza perderlo, usa «Archivia» invece di eliminare.
           </p>
 
           <label className="flex items-start gap-2 cursor-pointer select-none">
@@ -89,24 +100,24 @@ export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
               className="mt-0.5 w-4 h-4 accent-red"
               autoFocus
             />
-            <span className="font-body text-sm text-ink">
+            <span className="text-sm text-ink" style={{ fontFamily: "var(--font-body)" }}>
               Sì, ho capito che <strong>{player.name}</strong> verrà eliminato definitivamente.
             </span>
           </label>
 
           {error && (
-            <div className="bg-red/10 border border-red/40 text-red px-3 py-2 font-body text-sm rounded">
+            <div className="bg-red/10 border border-red/40 text-red px-3 py-2 text-sm" style={{ fontFamily: "var(--font-body)" }}>
               <strong>Errore:</strong> {error}
             </div>
           )}
         </div>
 
-        <footer className="bg-paper-dim border-t-2 border-ink/30 px-5 py-3 flex items-center justify-end gap-2 rounded-b">
+        <footer className="tacc-modal-footer">
           <button
             type="button"
             onClick={onCancel}
             disabled={deleting}
-            className="px-4 py-2 font-body text-sm text-ink border border-ink/30 rounded hover:bg-paper disabled:opacity-50"
+            className="tacc-btn"
           >
             Annulla
           </button>
@@ -114,7 +125,7 @@ export function DeleteConfirmDialog({ player, onConfirm, onCancel }: Props) {
             type="button"
             onClick={handleConfirm}
             disabled={!confirmChecked || deleting}
-            className="px-4 py-2 font-display text-sm font-bold text-paper bg-red rounded hover:bg-red/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="tacc-btn tacc-btn--danger"
           >
             {deleting ? "Eliminazione…" : "Elimina definitivamente"}
           </button>

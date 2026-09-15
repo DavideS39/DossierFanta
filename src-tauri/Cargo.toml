@@ -1,7 +1,7 @@
 [package]
 name = "dossierfanta"
-version = "0.1.0"
-description = "DossierFanta v2.2 — Taccuino di progettazione fantacalcio (M1)"
+version = "0.2.0"
+description = "DossierFanta v2.2 — Taccuino di progettazione fantacalcio (M2)"
 authors = ["DossierFanta"]
 edition = "2021"
 rust-version = "1.77"

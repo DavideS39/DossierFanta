@@ -1,0 +1,412 @@
+/* ============================================================
+   DossierFanta v2.2 — M2 — Design System Taccuino Scout 80s
+   ============================================================
+   Implementa il design system descritto nel PDF Cap.16.
+
+   Cinque colori base:
+     --paper:     #F4ECD8  carta ingiallita
+     --ink:       #2B1B12  inchiostro testo/bordi
+     --red:       #8B2E1F  timbri, priorità alte
+     --green:     #4A6741  stato scoutato, sync live
+     --amber:     #B8860B  stato da fare, warning
+     --blue:      #2C4A6B  sync live, cursori collaborativi
+
+   Varianti derivate:
+     --paper-dim: tono più scuro per sezioni alternative
+     --ink-soft:  testo secondario
+     --red-stamp: tono per timbri ruotati (opacity < 1)
+     --grid:      linee quaderno (rgba ink, 6% alpha)
+
+   Texture sfondo:
+     - Griglia quaderni 14px (repeating-linear-gradient 0deg + 90deg)
+     - Radial gradient opacity bassa per invecchiamento carta
+
+   Tre font (caricati via Google Fonts CDN in index.html):
+     - Special Elite: titoli, timbri, etichette uppercase
+     - Courier Prime: body, mockup, monospace
+     - Cormorant Garamond italic: note manoscritte
+
+   Componenti chiave:
+     1) Scheda strappata (.tacc-card) — bordo clip-path irregolare
+     2) Timbro rotato (.tacc-stamp) — badge stato
+     3) Nastro adesivo (.tacc-tape) — per vista confronta
+     4) Pinzatrice (.tacc-pin) — glyph □ ruotato 45°
+     5) Footer legenda (.tacc-legend)
+   ============================================================ */
+
+:root {
+  /* Colori base */
+  --paper: #F4ECD8;
+  --paper-dim: #E8DEC4;
+  --ink: #2B1B12;
+  --ink-soft: #5A4632;
+  --red: #8B2E1F;
+  --red-stamp: #A53028;
+  --green: #4A6741;
+  --amber: #B8860B;
+  --blue: #2C4A6B;
+  --grid: rgba(43, 27, 18, 0.06);
+
+  /* Tipografia */
+  --font-display: "Special Elite", Georgia, "Times New Roman", serif;
+  --font-body: "Courier Prime", "Courier New", ui-monospace, monospace;
+  --font-handnote: "Cormorant Garamond", Georgia, serif;
+}
+
+/* ============================================================
+   TEXTURE SFONDO TACCUINO
+   ============================================================ */
+
+.tacc-bg {
+  background-color: var(--paper);
+  /* Griglia quaderni 14px (linee 0deg + 90deg) */
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    ),
+    /* Invecchiamento carta: radial gradient opacity bassa */
+    radial-gradient(
+      ellipse at top left,
+      rgba(184, 134, 11, 0.08) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at bottom right,
+      rgba(139, 46, 31, 0.05) 0%,
+      transparent 70%
+    );
+  background-attachment: fixed;
+}
+
+/* ============================================================
+   COMPONENTE 1 — SCHEDA STRAPPATA
+   ============================================================
+   Card giocatore con bordo superiore irregolare via clip-path.
+   Rotazione casuale ±0.5° (data-rotation attribute via inline style).
+   Ombra leggera 2px 3px. Hover: si raddrizza (rotate(0deg)) e si
+   solleva (translateY(-2px)). Transizione smooth 200ms ease.
+   ============================================================ */
+
+.tacc-card {
+  position: relative;
+  background-color: var(--paper);
+  color: var(--ink);
+  border: 1px solid rgba(43, 27, 18, 0.35);
+  /* Bordo superiore irregolare via clip-path */
+  clip-path: polygon(
+    0% 4%, 8% 0%, 17% 3%, 26% 0%, 36% 4%, 47% 0%, 56% 5%,
+    65% 0%, 74% 3%, 84% 0%, 92% 4%, 100% 0%,
+    100% 100%, 0% 100%
+  );
+  box-shadow: 2px 3px 0 rgba(43, 27, 18, 0.15);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  cursor: pointer;
+  /* padding-top extra per compensare il clip-path superiore */
+  padding: 1.25rem 0.85rem 0.85rem;
+}
+
+.tacc-card:hover {
+  transform: rotate(0deg) translateY(-2px) !important;
+  box-shadow: 3px 5px 0 rgba(43, 27, 18, 0.25);
+}
+
+.tacc-card.is-selected {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px var(--red), 3px 5px 0 rgba(43, 27, 18, 0.25);
+}
+
+.tacc-card.is-archived {
+  opacity: 0.65;
+  filter: grayscale(0.3);
+}
+
+.tacc-card.is-archived:hover {
+  opacity: 0.85;
+  filter: grayscale(0.1);
+}
+
+/* ============================================================
+   COMPONENTE 2 — TIMBRO ROTATO
+   ============================================================
+   Badge stato (scoutato/da_fare/archiviato).
+   Bordo doppio (border + outline o box-shadow inset).
+   Testo Special Elite uppercase. Rotazione -8° a +12° casuale.
+   Effetto inchiostro assorbito: opacity < 1.
+   ============================================================ */
+
+.tacc-stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.18rem 0.55rem;
+  border: 2px solid currentColor;
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+  opacity: 0.85;
+  /* Rotazione casuale via inline style (--rot deg) */
+  transform: rotate(var(--stamp-rot, -4deg));
+  user-select: none;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.tacc-stamp--scoutato {
+  color: var(--green);
+  background-color: transparent;
+}
+
+.tacc-stamp--da-fare {
+  color: var(--amber);
+  background-color: transparent;
+}
+
+.tacc-stamp--archiviato {
+  color: var(--red-stamp);
+  opacity: 0.6; /* sbiadito */
+}
+
+.tacc-stamp--top {
+  color: var(--red);
+}
+
+/* ============================================================
+   COMPONENTE 3 — NASTRO ADESIVO
+   ============================================================
+   Div semi-trasparente giallo, bordi tratteggiati laterali.
+   Usato per fissare "ritagli" nella vista confronta (M6, ma
+   disponibile già in M2 come componente riutilizzabile).
+   ============================================================ */
+
+.tacc-tape {
+  position: relative;
+  background-color: rgba(217, 196, 112, 0.55);
+  border-left: 2px dashed rgba(43, 27, 18, 0.3);
+  border-right: 2px dashed rgba(43, 27, 18, 0.3);
+  padding: 0.4rem 0.75rem;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  font-size: 0.75rem;
+  /* Leggera rotazione per effetto "incollato a mano" */
+  transform: rotate(-0.8deg);
+  display: inline-block;
+}
+
+/* ============================================================
+   COMPONENTE 4 — PINZATRICE
+   ============================================================
+   Icona testuale □ ruotata 45° in angolo top-left delle card
+   prioritarie (priority === 5/5). Sostituisce le stelle.
+   ============================================================ */
+
+.tacc-pin {
+  position: absolute;
+  top: -4px;
+  left: 6px;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: rgba(43, 27, 18, 0.7);
+  transform: rotate(45deg);
+  pointer-events: none;
+  z-index: 2;
+  /* Ombra sottile per dare profondità */
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================
+   COMPONENTE 5 — FOOTER LEGENDA
+   ============================================================
+   Footer fisso in fondo alla vista Rosa.
+   Spiega i simboli: f₥ = Fantamilioni, M = Med, MV = MedV,
+   FVM = FVM, ★ = priorità, ▼▲ = Pressione Mercato (placeholder).
+   ============================================================ */
+
+.tacc-legend {
+  background-color: var(--paper-dim);
+  border-top: 1px solid rgba(43, 27, 18, 0.2);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+}
+
+.tacc-legend strong {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: normal;
+}
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+/* Glifo testuale generico (sostituisce emoji) */
+.tacc-glyph {
+  font-family: var(--font-display);
+  font-style: normal;
+  user-select: none;
+}
+
+/* Handnote: nota manoscritta in corsivo Cormorant */
+.tacc-handnote {
+  font-family: var(--font-handnote);
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* Chip DB provenienza (M2) */
+.tacc-db-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  background-color: rgba(43, 27, 18, 0.08);
+  border: 1px solid rgba(43, 27, 18, 0.2);
+  border-radius: 2px;
+  color: var(--ink-soft);
+  text-transform: lowercase;
+}
+
+/* Bottone taccuino (stile "carta piegata") */
+.tacc-btn {
+  font-family: var(--font-display);
+  background-color: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  padding: 0.4rem 0.85rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.tacc-btn:hover {
+  background-color: var(--ink);
+  color: var(--paper);
+}
+
+.tacc-btn--primary {
+  background-color: var(--ink);
+  color: var(--paper);
+}
+
+.tacc-btn--primary:hover {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+.tacc-btn--danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.tacc-btn--danger:hover {
+  background-color: var(--red);
+  color: var(--paper);
+}
+
+.tacc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input taccuino */
+.tacc-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background-color: var(--paper);
+  border: 1px solid rgba(43, 27, 18, 0.3);
+  border-radius: 0;
+  /* outline via box-shadow per simulare penna */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tacc-input:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 2px rgba(43, 27, 18, 0.1);
+}
+
+.tacc-input--error {
+  border-color: var(--red);
+}
+
+/* Modale taccuino */
+.tacc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-color: rgba(43, 27, 18, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.tacc-modal {
+  background-color: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 6px 0 rgba(43, 27, 18, 0.25);
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.tacc-modal-header {
+  background-color: var(--ink);
+  color: var(--paper);
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-display);
+}
+
+.tacc-modal-footer {
+  background-color: var(--paper-dim);
+  border-top: 2px solid rgba(43, 27, 18, 0.3);
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* ============================================================
+   Print-friendly (se l'utente stampa il taccuino)
+   ============================================================ */
+@media print {
+  .tacc-card {
+    box-shadow: none;
+    border: 1px solid var(--ink);
+  }
+  .tacc-bg {
+    background-image: none;
+  }
+}

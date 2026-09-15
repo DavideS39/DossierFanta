@@ -3,9 +3,12 @@
 //! Lo schema è `migrations/schema_v2.2.sql` (copiato pari pari dal file
 //! allegato). La migrazione è idempotente: controlla se la tabella `players`
 //! esiste già e se sì salta l'applicazione dello schema.
+//!
+//! In M2 aggiungiamo `open_db_file` e `clone_conn`: helper per aprire
+//! ulteriori connessioni allo stesso file (multi-DB workspace logico).
 
 use rusqlite::{Connection, Error as SqlError};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Schema SQL v2.2 embedded nel binario (nessun file esterno a runtime).
 const SCHEMA_V2_2: &str = include_str!("../migrations/schema_v2.2.sql");
@@ -45,7 +48,37 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
     Ok(conn)
 }
 
+/// Apre una nuova connessione a un file SQLite esistente (M2 helper per
+/// multi-DB workspace). Applica gli stessi PRAGMA di `open_and_migrate`
+/// ma NON applica lo schema (presuppone che il file sia già inizializzato).
+pub fn open_db_file(db_path: &Path) -> Result<Connection, SqlError> {
+    let conn = Connection::open(db_path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.pragma_update(None, "recursive_triggers", "OFF")?;
+    Ok(conn)
+}
+
+/// Apre una nuova connessione allo stesso path di `src` (M2 helper).
+/// Usato quando inizializziamo il workspace: ogni `db_id` logico ha la
+/// sua connessione, ma tutte puntano allo stesso file `mio.db`.
+///
+/// `src` non viene usato per leggere dati — serve solo per ottenere il path.
+/// In pratica questo metodo delega a `open_db_file(path)`.
+#[allow(dead_code)]
+pub fn clone_conn(_src: &Connection, path: &Path) -> Connection {
+    open_db_file(path).expect("cannot open clone connection to mio.db")
+}
+
 /// Helper: genera un UUID v4 come stringa. Usato per i nuovi giocatori.
 pub fn new_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// Ritorna il path di `app_data_dir` risolto in `lib.rs`. Usato dai comandi
+/// che necessitano del path del file (es. `init_db`).
+#[allow(dead_code)]
+pub fn app_data_dir() -> PathBuf {
+    let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    base.join("com.dossierfanta.app")
 }

@@ -4,6 +4,7 @@
 //! Gli errori sono mappati a stringhe leggibili via `AppError`.
 
 pub mod database;
+pub mod listone;
 pub mod players;
 
 use serde::Serialize;

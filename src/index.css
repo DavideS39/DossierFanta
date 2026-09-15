@@ -1,19 +1,22 @@
+/* Import design system taccuino (variabili CSS, componenti, texture)
+   DEVE precedere @tailwind per rispettare la regola CSS di @import. */
+@import "./styles/taccuino.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============================================================
-   DossierFanta v2.2 — M1 base styling
-   Tema taccuino pulito (preview del design system completo M2).
-   Palette: paper #F4ECD8, ink #2B1B12, red #8B2E1F, green #4A6741,
-            amber #B8860B, blue #2C4A6B.
+   DossierFanta v2.2 — M2 base styling
+   Tema taccuino scout 80s completo (vedi styles/taccuino.css).
    ============================================================ */
 
 :root {
+  /* Manteniamo le vecchie variabili M1 per compatibilità con tailwind.config.js */
   --paper: #F4ECD8;
   --paper-dim: #E8DEC4;
   --ink: #2B1B12;
-  --ink-soft: #4A3A2E;
+  --ink-soft: #5A4632;
   --red: #8B2E1F;
   --green: #4A6741;
   --amber: #B8860B;
@@ -28,18 +31,27 @@ body,
   padding: 0;
   background-color: var(--paper);
   color: var(--ink);
-  font-family: "Courier Prime", "Courier New", ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-body, "Courier Prime", "Courier New", ui-monospace, monospace);
 }
 
-/* Subtle paper texture: faint horizontal lines like a taccuino */
+/* Texture quaderni base sul body (anche senza .tacc-bg) */
 body {
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent 0px,
-    transparent 23px,
-    rgba(43, 27, 18, 0.04) 23px,
-    rgba(43, 27, 18, 0.04) 24px
-  );
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      rgba(43, 27, 18, 0.06) 13px,
+      rgba(43, 27, 18, 0.06) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      rgba(43, 27, 18, 0.06) 13px,
+      rgba(43, 27, 18, 0.06) 14px
+    );
+  background-attachment: fixed;
 }
 
 /* Webkit search input cleanup */
