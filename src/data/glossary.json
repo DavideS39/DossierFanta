@@ -1,0 +1,87 @@
+{
+  "fmil": {
+    "title": "f₥ — Fantamilioni",
+    "def": "Valuta della lega fantacalcio. Simbolo UI: f₥ (f minuscola + ₥ Unicode U+20A5 Mill Sign). Budget tipico f₥ 500 iniziali a testa per l'asta.",
+    "example": "f₥ 78 = 78 fantamilioni (prezzo d'asta pagato per Lautaro)."
+  },
+  "med": {
+    "title": "M — Med",
+    "def": "Media aritmetica dei voti puri del giocatore (senza bonus/malus per gol, assist, ammonizioni). Range 0-10. Si usa per il calcolo del modificatore difesa.",
+    "example": "M 6.05 (media pura di un difensore titolare consolidationato)."
+  },
+  "medv": {
+    "title": "MV — MedV (FantaMedia)",
+    "def": "Media voto del giocatore con bonus/malus fantacalcio (gol, assist, ammonizioni, espulsioni, rigori). Range 0-10. Più alta della Med se il giocatore produce bonus; più bassa se produce malus.",
+    "example": "MV 6.85 — più alta di M 6.05 perché il giocatore fa gol."
+  },
+  "fvm": {
+    "title": "FVM — FantaValoreMedio",
+    "def": "Valore di mercato del giocatore, stimato da fantacalcio.it sulla base delle aste reali delle leghe. Indica il trend dei prezzi. Si usa per capire se un giocatore è caro o sottovalutato rispetto al trend.",
+    "example": "FVM 32 — il giocatore vale ~32 f₥ sul mercato medio."
+  },
+  "fascia": {
+    "title": "Fascia",
+    "def": "Classificazione qualitativa del giocatore su 5 livelli: Top, Semitop, Medio, Regolarista, Scommessa. Unificata per tutti i ruoli.",
+    "example": "Fascia Top = titolare inamovibile di una big (es. Lautaro all'Inter)."
+  },
+  "priorita": {
+    "title": "Priorità",
+    "def": "Indicatore 0-5 (0 = nessuna, 5 = massima) di quanto il giocatore è importante per la tua rosa. Visualizzato come stelle ★. Priorità 5/5 attiva la pinzatrice □ sulla card.",
+    "example": "★★★★★ = priority 5, pinzatrice attiva, giocatore top target."
+  },
+  "titolarita": {
+    "title": "Titolarità",
+    "def": "Indicatore 1-10 di quanto il giocatore è titolare nella sua squadra reale. 10 = titolare inamovibile, 1 = riserva. Usato in auction_data per stimare value all'asta.",
+    "example": "Titolarità 9/10 = gioca quasi sempre (es. Lautaro all'Inter)."
+  },
+  "fragilita": {
+    "title": "Fragilità",
+    "def": "Indicatore qualitativo di quanto il giocatore si infortuna spesso. Valevole per decidere se puntare su di lui all'asta: alto rischio = serve rincalzo.",
+    "example": "Fragilità alta = giocatore che salta 10+ giornate per infortuni ricorrenti."
+  },
+  "infortuni": {
+    "title": "Infortuni",
+    "def": "Stato infortunistico del giocatore al momento dell'asta. Tre valori: nessuno, lieve, grave. Aggiornato manualmente durante lo scouting.",
+    "example": "Infortuni: nessuno = disponibile per la prossima giornata."
+  },
+  "modificatore": {
+    "title": "Modificatore difesa",
+    "def": "Bonus applicato al voto dei difensori in base alla media voto (M, pura) del reparto. Tre preset: 3 fasce (+1/+3/+6), 6 fasce (granulare), 8 fasce custom. Plus editor per leghe con regolamento proprio.",
+    "example": "Modificatore 3 fasce: M reparto 6.50-7.00 → bonus +3 a ogni difensore."
+  },
+  "status": {
+    "title": "Status scouting",
+    "def": "Stato di scouting del giocatore: totali (in rosa, non ancora scoutato), scoutato (nota scouting salvata), da fare (priority target da scoutare). Auto-toggle: salvare una nota su un 'da fare' lo promuove a 'scoutato' automaticamente.",
+    "example": "Da fare → scoutato quando aggiungi una nota scouting (auto-toggle B3)."
+  },
+  "pm_esterna": {
+    "title": "PM_esterna — Pressione Mercato esterna",
+    "def": "Prezzo medio reale del giocatore nelle aste pubbliche aggregate, in f₥. Sorgente TO-DO M6 (API pubblica, scraper dedicato, o export manuale). Nullo in M2.1/M3 perché la sorgente non è ancora disponibile.",
+    "example": "PM_esterna 35 f₥ = Lautaro va in media a 35 f₥ nelle aste pubbliche aggregate."
+  },
+  "pm_locale": {
+    "title": "PM_locale — Pressione Mercato locale",
+    "def": "Ratio fra fmil_paid (prezzo a cui il giocatore è stato assegnato nella tua lega) e pm_esterna. < 0.85 = occasione (▼), 0.85-1.15 = in linea (=), > 1.15 = caro (▲), > 1.40 = molto caro (▲▲).",
+    "example": "PM_locale 0.80 = hai pagato 20% sotto il prezzo medio (occasione, ▼)."
+  },
+  "oracolo": {
+    "title": "Oracolo",
+    "def": "Modulo che proietta i f₥ attesi per la stagione successiva. Modulare: 7 componenti pesate, ognuna spiegabile. Confidence 0-1. Giudizio umano come componente aggiuntiva, non override. M5.",
+    "example": "Oracolo: Lautaro fmil_atteso 42 f₥, confidence 0.78, verdict UP."
+  },
+  "fork": {
+    "title": "Fork (legacy v1)",
+    "def": "Concetto v1 per gestire alternative in Piano Rosa. Sostituito in v3 (M6) da Piano → Slot → Target con mappa dipendenze. Mantenuto nel glossario per consultazione DB migrati da v1.",
+    "example": "Fork = insieme di giocatori alternativi per uno stesso ruolo pianificato."
+  },
+  "slot": {
+    "title": "Slot (Piano Rosa v3)",
+    "def": "Posizione nel Piano Rosa v3: 3-8 slot per reparto, ognuno con 1-5 target ordinati. Quando un target viene assegnato, lo slot si aggiorna. Sostituisce fork/anchor/compatibili di v1.",
+    "example": "Slot 'Punta centrale' con 3 target: Lautaro > Scamacca > Retegui."
+  },
+  "target": {
+    "title": "Target (Piano Rosa v3)",
+    "def": "Giocatore in lista per uno slot del Piano Rosa. Ordinato: il primo è il preferito, gli altri alternative. Quando un target viene assegnato, lo slot si aggiorna. M6.",
+    "example": "Target 1 (preferito) = Lautaro, Target 2 = Scamacca, Target 3 = Retegui."
+  }
+}

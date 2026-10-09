@@ -31,6 +31,277 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 // ----------------------------------------------------------------------
+// M2.1 — Snapshot arricchito (FIX A2, B5) + restore con ricreazione collegati (FIX A3, B12)
+// ----------------------------------------------------------------------
+//
+// Lo snapshot JSON di `last_known_data` in players_archive ora include non
+// solo la riga di `players` ma anche le righe delle 4 tabelle collegate:
+// scouting_notes (multi-row), auction_data (1:1), oracolo_projections (1:1),
+// pressione_mercato (1:1). Tutte hanno FK ON DELETE CASCADE verso players,
+// quindi il DELETE FROM players le cancella: devono essere lette PRIMA e
+// serializzate nello snapshot. Al restore, le righe vengono ricreate PRIMA
+// di spostare il player da archive a players (ordine FK corretto).
+
+/// Raccoglie lo snapshot arricchito di un giocatore: riga di players + tutte
+/// le righe delle tabelle collegate (scouting_notes, auction_data,
+/// oracolo_projections, pressione_mercato). Ritorna un `serde_json::Value`
+/// pronto da serializzare in `last_known_data`.
+///
+/// Struct JSON:
+/// ```json
+/// {
+///   "player": {...},
+///   "scouting_notes": [...],
+///   "auction_data": {...} | null,
+///   "oracolo_projections": {...} | null,
+///   "pressione_mercato": {...} | null
+/// }
+/// ```
+fn collect_player_snapshot(conn: &rusqlite::Connection, player_id: &str) -> serde_json::Value {
+    // 1. Riga di players (lo snapshot "core" come in M2 base)
+    let player_row = conn
+        .query_row(
+            r#"SELECT id, db_id, name, team, pos_fanta, pos_real, status, fascia,
+                      priority, fmil_spesi, med, medv, fvm, updated_at, updated_by
+               FROM players WHERE id = ?1"#,
+            params![player_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "db_id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "team": row.get::<_, Option<String>>(3)?,
+                    "pos_fanta": row.get::<_, Option<String>>(4)?,
+                    "pos_real": row.get::<_, Option<String>>(5)?,
+                    "status": row.get::<_, String>(6)?,
+                    "fascia": row.get::<_, Option<String>>(7)?,
+                    "priority": row.get::<_, i64>(8)?,
+                    "fmil_spesi": row.get::<_, Option<i64>>(9)?,
+                    "med": row.get::<_, Option<f64>>(10)?,
+                    "medv": row.get::<_, Option<f64>>(11)?,
+                    "fvm": row.get::<_, Option<i64>>(12)?,
+                    "updated_at": row.get::<_, Option<String>>(13)?,
+                    "updated_by": row.get::<_, Option<String>>(14)?,
+                }))
+            },
+        )
+        .ok();
+
+    // 2. scouting_notes (multi-row)
+    let scouting_notes: Vec<serde_json::Value> = {
+        let mut stmt = match conn.prepare(
+            r#"SELECT id, kind, label, content, source, created_at
+               FROM scouting_notes WHERE player_id = ?1
+               ORDER BY id ASC"#,
+        ) {
+            Ok(s) => s,
+            Err(_) => return serde_json::Value::Null,
+        };
+        let rows = stmt
+            .query_map(params![player_id], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, i64>(0)?,
+                    "kind": row.get::<_, String>(1)?,
+                    "label": row.get::<_, Option<String>>(2)?,
+                    "content": row.get::<_, Option<String>>(3)?,
+                    "source": row.get::<_, Option<String>>(4)?,
+                    "created_at": row.get::<_, Option<String>>(5)?,
+                }))
+            });
+        match rows {
+            Ok(rows) => rows.filter_map(Result::ok).collect(),
+            Err(_) => Vec::new(),
+        }
+    };
+
+    // 3. auction_data (1:1)
+    let auction_data: Option<serde_json::Value> = conn
+        .query_row(
+            r#"SELECT player_id, titolarita, infortuni, quick_note,
+                      fmil_max, assigned_to, fmil_paid, assigned_at
+               FROM auction_data WHERE player_id = ?1"#,
+            params![player_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "player_id": row.get::<_, String>(0)?,
+                    "titolarita": row.get::<_, Option<i64>>(1)?,
+                    "infortuni": row.get::<_, Option<String>>(2)?,
+                    "quick_note": row.get::<_, Option<String>>(3)?,
+                    "fmil_max": row.get::<_, Option<i64>>(4)?,
+                    "assigned_to": row.get::<_, Option<String>>(5)?,
+                    "fmil_paid": row.get::<_, Option<i64>>(6)?,
+                    "assigned_at": row.get::<_, Option<String>>(7)?,
+                }))
+            },
+        )
+        .ok();
+
+    // 4. oracolo_projections (1:1)
+    let oracolo_projections: Option<serde_json::Value> = conn
+        .query_row(
+            r#"SELECT player_id, fmil_atteso, confidence, components_json,
+                      human_override, verdict, computed_at
+               FROM oracolo_projections WHERE player_id = ?1"#,
+            params![player_id],
+            |row| {
+                let components: Option<String> = row.get(3)?;
+                let components_json: serde_json::Value = components
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(serde_json::Value::Null);
+                Ok(serde_json::json!({
+                    "player_id": row.get::<_, String>(0)?,
+                    "fmil_atteso": row.get::<_, Option<f64>>(1)?,
+                    "confidence": row.get::<_, Option<f64>>(2)?,
+                    "components_json": components_json,
+                    "human_override": row.get::<_, Option<f64>>(4)?,
+                    "verdict": row.get::<_, Option<String>>(5)?,
+                    "computed_at": row.get::<_, Option<String>>(6)?,
+                }))
+            },
+        )
+        .ok();
+
+    // 5. pressione_mercato (1:1)
+    let pressione_mercato: Option<serde_json::Value> = conn
+        .query_row(
+            r#"SELECT player_id, pm_esterna, pm_locale, pm_source, pm_updated
+               FROM pressione_mercato WHERE player_id = ?1"#,
+            params![player_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "player_id": row.get::<_, String>(0)?,
+                    "pm_esterna": row.get::<_, Option<i64>>(1)?,
+                    "pm_locale": row.get::<_, Option<f64>>(2)?,
+                    "pm_source": row.get::<_, Option<String>>(3)?,
+                    "pm_updated": row.get::<_, Option<String>>(4)?,
+                }))
+            },
+        )
+        .ok();
+
+    serde_json::json!({
+        "player": player_row,
+        "scouting_notes": scouting_notes,
+        "auction_data": auction_data,
+        "oracolo_projections": oracolo_projections,
+        "pressione_mercato": pressione_mercato,
+    })
+}
+
+/// Helper: ricrea le righe delle tabelle collegate a un player dallo snapshot
+/// arricchito (inversa di `collect_player_snapshot`). Da chiamare DOPO che
+/// il player è stato re-inserito in `players` (le FK puntano a players.id).
+fn recreate_connected_tables(
+    conn: &rusqlite::Connection,
+    snapshot: &serde_json::Value,
+) -> Result<(), rusqlite::Error> {
+    // scouting_notes: ricrea ogni riga come INSERT esplicita con i campi dallo snapshot.
+    if let Some(notes) = snapshot.get("scouting_notes").and_then(|v| v.as_array()) {
+        for n in notes {
+            // Skip se mancano kind o content vuoto (la FK è player_id, non può essere NULL)
+            let kind = n.get("kind").and_then(|v| v.as_str()).unwrap_or("note");
+            let content: Option<&str> = n.get("content").and_then(|v| v.as_str());
+            // Per rispettare il CHECK kind IN ('data','link','note'), se kind è altro lo forzo a 'note'
+            let kind = match kind {
+                "data" | "link" | "note" => kind,
+                _ => "note",
+            };
+            conn.execute(
+                r#"INSERT INTO scouting_notes
+                   (player_id, kind, label, content, source, created_at)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+                params![
+                    snapshot
+                        .get("player")
+                        .and_then(|p| p.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                    kind,
+                    n.get("label").and_then(|v| v.as_str()),
+                    content,
+                    n.get("source").and_then(|v| v.as_str()),
+                    n.get("created_at").and_then(|v| v.as_str()),
+                ],
+            )?;
+        }
+    }
+
+    // auction_data (1:1)
+    if let Some(a) = snapshot.get("auction_data") {
+        if !a.is_null() {
+            conn.execute(
+                r#"INSERT INTO auction_data
+                   (player_id, titolarita, infortuni, quick_note,
+                    fmil_max, assigned_to, fmil_paid, assigned_at)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+                params![
+                    a.get("player_id").and_then(|v| v.as_str()),
+                    a.get("titolarita").and_then(|v| v.as_i64()),
+                    a.get("infortuni").and_then(|v| v.as_str()),
+                    a.get("quick_note").and_then(|v| v.as_str()),
+                    a.get("fmil_max").and_then(|v| v.as_i64()),
+                    a.get("assigned_to").and_then(|v| v.as_str()),
+                    a.get("fmil_paid").and_then(|v| v.as_i64()),
+                    a.get("assigned_at").and_then(|v| v.as_str()),
+                ],
+            )?;
+        }
+    }
+
+    // oracolo_projections (1:1)
+    if let Some(o) = snapshot.get("oracolo_projections") {
+        if !o.is_null() {
+            let components_json_str: Option<String> = o
+                .get("components_json")
+                .and_then(|v| {
+                    if v.is_null() {
+                        Some(None)
+                    } else {
+                        serde_json::to_string(v).ok().map(Some).or(Some(None))
+                    }
+                })
+                .unwrap_or(None);
+            conn.execute(
+                r#"INSERT INTO oracolo_projections
+                   (player_id, fmil_atteso, confidence, components_json,
+                    human_override, verdict, computed_at)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+                params![
+                    o.get("player_id").and_then(|v| v.as_str()),
+                    o.get("fmil_atteso").and_then(|v| v.as_f64()),
+                    o.get("confidence").and_then(|v| v.as_f64()),
+                    components_json_str,
+                    o.get("human_override").and_then(|v| v.as_f64()),
+                    o.get("verdict").and_then(|v| v.as_str()),
+                    o.get("computed_at").and_then(|v| v.as_str()),
+                ],
+            )?;
+        }
+    }
+
+    // pressione_mercato (1:1)
+    if let Some(pm) = snapshot.get("pressione_mercato") {
+        if !pm.is_null() {
+            conn.execute(
+                r#"INSERT INTO pressione_mercato
+                   (player_id, pm_esterna, pm_locale, pm_source, pm_updated)
+                   VALUES (?1, ?2, ?3, ?4, ?5)"#,
+                params![
+                    pm.get("player_id").and_then(|v| v.as_str()),
+                    pm.get("pm_esterna").and_then(|v| v.as_i64()),
+                    pm.get("pm_locale").and_then(|v| v.as_f64()),
+                    pm.get("pm_source").and_then(|v| v.as_str()),
+                    pm.get("pm_updated").and_then(|v| v.as_str()),
+                ],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+// ----------------------------------------------------------------------
 // Tipi esposti al frontend
 // ----------------------------------------------------------------------
 
@@ -613,7 +884,7 @@ pub fn archive_player(
     })?;
 
     state.with_conn(&db_id, |conn| {
-        // Read current player data
+        // Read current player data (FIX A2: ora raccoglie anche le tabelle collegate)
         let player = conn
             .query_row(
                 r#"SELECT id, db_id, name, team, pos_fanta, pos_real, status, fascia,
@@ -647,7 +918,13 @@ pub fn archive_player(
                 other => AppError::Db(other),
             })?;
 
-        let snapshot = serde_json::to_string(&player).unwrap_or_else(|_| "{}".to_string());
+        // FIX A2 (B5) — Snapshot arricchito: player + scouting_notes + auction_data
+        // + oracolo_projections + pressione_mercato. Prima di fare DELETE FROM players
+        // (che triggerà ON DELETE CASCADE sulle 4 tabelle collegate), raccogliamo
+        // tutti i dati in un unico JSON da mettere in `last_known_data`.
+        let snapshot_value = collect_player_snapshot(conn, &id);
+        let snapshot = serde_json::to_string(&snapshot_value)
+            .unwrap_or_else(|_| "{}".to_string());
 
         // Pre-check: il giocatore è già in archivio? Se sì, NON duplicare.
         let already_archived: bool = conn
@@ -664,7 +941,10 @@ pub fn archive_player(
             )));
         }
 
-        // Insert into archive, then delete from players (atomic via tx)
+        // Insert into archive, then delete from players (atomic via tx).
+        // Il DELETE FROM players triggerà ON DELETE CASCADE su scouting_notes,
+        // auction_data, oracolo_projections, pressione_mercato (lo snapshot
+        // arricchito li ha già preservati in `last_known_data`).
         let tx = conn.unchecked_transaction()?;
         tx.execute(
             r#"INSERT INTO players_archive
@@ -688,6 +968,200 @@ pub fn archive_player(
 
         Ok(true)
     })
+}
+
+/// M2.1 — IMPROVEMENT B3: set_player_status.
+///
+/// Imposta lo status di un giocatore (scoutato / da_fare / totali) con
+/// validazione lato Rust (rispetta il CHECK constraint dello schema).
+/// Usato dal toggle manuale (click sul timbro) e può essere chiamato anche
+/// dall'auto-toggle lato Rust (vedi save_scouting_note).
+///
+/// Validazione: `new_status` DEVE essere uno tra 'totali', 'scoutato', 'da_fare'.
+#[tauri::command]
+pub fn set_player_status(
+    state: State<'_, DbState>,
+    player_id: String,
+    new_status: String,
+) -> AppResult<Player> {
+    // Validazione inline (con i stessi valori di STATUS_VALUES)
+    let valid = ["totali", "scoutato", "da_fare"];
+    if !valid.contains(&new_status.as_str()) {
+        return Err(AppError::Validation(format!(
+            "new_status deve essere uno di {:?}, avuto {:?}",
+            valid, new_status
+        )));
+    }
+
+    // Trova il db_id del giocatore
+    let active_id = state.active_db_id()?;
+    let db_id = state.with_conn(&active_id, |conn| {
+        let d: String = conn
+            .query_row(
+                "SELECT db_id FROM players WHERE id = ?1",
+                params![&player_id],
+                |r| r.get(0),
+            )
+            .ok()
+            .ok_or_else(|| {
+                AppError::NotFound(format!("giocatore id={} non trovato", player_id))
+            })?;
+        Ok(d)
+    })?;
+
+    state.with_conn(&db_id, |conn| {
+        ensure_writable_db(conn, &db_id)?;
+        let affected = conn.execute(
+            "UPDATE players SET status = ?2, updated_by = 'me' WHERE id = ?1",
+            params![&player_id, &new_status],
+        )?;
+        if affected == 0 {
+            return Err(AppError::NotFound(format!(
+                "giocatore id={} non trovato",
+                player_id
+            )));
+        }
+
+        // Re-read canonical
+        let player = conn
+            .query_row(
+                r#"SELECT id, db_id, name, team, pos_fanta, pos_real, status, fascia,
+                          priority, fmil_spesi, med, medv, fvm, updated_at, updated_by
+                   FROM players WHERE id = ?1"#,
+                params![&player_id],
+                |row| {
+                    Ok(Player {
+                        id: row.get(0)?,
+                        db_id: row.get(1)?,
+                        name: row.get(2)?,
+                        team: row.get(3)?,
+                        pos_fanta: row.get(4)?,
+                        pos_real: row.get(5)?,
+                        status: row.get(6)?,
+                        fascia: row.get(7)?,
+                        priority: row.get(8)?,
+                        fmil_spesi: row.get(9)?,
+                        med: row.get(10)?,
+                        medv: row.get(11)?,
+                        fvm: row.get(12)?,
+                        updated_at: row.get(13)?,
+                        updated_by: row.get(14)?,
+                    })
+                },
+            )
+            .map_err(|e| AppError::Db(e))?;
+
+        Ok(player)
+    })
+}
+
+/// M2.1 — IMPROVEMENT B3: save_scouting_note con auto-toggle status.
+///
+/// Crea una riga in `scouting_notes` per il giocatore. Se il giocatore ha
+/// `status='da_fare'` e la nota ha `kind='note'` con `content` non vuoto,
+/// OPPURE `kind='data'` con `content` non vuoto, lo status viene
+/// automaticamente promosso a 'scoutato' (auto-toggle).
+///
+/// Non torna mai indietro automaticamente (se l'utente vuole rimettere
+/// 'da_fare', usa il toggle manuale sul timbro).
+#[tauri::command]
+pub fn save_scouting_note(
+    state: State<'_, DbState>,
+    player_id: String,
+    kind: String,
+    label: Option<String>,
+    content: Option<String>,
+    source: Option<String>,
+) -> AppResult<bool> {
+    // Validazione kind (rispetta il CHECK constraint)
+    let valid_kinds = ["data", "link", "note"];
+    if !valid_kinds.contains(&kind.as_str()) {
+        return Err(AppError::Validation(format!(
+            "kind deve essere uno di {:?}, avuto {:?}",
+            valid_kinds, kind
+        )));
+    }
+
+    let active_id = state.active_db_id()?;
+    // Trova il db_id del giocatore
+    let db_id = state.with_conn(&active_id, |conn| {
+        let d: String = conn
+            .query_row(
+                "SELECT db_id FROM players WHERE id = ?1",
+                params![&player_id],
+                |r| r.get(0),
+            )
+            .ok()
+            .ok_or_else(|| {
+                AppError::NotFound(format!("giocatore id={} non trovato", player_id))
+            })?;
+        Ok(d)
+    })?;
+
+    state.with_conn(&db_id, |conn| {
+        ensure_writable_db(conn, &db_id)?;
+
+        let tx = conn.unchecked_transaction()?;
+
+        // Insert scouting note
+        tx.execute(
+            r#"INSERT INTO scouting_notes
+               (player_id, kind, label, content, source)
+               VALUES (?1, ?2, ?3, ?4, ?5)"#,
+            params![
+                &player_id,
+                &kind,
+                &label,
+                &content,
+                &source,
+            ],
+        )?;
+
+        // Auto-toggle status: se kind IN ('note','data') e content è non vuoto
+        // e il giocatore è in 'da_fare' → promuovi a 'scoutato'
+        let should_promote = matches!(kind.as_str(), "note" | "data")
+            && content.as_deref().map(|c| !c.trim().is_empty()).unwrap_or(false);
+
+        if should_promote {
+            let current_status: Option<String> = tx
+                .query_row(
+                    "SELECT status FROM players WHERE id = ?1",
+                    params![&player_id],
+                    |r| r.get(0),
+                )
+                .ok();
+            if current_status.as_deref() == Some("da_fare") {
+                tx.execute(
+                    "UPDATE players SET status = 'scoutato', updated_by = 'me' WHERE id = ?1",
+                    params![&player_id],
+                )?;
+            }
+        }
+
+        tx.commit()?;
+        Ok(true)
+    })
+}
+
+/// M2.1 — Helper esposto per listone.rs: collect_player_snapshot (snapshot arricchito).
+/// Permette a `import_listone` di usare lo stesso snapshot arricchito di `archive_player`.
+#[allow(dead_code)]
+pub(crate) fn _collect_player_snapshot(
+    conn: &rusqlite::Connection,
+    player_id: &str,
+) -> serde_json::Value {
+    collect_player_snapshot(conn, player_id)
+}
+
+/// M2.1 — Helper esposto per listone.rs: recreate_connected_tables.
+/// Permette a `restore_archived_player` di listone.rs di ricreare le 4 tabelle
+/// collegate dallo snapshot arricchito (inversa di collect_player_snapshot).
+#[allow(dead_code)]
+pub(crate) fn _recreate_connected_tables(
+    conn: &rusqlite::Connection,
+    snapshot: &serde_json::Value,
+) -> Result<(), rusqlite::Error> {
+    recreate_connected_tables(conn, snapshot)
 }
 
 /// Elenca i giocatori archiviati (non più in Serie A).

@@ -166,3 +166,65 @@ export interface ArchivedPlayer {
   archived_reason: string;
   last_known_data: unknown; // snapshot JSON del player al momento dell'archiviazione
 }
+
+// ----------------------------------------------------------------------
+// M2.1 — anteprima import con diff (FIX A5, B7)
+// ----------------------------------------------------------------------
+
+/** Voce di anteprima: giocatore che verrà CREATO (non esiste nel DB). */
+export interface PreviewCreated {
+  name: string;
+  team: string | null;
+  pos_fanta: PosFanta | null;
+  fvm: number | null;
+}
+
+/** Voce di anteprima: giocatore che verrà ARCHIVIATO (non più in listone). */
+export interface PreviewArchived {
+  id: string;
+  name: string;
+  team: string | null;
+  reason: string;
+}
+
+/** Voce di anteprima: giocatore che verrà AGGIORNATO (FVM nuovo). */
+export interface PreviewUpdated {
+  id: string;
+  name: string;
+  field_changed: string;
+  old: number;
+  new: number;
+}
+
+/** Voce di anteprima: giocatore che verrà RIPRISTINATO dall'archivio. */
+export interface PreviewRestored {
+  id: string;
+  name: string;
+  team: string | null;
+}
+
+/** Risultato della preview: 4 liste + totali + DB attivo. */
+export interface ImportPreview {
+  created: PreviewCreated[];
+  archived: PreviewArchived[];
+  updated: PreviewUpdated[];
+  restored: PreviewRestored[];
+  total_listone: number;
+  active_db_id: string;
+  active_db_name: string;
+}
+
+// ----------------------------------------------------------------------
+// M2.1 — scouting notes (auto-toggle B3)
+// ----------------------------------------------------------------------
+
+export type ScoutingNoteKind = "data" | "link" | "note";
+
+/** Payload per save_scouting_note. */
+export interface SaveScoutingNoteInput {
+  player_id: string;
+  kind: ScoutingNoteKind;
+  label?: string | null;
+  content?: string | null;
+  source?: string | null;
+}

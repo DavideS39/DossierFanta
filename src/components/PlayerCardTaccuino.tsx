@@ -1,24 +1,35 @@
 /**
- * PlayerCardTaccuino — card giocatore redesigned (M2 design system).
+ * PlayerCardTaccuino — card giocatore redesigned (M2 design system + M2.1 v2.3 realistic).
  *
- * Sostituisce PlayerCard M1 con il design taccuino scout 80s:
- * - Scheda strappata via clip-path (.tacc-card)
- * - Rotazione casuale ±0.5° (stabile per istanza)
- * - Hover: si raddrizza (rotate(0deg)) e si solleva (translateY(-2px))
- * - Timbri rotati per stato (Stamp component)
- * - Pinzatrice □ in angolo top-left quando priority === 5/5
- * - f₥ Fantamilioni (glifo Unicode U+20A5)
- * - Chip DB provenienza (se il player appartiene a un DB non attivo)
- * - Niente emoji: solo glyph testuali Unicode (★ ◆ ▲ ▼ → » □)
+ * M2.1 v2.3 (Cap.16 riscritto):
+ *  - Scheda strappata 8-12 punti via clip-path (.tacc-card--v23)
+ *  - Ombre multilayer 3-strati (contact/mid/ambient) su .tacc-card--v23
+ *  - Hover: si raddrizza (rotate(0deg)) + translateY(-3px) + ombre +50%
+ *  - Bordi più organici (8-12 punti con variazione non lineare)
+ *  - Ombra interna sul bordo strappato (inset shadow via filter)
+ *  - Z-axis: card = Z1, hover = Z2
  *
- * Click: apre form di modifica (come in M1).
- * Pulsanti Modifica/Elimina in hover (come M1, con stopPropagation).
+ * M2.1 v2.3 (Cap.8 + Cap.9 riscritti):
+ *  - Timbro di stato cliccabile → menu a 3 voci (Scoutato/Da fare/Totale)
+ *    (StatusToggle component). Click → set_player_status(playerId, newStatus)
+ *  - Tooltip glossario ? accanto a f₥, M, MV, FVM, fascia, priorità
+ *    (GlossaryTooltip component). Hover mostra definizione in popover cartaceo.
+ *
+ * Click sulla card → apre form come finestra WM (M2.1 v2.3 Cap.17).
+ * Doppio-click → apre in finestra OS nativa (open_player_window).
+ *
+ * Pinzatrice □ in angolo top-left quando priority === 5/5.
+ * f₥ Fantamilioni (glifo Unicode U+20A5).
+ * Chip DB provenienza (se il player appartiene a un DB non attivo).
+ * Niente emoji: solo glyph testuali Unicode (★ ◆ ▲ ▼ → » □ ⚠ ✓ ? ₥ ⇄ ─ ✕).
  */
 
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Player } from "@/types/player";
 import { fmtFmil, fmtMed, fmtMedv, fmtFvm, FASCIA_COLORS, ROLE_COLORS } from "@/lib/format";
 import { Stamp } from "./Stamp";
+import { GlossaryTooltip } from "./GlossaryTooltip";
+import { StatusToggle } from "./StatusToggle";
 
 interface Props {
   player: Player;
@@ -41,11 +52,11 @@ export function PlayerCardTaccuino({
   archived = false,
   dbLabel,
 }: Props) {
-  // Rotazione casuale ±0.5° stabile per istanza
+  // Rotazione casuale ±0.7° stabile per istanza (v2.3: leggermente più accentuata)
   const id = useId();
   const rotation = useMemo(() => {
     const seed = hashString(id);
-    return ((seed % 11) - 5) / 10; // -0.5 .. +0.5
+    return (((seed % 15) - 7) / 10); // -0.7 .. +0.7
   }, [id]);
 
   const role = player.pos_fanta;
@@ -53,15 +64,25 @@ export function PlayerCardTaccuino({
   const fasciaColor = player.fascia ? FASCIA_COLORS[player.fascia] ?? "#6B4A2C" : null;
   const isMaxPriority = player.priority >= 5;
 
+  // M2.1 B3: stato locale per il menu di toggle status
+  const [statusMenu, setStatusMenu] = useState<{ x: number; y: number } | null>(null);
+
   const handleCardClick = () => {
     if (archived) return; // archived = read-only
     onSelect();
     onEdit();
   };
 
+  const handleStatusClick = (e: React.MouseEvent) => {
+    if (archived) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setStatusMenu({ x: e.clientX, y: e.clientY + 16 });
+  };
+
   return (
     <div
-      className={`tacc-card ${selected ? "is-selected" : ""} ${archived ? "is-archived" : ""}`}
+      className={`tacc-card tacc-card--v23 ${selected ? "is-selected" : ""} ${archived ? "is-archived" : ""}`}
       style={{ transform: `rotate(${rotation}deg)` }}
       onClick={handleCardClick}
       role="button"
@@ -108,53 +129,94 @@ export function PlayerCardTaccuino({
           </div>
         </div>
 
-        {/* Priorità: stelle (o niente se 5/5 → pinzatrice) */}
+        {/* Priorità: stelle (o niente se 5/5 → pinzatrice) — con tooltip */}
         {!isMaxPriority && (
-          <div
-            className="shrink-0 text-xs text-amber"
-            style={{ fontFamily: "var(--font-display)" }}
-            title={`Priorità ${player.priority}/5`}
-          >
-            <span aria-hidden>
-              {"★".repeat(player.priority)}
-              <span className="text-ink/20">{"★".repeat(5 - player.priority)}</span>
-            </span>
-          </div>
+          <GlossaryTooltip term="priorita">
+            <div
+              className="shrink-0 text-xs text-amber"
+              style={{ fontFamily: "var(--font-display)" }}
+              title={`Priorità ${player.priority}/5`}
+            >
+              <span aria-hidden>
+                {"★".repeat(player.priority)}
+                <span className="text-ink/20">{"★".repeat(5 - player.priority)}</span>
+              </span>
+            </div>
+          </GlossaryTooltip>
         )}
       </div>
 
       {/* Fascia + status (timbri rotati) */}
       <div className="mt-2 mb-2 flex items-center gap-2 flex-wrap">
         {player.fascia && (
+          <GlossaryTooltip term="fascia">
+            <span
+              className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm"
+              style={{
+                fontFamily: "var(--font-display)",
+                backgroundColor: fasciaColor ?? "#6B4A2C",
+                color: "#FFF",
+              }}
+            >
+              {player.fascia}
+            </span>
+          </GlossaryTooltip>
+        )}
+        {/* M2.1 B3: timbro di stato cliccabile */}
+        {!archived && (
           <span
-            className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm"
-            style={{
-              fontFamily: "var(--font-display)",
-              backgroundColor: fasciaColor ?? "#6B4A2C",
-              color: "#FFF",
-            }}
+            onClick={handleStatusClick}
+            title="Click per cambiare stato (Scoutato / Da fare / Totale)"
+            style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}
           >
-            {player.fascia}
+            {player.status === "scoutato" ? (
+              <Stamp variant="scoutato">Scoutato</Stamp>
+            ) : player.status === "da_fare" ? (
+              <Stamp variant="da-fare">Da fare</Stamp>
+            ) : (
+              <Stamp variant="custom" color="var(--ink-soft)">Totale</Stamp>
+            )}
+            <span
+              className="tacc-glyph"
+              style={{ fontSize: "10px", color: "var(--ink-soft)", opacity: 0.7 }}
+              aria-hidden
+            >
+              ⇄
+            </span>
           </span>
         )}
-        {archived ? (
-          <Stamp variant="archiviato">Archiviato</Stamp>
-        ) : player.status === "scoutato" ? (
-          <Stamp variant="scoutato">Scoutato</Stamp>
-        ) : player.status === "da_fare" ? (
-          <Stamp variant="da-fare">Da fare</Stamp>
-        ) : null}
+        {archived && <Stamp variant="archiviato">Archiviato</Stamp>}
       </div>
 
-      {/* Valori disambiguati: f₥ / M / MV / FVM */}
+      {/* Valori disambiguati: f₥ / M / MV / FVM — con tooltip glossario (M2.1 B4) */}
       <div
         className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs"
         style={{ fontFamily: "var(--font-body)" }}
       >
-        <ValueChip label="f₥" value={fmtFmil(player.fmil_spesi).replace("f₥ ", "")} raw={fmtFmil(player.fmil_spesi)} />
-        <ValueChip label="FVM" value={player.fvm !== null ? String(player.fvm) : "—"} raw={fmtFvm(player.fvm)} />
-        <ValueChip label="M" value={player.med !== null ? player.med.toFixed(2) : "—"} raw={fmtMed(player.med)} />
-        <ValueChip label="MV" value={player.medv !== null ? player.medv.toFixed(2) : "—"} raw={fmtMedv(player.medv)} />
+        <ValueChipTooltip
+          label="f₥"
+          value={fmtFmil(player.fmil_spesi).replace("f₥ ", "")}
+          raw={fmtFmil(player.fmil_spesi)}
+          term="fmil"
+        />
+        <ValueChipTooltip
+          label="FVM"
+          value={player.fvm !== null ? String(player.fvm) : "—"}
+          raw={fmtFvm(player.fvm)}
+          term="fvm"
+        />
+        <ValueChipTooltip
+          label="M"
+          value={player.med !== null ? player.med.toFixed(2) : "—"}
+          raw={fmtMed(player.med)}
+          term="med"
+        />
+        <ValueChipTooltip
+          label="MV"
+          value={player.medv !== null ? player.medv.toFixed(2) : "—"}
+          raw={fmtMedv(player.medv)}
+          term="medv"
+        />
       </div>
 
       {/* Chip DB provenienza (se diverso dal attivo) */}
@@ -191,19 +253,41 @@ export function PlayerCardTaccuino({
           </button>
         </div>
       )}
+
+      {/* Menu di toggle status (rendered outside the card via portal-like fixed positioning) */}
+      {statusMenu && (
+        <StatusToggle
+          player={player}
+          x={statusMenu.x}
+          y={statusMenu.y}
+          onClose={() => setStatusMenu(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ValueChip({ label, value, raw }: { label: string; value: string; raw: string }) {
+function ValueChipTooltip({
+  label,
+  value,
+  raw,
+  term,
+}: {
+  label: string;
+  value: string;
+  raw: string;
+  term: "fmil" | "med" | "medv" | "fvm" | "fascia" | "priorita";
+}) {
   return (
     <div className="flex items-center gap-1" title={raw}>
-      <span
-        className="text-ink-soft text-[10px] uppercase tracking-wider"
-        style={{ fontFamily: "var(--font-display)" }}
-      >
-        {label}
-      </span>
+      <GlossaryTooltip term={term}>
+        <span
+          className="text-ink-soft text-[10px] uppercase tracking-wider"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {label}
+        </span>
+      </GlossaryTooltip>
       <span className="font-bold text-ink">{value}</span>
     </div>
   );

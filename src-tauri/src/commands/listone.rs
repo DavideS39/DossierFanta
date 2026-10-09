@@ -34,6 +34,8 @@
 
 use crate::commands::database::ensure_writable_db;
 use crate::commands::{AppError, AppResult};
+use crate::commands::players::_collect_player_snapshot;
+use crate::commands::players::_recreate_connected_tables;
 use crate::db::new_uuid;
 use crate::DbState;
 use rusqlite::params;
@@ -328,35 +330,23 @@ pub fn import_listone(
         if !listone_names.contains(&pname.to_lowercase()) {
             // Archive this player (reason: non_in_listone)
             let r = state.with_conn(&active_id, |conn| {
-                // Read full row
-                let player_row = conn
-                    .query_row(
-                        r#"SELECT id, db_id, name, team, pos_fanta, pos_real, status, fascia,
-                                  priority, fmil_spesi, med, medv, fvm, updated_at, updated_by
-                           FROM players WHERE id = ?1"#,
-                        params![pid],
-                        |row| {
-                            Ok(serde_json::json!({
-                                "id": row.get::<_, String>(0)?,
-                                "db_id": row.get::<_, String>(1)?,
-                                "name": row.get::<_, String>(2)?,
-                                "team": row.get::<_, Option<String>>(3)?,
-                                "pos_fanta": row.get::<_, Option<String>>(4)?,
-                                "pos_real": row.get::<_, Option<String>>(5)?,
-                                "status": row.get::<_, String>(6)?,
-                                "fascia": row.get::<_, Option<String>>(7)?,
-                                "priority": row.get::<_, i64>(8)?,
-                                "fmil_spesi": row.get::<_, Option<i64>>(9)?,
-                                "med": row.get::<_, Option<f64>>(10)?,
-                                "medv": row.get::<_, Option<f64>>(11)?,
-                                "fvm": row.get::<_, Option<i64>>(12)?,
-                                "updated_at": row.get::<_, Option<String>>(13)?,
-                                "updated_by": row.get::<_, Option<String>>(14)?,
-                            }))
-                        },
-                    )
-                    .map_err(|e| AppError::Db(e))?;
-                let snapshot_str = serde_json::to_string(&player_row).unwrap_or_else(|_| "{}".to_string());
+                // FIX A2 (B5) — Snapshot arricchito via shared helper.
+                // Invece di leggere solo la riga di players (M2 base),
+                // raccogliamo anche scouting_notes, auction_data,
+                // oracolo_projections, pressione_mercato.
+                let snapshot_value = _collect_player_snapshot(conn, pid);
+                let snapshot_str = serde_json::to_string(&snapshot_value)
+                    .unwrap_or_else(|_| "{}".to_string());
+
+                // Estrai i campi minimi dalla riga di players per i metadati
+                // dell'archivio (team, pos_fanta, pos_real vanno su players_archive).
+                let player_obj = snapshot_value
+                    .get("player")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let p_team = player_obj.get("team").and_then(|v| v.as_str());
+                let p_pos_fanta = player_obj.get("pos_fanta").and_then(|v| v.as_str());
+                let p_pos_real = player_obj.get("pos_real").and_then(|v| v.as_str());
 
                 // Pre-check: già in archive?
                 let already: bool = conn
@@ -370,7 +360,10 @@ pub fn import_listone(
                     return Ok(false); // skip, non duplicare
                 }
 
-                // Insert into archive + delete from players (atomic)
+                // Insert into archive + delete from players (atomic via tx).
+                // Il DELETE FROM players triggerà ON DELETE CASCADE sulle 4
+                // tabelle collegate, ma lo snapshot arricchito le ha già
+                // preservate in `last_known_data`.
                 let tx = conn.unchecked_transaction()?;
                 tx.execute(
                     r#"INSERT INTO players_archive
@@ -381,9 +374,9 @@ pub fn import_listone(
                         pid,
                         active_id,
                         pname,
-                        player_row.get("team").and_then(|v| v.as_str()),
-                        player_row.get("pos_fanta").and_then(|v| v.as_str()),
-                        player_row.get("pos_real").and_then(|v| v.as_str()),
+                        p_team,
+                        p_pos_fanta,
+                        p_pos_real,
                         snapshot_str,
                         active_id,
                     ],
@@ -489,6 +482,13 @@ pub fn list_archived_players(
 /// a players preservando tutti i dati dal `last_known_data`).
 /// In M2 questo è anche chiamato automaticamente da `import_listone` quando
 /// un giocatore archiviato torna nel listone.
+///
+/// FIX A3 (B12): ora il restore legge lo snapshot arricchito in
+/// `last_known_data` (player + scouting_notes + auction_data +
+/// oracolo_projections + pressione_mercato) e ricrea PRIMA le righe nelle
+/// tabelle collegate POI sposta il player da archive a players, usando una
+/// singola transazione SQLite per atomicità. In M2 base il restore non
+/// ricreava i collegati perché il DELETE CASCADE li aveva cancellati.
 #[tauri::command]
 pub fn restore_archived_player(
     state: State<'_, DbState>,
@@ -541,7 +541,20 @@ pub fn restore_archived_player(
         let snapshot_json = last_known.unwrap_or_else(|| "{}".to_string());
         let snapshot: serde_json::Value =
             serde_json::from_str(&snapshot_json).unwrap_or(serde_json::Value::Null);
-        let s = &snapshot;
+
+        // FIX A3 (B12): Snapshot arricchito. Lo snapshot ha due forme possibili:
+        //  - Forma M2.1 arricchita: {player: {...}, scouting_notes: [...], ...}
+        //  - Forma M2 base legacy: {...} (direttamente i campi del player)
+        // Rileviamo: se esiste la chiave "player", è la forma arricchita.
+        let is_enriched = snapshot.get("player").is_some();
+
+        // Estrai i dati del player (gestisce entrambe le forme)
+        let player_data = if is_enriched {
+            snapshot.get("player").cloned().unwrap_or(serde_json::Value::Null)
+        } else {
+            snapshot.clone()
+        };
+        let s = &player_data;
 
         // Pre-check: già in players? Non duplicare.
         let already: bool = conn
@@ -593,7 +606,12 @@ pub fn restore_archived_player(
         let pmedv = s.get("medv").and_then(|v| v.as_f64());
         let pfvm = s.get("fvm").and_then(|v| v.as_i64());
 
-        // Insert into players + delete from archive (atomic)
+        // FIX A3 (B12): transazione atomica che:
+        //   1. Inserisce la riga in players (prima le FK referenziano players.id)
+        //   2. Ricrea le righe nelle tabelle collegate (scouting_notes, auction_data,
+        //      oracolo_projections, pressione_mercato) dallo snapshot arricchito
+        //   3. Cancella la riga da players_archive
+        // Tutto in un'unica tx: se qualsiasi passo fallisce, rollback completo.
         let tx = conn.unchecked_transaction()?;
         tx.execute(
             r#"INSERT INTO players
@@ -616,6 +634,12 @@ pub fn restore_archived_player(
                 pfvm,
             ],
         )?;
+
+        // Ricrea le tabelle collegate solo se lo snapshot è arricchito (M2.1)
+        if is_enriched {
+            _recreate_connected_tables(tx, &snapshot).map_err(AppError::Db)?;
+        }
+
         tx.execute(
             "DELETE FROM players_archive WHERE id = ?1",
             params![&player_id],
@@ -623,5 +647,247 @@ pub fn restore_archived_player(
         tx.commit()?;
 
         Ok(true)
+    })
+}
+
+// ----------------------------------------------------------------------
+// M2.1 — FIX A5 (B7): preview_import_listone
+// ----------------------------------------------------------------------
+//
+// Esegue lo stesso matching di `import_listone` MA SENZA APPLICARE MODIFICHE.
+// Restituisce 4 liste dettagliate (created, archived, updated, restored)
+// che l'UI mostra in un modale di anteprima prima di abilitare il pulsante
+// "Applica". Solo dopo conferma, il frontend chiama il vero `import_listone`.
+//
+// Le liste ritornate sono strutturate per essere mostrate direttamente
+// in una tabella di anteprima (nome, squadra, ruolo, fvm nuovo/vecchio).
+
+/// Voce di anteprima per un giocatore che verrà CREATO (non esiste nel DB).
+#[derive(Debug, Serialize)]
+pub struct PreviewCreated {
+    pub name: String,
+    pub team: Option<String>,
+    pub pos_fanta: Option<String>,
+    pub fvm: Option<i64>,
+}
+
+/// Voce di anteprima per un giocatore che verrà ARCHIVIATO (presente nel DB,
+/// NON presente nel listone).
+#[derive(Debug, Serialize)]
+pub struct PreviewArchived {
+    pub id: String,
+    pub name: String,
+    pub team: Option<String>,
+    pub reason: String,
+}
+
+/// Voce di anteprima per un giocatore che verrà AGGIORNATO (FVM nuovo diverso
+/// dal FVM attuale).
+#[derive(Debug, Serialize)]
+pub struct PreviewUpdated {
+    pub id: String,
+    pub name: String,
+    pub field_changed: String,
+    pub old: serde_json::Value,
+    pub new: serde_json::Value,
+}
+
+/// Voce di anteprima per un giocatore che verrà RIPRISTINATO dall'archivio
+/// (presente in players_archive, presente nel listone).
+#[derive(Debug, Serialize)]
+pub struct PreviewRestored {
+    pub id: String,
+    pub name: String,
+    pub team: Option<String>,
+}
+
+/// Risultato della preview: 4 liste + totali.
+#[derive(Debug, Serialize)]
+pub struct ImportPreview {
+    pub created: Vec<PreviewCreated>,
+    pub archived: Vec<PreviewArchived>,
+    pub updated: Vec<PreviewUpdated>,
+    pub restored: Vec<PreviewRestored>,
+    pub total_listone: i64,
+    pub active_db_id: String,
+    pub active_db_name: String,
+}
+
+/// Esegue l'anteprima dell'import: calcola cosa succederebbe senza toccare
+/// il DB. L'UI mostra questo risultato in un modale di conferma.
+#[tauri::command]
+pub fn preview_import_listone(
+    state: State<'_, DbState>,
+    players_json: String,
+) -> AppResult<ImportPreview> {
+    let entries: Vec<ListoneEntry> = serde_json::from_str(&players_json).map_err(|e| {
+        AppError::Validation(format!(
+            "JSON listone non valido: {}. Formato atteso: [{{\"name\":\"...\",\"team\":\"...\",\"pos_fanta\":\"A\",\"fvm\":32}}, ...]",
+            e
+        ))
+    })?;
+
+    let active_id = state.active_db_id()?;
+
+    // Valida le entry come in import_listone (skip righe senza name, ecc.)
+    let mut valid_entries: Vec<ListoneEntry> = Vec::new();
+    let valid_pos = ["P", "D", "C", "A"];
+    for (i, e) in entries.into_iter().enumerate() {
+        let name = e.name.trim().to_string();
+        if name.is_empty() {
+            // skip silently nella preview (gli errori sono raccolti in import vero)
+            let _ = i;
+            continue;
+        }
+        if let Some(p) = &e.pos_fanta {
+            if !valid_pos.contains(&p.as_str()) {
+                valid_entries.push(ListoneEntry {
+                    name,
+                    team: e.team,
+                    pos_fanta: None,
+                    fvm: e.fvm,
+                });
+                continue;
+            }
+        }
+        valid_entries.push(ListoneEntry {
+            name,
+            team: e.team,
+            pos_fanta: e.pos_fanta,
+            fvm: e.fvm,
+        });
+    }
+    let total_listone = valid_entries.len() as i64;
+
+    // === Fase 1: per ogni entry, decidi created/updated/restored (no write) ===
+    // MatchResult enum tiene il risultato della closure: una sola variante,
+    // dispatchato al loop esterno. Senza questo trucco, la closure dovrebbe
+    // ritornare `Some(PreviewCreated | PreviewUpdated | PreviewRestored)` che
+    // in Rust richiede enum esplicita.
+    enum MatchResult {
+        Created(PreviewCreated),
+        Updated(PreviewUpdated),
+        Restored(PreviewRestored),
+        Unchanged,
+    }
+
+    let mut created: Vec<PreviewCreated> = Vec::new();
+    let mut updated: Vec<PreviewUpdated> = Vec::new();
+    let mut restored: Vec<PreviewRestored> = Vec::new();
+
+    // Lista nomi lowercase del listone (per Fase 2)
+    let listone_names: Vec<String> = valid_entries
+        .iter()
+        .map(|e| e.name.to_lowercase())
+        .collect();
+
+    for entry in &valid_entries {
+        let r = state.with_conn(&active_id, |conn| {
+            // (a) Match in players?
+            let player_match: Option<(String, Option<i64>)> = conn
+                .query_row(
+                    "SELECT id, fvm FROM players WHERE db_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1",
+                    params![&active_id, &entry.name],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?)),
+                )
+                .ok();
+            if let Some((pid, current_fvm)) = player_match {
+                // UPDATED se FVM diverso
+                if entry.fvm.is_some() && entry.fvm != current_fvm {
+                    return Ok(MatchResult::Updated(PreviewUpdated {
+                        id: pid,
+                        name: entry.name.clone(),
+                        field_changed: "fvm".to_string(),
+                        old: serde_json::Value::from(current_fvm.unwrap_or(0)),
+                        new: serde_json::Value::from(entry.fvm.unwrap_or(0)),
+                    }));
+                }
+                return Ok(MatchResult::Unchanged); // già allineato
+            }
+
+            // (b) Match in players_archive?
+            let archive_match: Option<(String, Option<String>)> = conn
+                .query_row(
+                    "SELECT id, team FROM players_archive WHERE db_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1",
+                    params![&active_id, &entry.name],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
+                )
+                .ok();
+            if let Some((aid, ateam)) = archive_match {
+                return Ok(MatchResult::Restored(PreviewRestored {
+                    id: aid,
+                    name: entry.name.clone(),
+                    team: ateam.or_else(|| entry.team.clone()),
+                }));
+            }
+
+            // (c) CREATED
+            Ok(MatchResult::Created(PreviewCreated {
+                name: entry.name.clone(),
+                team: entry.team.clone(),
+                pos_fanta: entry.pos_fanta.clone(),
+                fvm: entry.fvm,
+            }))
+        });
+        match r {
+            Ok(MatchResult::Created(p)) => created.push(p),
+            Ok(MatchResult::Updated(p)) => updated.push(p),
+            Ok(MatchResult::Restored(p)) => restored.push(p),
+            Ok(MatchResult::Unchanged) => {}
+            Err(_) => {}
+        }
+    }
+
+    // === Fase 2: archived preview ===
+    let player_ids_names: Vec<(String, String, Option<String>)> = state.with_conn(&active_id, |conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, team FROM players WHERE db_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![&active_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    })?;
+
+    let mut archived: Vec<PreviewArchived> = Vec::new();
+    for (pid, pname, pteam) in &player_ids_names {
+        if !listone_names.contains(&pname.to_lowercase()) {
+            archived.push(PreviewArchived {
+                id: pid.clone(),
+                name: pname.clone(),
+                team: pteam.clone(),
+                reason: "non_in_listone".to_string(),
+            });
+        }
+    }
+
+    // Recupera il nome del DB attivo
+    let active_db_name = state.with_conn(&active_id, |conn| {
+        let n: String = conn
+            .query_row(
+                "SELECT name FROM databases WHERE id = ?1",
+                params![&active_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "?".to_string());
+        Ok(n)
+    })?;
+
+    Ok(ImportPreview {
+        created,
+        archived,
+        updated,
+        restored,
+        total_listone,
+        active_db_id: active_id,
+        active_db_name,
     })
 }

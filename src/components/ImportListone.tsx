@@ -1,25 +1,27 @@
 /**
- * ImportListone — schermata import listone Serie A (M2).
+ * ImportListone — schermata import listone Serie A (M2 + M2.1 B7).
  *
- * Flusso UX:
- * 1. L'utente carica un file JSON via HTML file input (no plugin Tauri dialog
- *    necessario — FileReader legge il contenuto come testo, che viene
- *    passato al comando `import_listone` come stringa JSON).
- * 2. Anteprima del JSON parsed: mostra numero di righe e una tabella
- *    con i primi 10 giocatori del listone.
- * 3. Bottone "Applica" → chiama `api.importListone(json)`.
- * 4. Mostra il summary ritornato dal backend: created/updated/archived/restored.
+ * Flusso UX M2.1:
+ * 1. L'utente carica un file JSON via HTML file input.
+ * 2. Anteprima delle righe caricate (10 prime righe, formato JSON parsed).
+ * 3. Click "Anteprima modifiche" → chiama api.previewImportListone(json)
+ *    che ritorna ImportPreview con 4 liste (created/archived/updated/restored).
+ * 4. Modale ImportPreview mostra il diff. Click "Applica" → chiama il vero
+ *    api.importListone(json) che applica le modifiche. Click "Annulla" →
+ *    nessuna modifica applicata.
+ * 5. Mostra il summary post-import.
  *
  * Vincoli:
- * - L'import è manuale in M2 (file picker). L'auto-fetch via GitHub Actions
+ * - L'import è manuale in M2.1 (file picker). L'auto-fetch via GitHub Actions
  *   è M3 e NON va implementato qui.
  * - Il JSON atteso è un array di oggetti {name, team?, pos_fanta?, fvm?}.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/tauri";
-import type { ImportSummary, ListoneEntry } from "@/types/player";
+import type { ImportPreview, ImportSummary, ListoneEntry } from "@/types/player";
 import { useDbStore } from "@/stores/useDbStore";
+import { ImportPreview as ImportPreviewModal } from "./ImportPreview";
 
 interface Props {
   onClose: () => void;
@@ -34,6 +36,8 @@ export function ImportListone({ onClose, onImported }: Props) {
   const [applying, setApplying] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeDb = useDbStore((s) => s.getActiveDatabase?.());
@@ -49,7 +53,6 @@ export function ImportListone({ onClose, onImported }: Props) {
       if (!Array.isArray(parsed)) {
         throw new Error("Il JSON deve essere un array");
       }
-      // Validate basic shape
       const validated: ListoneEntry[] = parsed.map((p: unknown, i: number) => {
         if (typeof p !== "object" || p === null) {
           throw new Error(`riga ${i + 1}: non è un oggetto`);
@@ -80,12 +83,30 @@ export function ImportListone({ onClose, onImported }: Props) {
       setRawJson(typeof reader.result === "string" ? reader.result : "");
       setSummary(null);
       setImportError(null);
+      setPreview(null);
+      setPreviewError(null);
     };
     reader.onerror = () => setParseError("Errore lettura file");
     reader.readAsText(file);
   };
 
-  const handleApply = async () => {
+  // FIX A5 (B7): anteprima modifiche prima di applicare
+  const handlePreview = async () => {
+    if (!rawJson) return;
+    setApplying(true);
+    setPreviewError(null);
+    setPreview(null);
+    try {
+      const p = await api.previewImportListone(rawJson);
+      setPreview(p);
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleApplyFromPreview = async () => {
     if (!rawJson) return;
     setApplying(true);
     setImportError(null);
@@ -93,6 +114,7 @@ export function ImportListone({ onClose, onImported }: Props) {
     try {
       const s = await api.importListone(rawJson);
       setSummary(s);
+      setPreview(null);
       onImported?.();
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
@@ -111,12 +133,14 @@ export function ImportListone({ onClose, onImported }: Props) {
     setRawJson(JSON.stringify(sample, null, 2));
     setSummary(null);
     setImportError(null);
+    setPreview(null);
+    setPreviewError(null);
   };
 
   return (
     <div className="tacc-modal-backdrop" onClick={onClose}>
       <div
-        className="tacc-modal"
+        className="tacc-modal tacc-modal--v23"
         style={{ maxWidth: "48rem" }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -139,15 +163,14 @@ export function ImportListone({ onClose, onImported }: Props) {
 
         <div className="p-5 space-y-4 tacc-bg">
           <p className="text-sm text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
-            Carica un file JSON con il listone Serie A. Il sistema confronterà
-            i giocatori del listone con i giocatori nel DB attivo
-            {activeDb && <strong> «{activeDb.name}»</strong>}:
-            quelli nuovi verranno creati come <em>da_fare</em>, quelli assenti
-            nel listone verranno <em>archiviati</em> automaticamente, quelli
-            già archiviati che tornano nel listone verranno <em>ripristinati</em>.
+            Carica un file JSON con il listone Serie A. Dopo aver caricato il file,
+            clicca <strong>Anteprima modifiche</strong> per vedere cosa succederebbe
+            (creati / aggiornati / archiviati / ripristinati) prima di applicare.
+            Solo dopo conferma verrà effettuato l'import reale sul DB attivo
+            {activeDb && <strong> «{activeDb.name}»</strong>}.
           </p>
 
-          {/* File picker + sample */}
+          {/* File picker + sample + preview button */}
           <div className="flex items-center gap-2 flex-wrap">
             <input
               ref={fileInputRef}
@@ -185,8 +208,8 @@ export function ImportListone({ onClose, onImported }: Props) {
             </div>
           )}
 
-          {/* Anteprima entries */}
-          {entries.length > 0 && (
+          {/* Anteprima entries caricate (formato listone, non diff) */}
+          {entries.length > 0 && !preview && !summary && (
             <div className="border border-ink/30 bg-paper">
               <div
                 className="grid grid-cols-12 gap-2 px-3 py-2 bg-ink/10 text-[11px] uppercase tracking-wider text-ink-soft"
@@ -214,6 +237,13 @@ export function ImportListone({ onClose, onImported }: Props) {
                   … e altre {entries.length - 10} righe
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Preview error */}
+          {previewError && (
+            <div className="bg-red/10 border border-red/40 text-red px-3 py-2 text-sm" style={{ fontFamily: "var(--font-body)" }}>
+              <strong>Errore anteprima:</strong> {previewError}
             </div>
           )}
 
@@ -256,16 +286,31 @@ export function ImportListone({ onClose, onImported }: Props) {
           <button type="button" onClick={onClose} className="tacc-btn">
             {summary ? "Chiudi" : "Annulla"}
           </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={!rawJson || applying || !!parseError}
-            className="tacc-btn tacc-btn--primary"
-          >
-            {applying ? "Applicazione…" : "» Applica listone"}
-          </button>
+          {/* FIX A5 (B7): "Anteprima modifiche" richiama preview_import_listone.
+              Disabilitato se ci sono parse error o se è già stato applicato. */}
+          {!summary && (
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={!rawJson || applying || !!parseError}
+              className="tacc-btn"
+              title="Mostra cosa verrebbe creato/aggiornato/archiviato/ripristinato"
+            >
+              {applying && !preview ? "Calcolo…" : "? Anteprima modifiche"}
+            </button>
+          )}
         </footer>
       </div>
+
+      {/* Modale di anteprima diff (rendered over the parent modal) */}
+      {preview && (
+        <ImportPreviewModal
+          preview={preview}
+          onApply={handleApplyFromPreview}
+          onCancel={() => setPreview(null)}
+          applying={applying}
+        />
+      )}
     </div>
   );
 }

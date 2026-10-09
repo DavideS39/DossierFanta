@@ -1,0 +1,392 @@
+/* ============================================================
+   DossierFanta v2.3 — M2.1 — Design System Taccuino REALISTICO
+   ============================================================
+   Implementa il design system descritto nel PDF Cap.16 (v2.3 riscritto):
+   4 layer di texture carta sovrapposti, ombre multilayer 3-strati,
+   bordo strappato 8-12 punti con variazione organica, 6 livelli Z.
+
+   Il file è IMPORTATO in src/index.css DO styles/taccuino.css.
+   Le classi sono additive: .tacc-bg + .tacc-bg--realistic per attivare
+   la texture completa. Toggle "taccuino pulito" via .tacc-clean-mode
+   sul body disattiva i Layer 2/3/4 (mantiene solo Layer 1, griglia).
+
+   Layer texture:
+     Layer 1 — Griglia quaderno 14px (gia in taccuino.css, qui verificato)
+     Layer 2 — Piega centrale verticale (linear-gradient, opacity 0.15, 80px)
+     Layer 3 — Invecchiamento angoli (4 radial-gradient, opacity 0.08, 200px)
+     Layer 4 — Macchie d'inchiostro SVG inline (opacity 0.04-0.06)
+
+   Ombre multilayer:
+     3 layer sovrapposti per dare depth realistico alle card:
+     Contact (0 1px 2px) + Mid (0 4px 8px) + Ambient (0 12px 24px).
+     Hover: ombre intensificate +50% opacity + translateY(-3px).
+
+   Z-axis:
+     Z0 sfondo carta · Z1 card · Z2 hover · Z3 tooltip · Z4 finestra WM · Z5 modale
+   ============================================================ */
+
+:root {
+  /* Varianti derivate v2.3 */
+  --paper-fold: #E8DCC0;
+  --paper-shadow: #D4C8A8;
+  --noise: rgba(43, 27, 18, 0.03);
+
+  /* Token ombra 3-layer (mappati su ink con opacity crescenti) */
+  --tacc-shadow-contact: 0 1px 2px rgba(43, 27, 18, 0.20);
+  --tacc-shadow-mid: 0 4px 8px rgba(43, 27, 18, 0.12);
+  --tacc-shadow-ambient: 0 12px 24px rgba(43, 27, 18, 0.08);
+  --tacc-shadow-multilayer: var(--tacc-shadow-contact), var(--tacc-shadow-mid), var(--tacc-shadow-ambient);
+
+  /* Hover: ombre +50% opacity */
+  --tacc-shadow-contact-hover: 0 1px 2px rgba(43, 27, 18, 0.30);
+  --tacc-shadow-mid-hover: 0 4px 8px rgba(43, 27, 18, 0.18);
+  --tacc-shadow-ambient-hover: 0 12px 24px rgba(43, 27, 18, 0.12);
+  --tacc-shadow-multilayer-hover: var(--tacc-shadow-contact-hover), var(--tacc-shadow-mid-hover), var(--tacc-shadow-ambient-hover);
+}
+
+/* ============================================================
+   TEXTURE CARTA REALISTICA — 4 LAYER
+   ============================================================
+   .tacc-bg--realistic è una classe additiva su .tacc-bg.
+   Aggiunge Layer 2 (piega centrale), Layer 3 (invecchiamento angoli)
+   e Layer 4 (macchie d'inchiostro SVG inline fisse).
+   Il Layer 1 (griglia 14px) è già presente in .tacc-bg di taccuino.css.
+   ============================================================ */
+
+.tacc-bg.tacc-bg--realistic {
+  background-color: var(--paper);
+  background-image:
+    /* Layer 4 — Macchie d'inchiostro SVG inline (3 macchie fisse, non casuali) */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.05'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.06'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.04'/><circle cx='177' cy='88' r='1.5' fill='%232B1B12' opacity='0.05'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.05'/><circle cx='92' cy='158' r='2' fill='%232B1B12' opacity='0.04'/></svg>"),
+    /* Layer 3 — Invecchiamento angoli: 4 radial-gradient */
+    radial-gradient(circle 200px at 0% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 100% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 0% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 100% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
+    /* Layer 2 — Piega centrale verticale: linear-gradient 80px centrato */
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent calc(50% - 40px),
+      rgba(43, 27, 18, 0.15) calc(50% - 0px),
+      rgba(43, 27, 18, 0.15) 50%,
+      transparent calc(50% + 40px),
+      transparent 100%
+    ),
+    /* Layer 1 — Griglia quaderno 14px (linee 0deg + 90deg) — replicato da taccuino.css */
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    );
+  background-attachment: fixed;
+}
+
+/* Body in M2.1 usa la texture realistica di default (override di taccuino.css) */
+body {
+  background-color: var(--paper);
+  background-image:
+    /* Layer 4 — Macchie SVG inline (stesso SVG di sopra, replicato su body per coerenza) */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.05'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.06'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.04'/><circle cx='177' cy='88' r='1.5' fill='%232B1B12' opacity='0.05'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.05'/><circle cx='92' cy='158' r='2' fill='%232B1B12' opacity='0.04'/></svg>"),
+    radial-gradient(circle 200px at 0% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 100% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 0% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
+    radial-gradient(circle 200px at 100% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent calc(50% - 40px),
+      rgba(43, 27, 18, 0.15) 50%,
+      transparent calc(50% + 40px),
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    );
+  background-attachment: fixed;
+}
+
+/* "Taccuino pulito" — toggle nelle preferenze. Disattiva Layer 2, 3, 4
+   mantenendo solo Layer 1 (griglia). Attivo quando il body ha la classe. */
+body.tacc-clean-mode,
+body.tacc-clean-mode .tacc-bg,
+body.tacc-clean-mode .tacc-bg.tacc-bg--realistic {
+  background-color: var(--paper);
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      var(--grid) 13px,
+      var(--grid) 14px
+    );
+  background-attachment: fixed;
+}
+
+/* ============================================================
+   OMBRE MULTILAYER — COMPONENTI
+   ============================================================ */
+
+/* Card giocatore v2.3 — sostituisce la vecchia ombra 2px 3px di .tacc-card.
+   Per mantenere retrocompatibilità con le card esistenti, le classi si
+   applicano SOLO ai componenti che hanno la classe .tacc-card--v23. */
+.tacc-card--v23 {
+  box-shadow: var(--tacc-shadow-multilayer);
+  /* Bordi più organici: clip-path con 8-12 punti + ombra interna sul bordo strappato */
+  clip-path: polygon(
+    0% 5%, 4% 0%, 10% 4%, 17% 1%, 25% 5%, 32% 0%, 40% 3%, 48% 0%,
+    56% 4%, 64% 1%, 72% 5%, 80% 0%, 88% 3%, 94% 0%, 100% 4%,
+    100% 96%, 94% 100%, 88% 96%, 80% 100%, 72% 95%, 64% 100%, 56% 96%,
+    48% 100%, 40% 96%, 32% 100%, 25% 95%, 17% 100%, 10% 96%, 4% 100%, 0% 95%
+  );
+  /* Ombra interna sul bordo strappato per simulare lo spessore della carta */
+  filter: drop-shadow(0 1px 0 rgba(43, 27, 18, 0.15));
+  transition: transform 200ms ease, box-shadow 200ms ease, filter 200ms ease;
+}
+
+.tacc-card--v23:hover {
+  transform: rotate(0deg) translateY(-3px);
+  box-shadow: var(--tacc-shadow-multilayer-hover);
+  filter: drop-shadow(0 2px 0 rgba(43, 27, 18, 0.20));
+}
+
+.tacc-card--v23.is-selected {
+  box-shadow: 0 0 0 2px var(--red), var(--tacc-shadow-multilayer-hover);
+}
+
+/* Scheda giocatore in Window Manager: ombre massime (Z4) */
+.tacc-window-shell {
+  box-shadow:
+    0 2px 4px rgba(43, 27, 18, 0.30),
+    0 8px 16px rgba(43, 27, 18, 0.18),
+    0 24px 48px rgba(43, 27, 18, 0.12);
+}
+
+.tacc-window-shell.is-active {
+  box-shadow:
+    0 2px 4px rgba(43, 27, 18, 0.40),
+    0 8px 16px rgba(43, 27, 18, 0.24),
+    0 24px 48px rgba(43, 27, 18, 0.16);
+}
+
+/* Modale (Z5) — ombre massime +50% + overlay semi-trasparente scuro sul resto */
+.tacc-modal--v23 {
+  box-shadow:
+    0 2px 4px rgba(43, 27, 18, 0.30),
+    0 8px 16px rgba(43, 27, 18, 0.18),
+    0 24px 48px rgba(43, 27, 18, 0.12);
+}
+
+/* Tooltip glossario (Z3) — usa le ombre multilayer inline nel componente */
+
+/* ============================================================
+   DEPTH LAYERING — Z-AXIS
+   ============================================================
+   Esplicito per regolare z-index di tutti gli elementi sovrapposti.
+   - Z0: sfondo carta (nessuno z-index, default)
+   - Z1: card giocatore (z-index: 10)
+   - Z2: card hover/active (z-index: 20)
+   - Z3: tooltip glossario (z-index: 70)
+   - Z4: finestre WM in-app (z-index: 40)
+   - Z5: modale sovrapposto (z-index: 50)
+   ============================================================ */
+
+.tacc-z0 { z-index: 0; }
+.tacc-z1 { z-index: 10; }
+.tacc-z2 { z-index: 20; }
+.tacc-z3 { z-index: 70; }  /* tooltip glossario, sopra le finestre WM */
+.tacc-z4 { z-index: 40; }  /* finestre WM in-app */
+.tacc-z5 { z-index: 50; }  /* modale sovrapposto — vedi taccuino.css .tacc-modal-backdrop z-index: 50 */
+
+/* Overlay semi-trasparente scuro per modali (Z5) */
+.tacc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(43, 27, 18, 0.4);
+  z-index: 50;
+}
+
+/* ============================================================
+   COMPONENTE 7 — CHROME FINESTRA WM (Cap.16)
+   ============================================================
+   Barra superiore 32px con titolo Special Elite 12px + 3 pulsanti glyph
+   (─ minimizza, □ massimizza, ✕ chiudi). Bordo ink 2px, ombra 3-layer massima.
+   ============================================================ */
+
+.tacc-window-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 0.5rem 0 0.85rem;
+  background-color: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+  border-bottom: 2px solid var(--ink);
+}
+
+.tacc-window-chrome:active {
+  cursor: grabbing;
+}
+
+.tacc-window-chrome-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.tacc-window-chrome-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.tacc-window-chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  background-color: transparent;
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.tacc-window-chrome-btn:hover {
+  background-color: rgba(244, 236, 216, 0.18);
+}
+
+.tacc-window-chrome-btn--close:hover {
+  background-color: var(--red);
+}
+
+/* ============================================================
+   TASKBAR IN-APP (in fondo alla finestra principale)
+   ============================================================
+   Mostra le finestre minimizzate. Una voce per finestra min.
+   ============================================================ */
+
+.tacc-taskbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background-color: var(--paper-dim);
+  border-top: 2px solid rgba(43, 27, 18, 0.3);
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--ink);
+  min-height: 30px;
+}
+
+.tacc-taskbar-item {
+  padding: 0.2rem 0.55rem;
+  background-color: var(--paper);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+  transition: background-color 100ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.tacc-taskbar-item:hover {
+  background-color: var(--ink);
+  color: var(--paper);
+}
+
+/* ============================================================
+   STATUS TOGGLE MENU (B3)
+   ============================================================
+   Menu a 3 voci (Scoutato / Da fare / Totale) che appare al click sul
+   timbro di stato nella card giocatore.
+   ============================================================ */
+
+.tacc-status-toggle-menu {
+  position: absolute;
+  z-index: 75; /* sopra tooltip glossario */
+  background-color: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: var(--tacc-shadow-multilayer);
+  font-family: var(--font-display);
+  font-size: 11px;
+  min-width: 110px;
+  padding: 0.15rem 0;
+}
+
+.tacc-status-toggle-item {
+  display: block;
+  width: 100%;
+  padding: 0.3rem 0.6rem;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-family: var(--font-display);
+}
+
+.tacc-status-toggle-item:hover {
+  background-color: var(--ink);
+  color: var(--paper);
+}
+
+.tacc-status-toggle-item--scoutato::before {
+  content: "✓ ";
+  color: var(--green);
+}
+.tacc-status-toggle-item--da-fare::before {
+  content: "? ";
+  color: var(--amber);
+}
+.tacc-status-toggle-item--totali::before {
+  content: "○ ";
+  color: var(--ink-soft);
+}
+
+/* ============================================================
+   IMPORTANTE: la vecchia .tacc-card di taccuino.css rimane
+   disponibile per retrocompatibilità. Le nuove card v2.3 usano
+   .tacc-card.tacc-card--v23 (entrambe le classi).
+   ============================================================ */

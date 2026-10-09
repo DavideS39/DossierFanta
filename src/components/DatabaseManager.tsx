@@ -1,11 +1,15 @@
 /**
- * DatabaseManager — schermata gestione database multi-DB (M2).
+ * DatabaseManager — schermata gestione database multi-DB (M2 + M2.1 B6).
  *
  * Permette di:
  * - Vedere tutti i DB logici del workspace (righe della tabella `databases`)
  * - Creare un nuovo DB (PERSONALE o CONDIVISO)
  * - Eliminare un DB (con conferma esplicita, come per i giocatori)
  * - Switchare il DB attivo (cliccando su una riga)
+ *
+ * M2.1 B6: banner informativo sharing DB = M3a. Dice esplicitamente che
+ * in M2.1 i DB sono locali (nessun sync tra dispositivi). Dismissibile,
+ * stato persistito in localStorage. Non blocca l'uso.
  *
  * Vincoli:
  * - `default-personal` non può essere eliminato (vincolo backend M2).
@@ -22,6 +26,25 @@ import { DATABASE_TYPE_LABELS } from "@/types/player";
 
 interface Props {
   onClose: () => void;
+}
+
+const SHARE_BANNER_LS_KEY = "dossierfanta.shareBannerDismissed";
+
+function loadBannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(SHARE_BANNER_LS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveBannerDismissed(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(SHARE_BANNER_LS_KEY, "1");
+    else localStorage.removeItem(SHARE_BANNER_LS_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function DatabaseManager({ onClose }: Props) {
@@ -42,6 +65,9 @@ export function DatabaseManager({ onClose }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<DatabaseMeta | null>(null);
   const [deleteChecked, setDeleteChecked] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // M2.1 B6: stato del banner dismissibile
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(loadBannerDismissed());
 
   useEffect(() => {
     void refresh();
@@ -94,6 +120,11 @@ export function DatabaseManager({ onClose }: Props) {
     }
   };
 
+  const handleDismissBanner = () => {
+    setBannerDismissed(true);
+    saveBannerDismissed(true);
+  };
+
   return (
     <div className="tacc-modal-backdrop" onClick={onClose}>
       <div
@@ -124,6 +155,29 @@ export function DatabaseManager({ onClose }: Props) {
             nella vista Rosa. L'eliminazione di un DB cancella a cascata tutti
             i suoi giocatori (operazione irreversibile).
           </p>
+
+          {/* M2.1 B6 — Banner informativo sharing DB = M3a */}
+          {!bannerDismissed && (
+            <div className="tacc-info-banner" role="status">
+              <span aria-hidden style={{ color: "var(--blue)", fontWeight: "bold" }}>ℹ</span>
+              <span>
+                <strong>Condivisione live DB in arrivo con M3a.</strong>{" "}
+                La condivisione live dei database tra dispositivi è disponibile nella milestone{" "}
+                <strong>M3a</strong> (sync Iroh p2p + Yjs). In <strong>M2.1</strong> i DB sono
+                locali: puoi crearli, switcharli, eliminarli, ma non sincronizzarli con
+                altri dispositivi. Tutte le modifiche restano sul tuo computer.
+              </span>
+              <button
+                type="button"
+                className="tacc-info-banner-dismiss"
+                onClick={handleDismissBanner}
+                aria-label="Nascondi questo avviso"
+                title="Nascondi (ritorna se ripristini le preferenze)"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red/10 border border-red/40 text-red px-3 py-2 text-sm" style={{ fontFamily: "var(--font-body)" }}>

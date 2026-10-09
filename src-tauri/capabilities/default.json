@@ -1,12 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window of DossierFanta M1. Allows the frontend to invoke local Rust commands only — no external network access, no shell, no fs directly.",
-  "windows": ["main"],
+  "description": "Capability for the main window of DossierFanta M2.1. Allows the frontend to invoke local Rust commands only — no external network access, no shell, no fs directly. M2.1: covers also the player-* OS-native windows via the glob 'player-*' (Window Manager ibrido Cap.17).",
+  "windows": ["main", "player-*"],
   "permissions": [
     "core:default",
     "core:window:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:webview:allow-create-webview-window",
+    "core:event:default",
     "core:app:default"
   ]
 }

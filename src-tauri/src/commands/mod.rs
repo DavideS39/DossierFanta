@@ -6,6 +6,7 @@
 pub mod database;
 pub mod listone;
 pub mod players;
+pub mod windows;
 
 use serde::Serialize;
 

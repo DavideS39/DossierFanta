@@ -15,6 +15,7 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const refreshMeta = useDbMetaStore((s) => s.refresh);
   const refreshDbs = useDbStore((s) => s.refresh);
+  const restoreFromLocalStorage = useDbStore((s) => s.restoreFromLocalStorage);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,6 +23,10 @@ export function App() {
       try {
         // Inizializza DB (idempotente: crea file + applica schema se primo avvio)
         await api.initDb();
+        // M2.1 — FIX A4 (A8): ripristina il DB attivo da localStorage PRIMA
+        // di refreshMeta + refreshDbs. Il backend imposta il DB attivo e
+        // refreshDbs leggerà quello giusto. Sopravvive al riavvio dell'app.
+        await restoreFromLocalStorage();
         // Recupera metadati + databases (M2)
         await Promise.all([refreshMeta(), refreshDbs()]);
         if (!cancelled) setBooting(false);
@@ -35,7 +40,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [refreshMeta, refreshDbs]);
+  }, [refreshMeta, refreshDbs, restoreFromLocalStorage]);
 
   if (bootError) {
     return (

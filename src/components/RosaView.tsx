@@ -8,10 +8,13 @@ import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { DatabaseManager } from "@/components/DatabaseManager";
 import { ImportListone } from "@/components/ImportListone";
 import { ArchiveView } from "@/components/ArchiveView";
+import { WindowManager } from "@/components/WindowManager";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
-import type { CreatePlayerInput, Player, UpdatePlayerInput } from "@/types/player";
+import { useWindowsStore } from "@/stores/useWindowsStore";
+import { api } from "@/api/tauri";
+import type { CreatePlayerInput, Player, Status, UpdatePlayerInput } from "@/types/player";
 
 type FormState =
   | { mode: "closed" }
@@ -21,24 +24,21 @@ type FormState =
 type ModalState = "none" | "databases" | "import" | "archive";
 
 /**
- * Vista principale M2: Rosa (multi-DB + archiviazione + design taccuino).
+ * Vista principale M2.1: Rosa (multi-DB + archiviazione + design taccuino
+ * realistico v2.3 + Window Manager ibrido).
  *
- * Layout:
- *   ┌───────────────────────────────────────────────────┐
- *   │ Header: titolo + DB switcher + btn azioni          │
- *   │ StatsBar: conteggi, DB info                          │
- *   │ Toolbar: SearchBar | RoleFilter | Filtro DB          │
- *   │ Sidebar filtri (destra): toggle Archivio + simboli   │
- *   │ PlayerList: griglia di card taccuino                │
- *   │ Footer: legenda simboli                              │
- *   └───────────────────────────────────────────────────┘
+ * M2.1 v2.3:
+ *  - Le schede giocatore si aprono come finestre nel Window Manager in-app
+ *    (non più modali a tutto schermo). Doppio-click sulla chrome → finestra OS.
+ *  - Toggle "taccuino pulito" persistito in localStorage.
+ *  - Shortcut T per toggolare lo stato del giocatore selezionato.
+ *  - Stats + footer legenda con tooltip glossario sui simboli.
  *
- * Modali:
- *   - PlayerForm (create/edit)
- *   - DeleteConfirmDialog (eliminazione esplicita con conferma)
- *   - DatabaseManager (gestione DB)
- *   - ImportListone (file picker + anteprima)
- *   - ArchiveView (vista archiviati con restore)
+ * Modali residui (rimangono come modali perché non sono "schede"):
+ *  - DeleteConfirmDialog (eliminazione esplicita)
+ *  - DatabaseManager (gestione DB)
+ *  - ImportListone (file picker + anteprima diff)
+ *  - ArchiveView (vista archiviati con restore)
  */
 export function RosaView() {
   const refresh = usePlayersStore((s) => s.refresh);
@@ -46,6 +46,7 @@ export function RosaView() {
   const updatePlayer = usePlayersStore((s) => s.updatePlayer);
   const deletePlayer = usePlayersStore((s) => s.deletePlayer);
   const players = usePlayersStore((s) => s.players);
+  const selectedId = usePlayersStore((s) => s.selectedId);
   const refreshMeta = useDbMetaStore((s) => s.refresh);
 
   const dbFilter = usePlayersStore((s) => s.dbFilter);
@@ -56,16 +57,48 @@ export function RosaView() {
   const activeDb = useDbStore((s) => s.getActiveDatabase?.());
   const refreshDbs = useDbStore((s) => s.refresh);
 
+  // M2.1 B5 — Window Manager store
+  const openPlayerWindow = useWindowsStore((s) => s.openPlayerWindow);
+  const detachedToOs = useWindowsStore((s) => s.detachedToOs);
+  const setDetachedToOs = useWindowsStore((s) => s.setDetachedToOs);
+
   const [formState, setFormState] = useState<FormState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [modal, setModal] = useState<ModalState>("none");
+
+  // M2.1 B1 — toggle "taccuino pulito"
+  const [cleanMode, setCleanMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("dossierfanta.cleanMode") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  // Applica la classe `tacc-clean-mode` al body quando il toggle è ON
+  useEffect(() => {
+    if (cleanMode) {
+      document.body.classList.add("tacc-clean-mode");
+    } else {
+      document.body.classList.remove("tacc-clean-mode");
+    }
+    try {
+      localStorage.setItem("dossierfanta.cleanMode", cleanMode ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [cleanMode]);
 
   // Primo caricamento
   useEffect(() => {
     void refresh();
     void refreshMeta();
     void refreshDbs();
-  }, [refresh, refreshMeta, refreshDbs]);
+    // M2.1 B5: sync detachedToOs dal backend al boot
+    void api.listOsPlayerWindows().then(setDetachedToOs).catch(() => {
+      // ignore — il backend potrebbe non essere pronto
+    });
+  }, [refresh, refreshMeta, refreshDbs, setDetachedToOs]);
 
   // Refresh meta dopo ogni mutazione di lista
   useEffect(() => {
@@ -77,9 +110,42 @@ export function RosaView() {
     void refresh();
   }, [activeDb?.id, refresh]);
 
+  // M2.1 B3 — Shortcut T: toggle stato del giocatore selezionato.
+  // Rispetta il flusso: legge lo status corrente e cicla
+  // totali → scoutato → da_fare → totali.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Skip se si sta scrivendo in un input/textarea
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (e.key !== "t" && e.key !== "T") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!selectedId) return;
+      e.preventDefault();
+      const p = players.find((x) => x.id === selectedId);
+      if (!p) return;
+      const cycle: Record<Status, Status> = {
+        totali: "scoutato",
+        scoutato: "da_fare",
+        da_fare: "totali",
+      };
+      const next = cycle[p.status];
+      void api.setPlayerStatus(p.id, next).then(() => refresh());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, players, refresh]);
+
   const handleEdit = (id: string) => {
     const p = players.find((x) => x.id === id);
-    if (p) setFormState({ mode: "edit", player: p });
+    if (!p) return;
+    // M2.1 B5 — Apri come finestra WM in-app, non modale a tutto schermo.
+    // Se la scheda è già staccata su OS nativa, focus quella.
+    if (detachedToOs.has(p.id)) {
+      void api.openPlayerWindow(p.id); // focus finestra OS esistente
+      return;
+    }
+    openPlayerWindow(p.id, p.name);
   };
 
   const handleDelete = (id: string) => {
@@ -101,8 +167,30 @@ export function RosaView() {
     setDeleteTarget(null);
   };
 
+  // M2.1 B5 — Render-prop per WindowManager: dato un playerId, renderizza
+  // il contenuto della finestra (PlayerForm in modalità edit).
+  const renderWindow = (playerId: string) => {
+    const p = players.find((x) => x.id === playerId);
+    if (!p) {
+      return (
+        <div style={{ padding: "1rem", fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--ink-soft)" }}>
+          » Giocatore non più in lista (probabilmente eliminato o archiviato). Chiudi la finestra.
+        </div>
+      );
+    }
+    return (
+      <PlayerForm
+        player={p}
+        onClose={() => useWindowsStore.getState().closeWindow(playerId)}
+        onSubmit={async (input) => {
+          await handleSubmit(input);
+        }}
+      />
+    );
+  };
+
   return (
-    <div className="flex flex-col h-full tacc-bg">
+    <div className="flex flex-col h-full tacc-bg tacc-bg--realistic relative">
       {/* Header */}
       <header
         className="text-paper px-5 py-3 flex items-center justify-between flex-wrap gap-2"
@@ -119,11 +207,11 @@ export function RosaView() {
             <h1 className="text-lg font-bold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
               DossierFanta{" "}
               <span className="text-paper/60 text-sm" style={{ fontFamily: "var(--font-body)" }}>
-                v2.2 · M2
+                v2.3 · M2.1
               </span>
             </h1>
             <p className="text-[11px] text-paper/60 leading-tight" style={{ fontFamily: "var(--font-body)" }}>
-              Taccuino di progettazione · offline-first · multi-DB workspace
+              Taccuino di progettazione · offline-first · multi-DB · WM ibrido
             </p>
           </div>
         </div>
@@ -154,7 +242,7 @@ export function RosaView() {
               backgroundColor: "var(--amber)",
               color: "#FFF",
             }}
-            title="Import listone Serie A (archiviazione automatica)"
+            title="Import listone Serie A (anteprima diff + archiviazione automatica)"
           >
             ⚑ Import listone
           </button>
@@ -181,6 +269,25 @@ export function RosaView() {
           >
             + Nuovo giocatore
           </button>
+
+          {/* M2.1 B1 — Toggle taccuino pulito */}
+          <label
+            className="flex items-center gap-1 cursor-pointer select-none px-2 py-1 border border-paper/30"
+            title="Disattiva pieghe, invecchiamento angoli e macchie d'inchiostro. Mantenuta solo la griglia quaderno."
+          >
+            <input
+              type="checkbox"
+              checked={cleanMode}
+              onChange={(e) => setCleanMode(e.target.checked)}
+              className="w-3 h-3 accent-amber"
+            />
+            <span
+              className="text-[10px] uppercase tracking-wider text-paper/80"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              taccuino pulito
+            </span>
+          </label>
         </div>
       </header>
 
@@ -214,8 +321,11 @@ export function RosaView() {
       </div>
 
       {/* Lista giocatori (scrollable) */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto relative">
         <PlayerList onEdit={handleEdit} onDelete={handleDelete} />
+
+        {/* M2.1 B5 — Window Manager in-app layer (Z4) */}
+        <WindowManager renderWindow={renderWindow} />
       </div>
 
       {/* Footer: legenda simboli */}
@@ -238,22 +348,18 @@ export function RosaView() {
         <span>
           <strong>□</strong> pinzatrice (priorità 5/5)
         </span>
+        <span>
+          <strong>⇄</strong> toggle stato · <strong>T</strong> shortcut
+        </span>
         <span className="ml-auto text-ink-soft/60">
-          offline · SQLite locale · WAL mode
+          offline · SQLite locale · WAL mode · M2.1
         </span>
       </footer>
 
-      {/* Modali */}
+      {/* Modali residui */}
       {formState.mode === "create" && (
         <PlayerForm
           player={null}
-          onClose={() => setFormState({ mode: "closed" })}
-          onSubmit={handleSubmit}
-        />
-      )}
-      {formState.mode === "edit" && (
-        <PlayerForm
-          player={formState.player}
           onClose={() => setFormState({ mode: "closed" })}
           onSubmit={handleSubmit}
         />

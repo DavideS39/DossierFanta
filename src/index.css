@@ -1,18 +1,22 @@
 /* Import design system taccuino (variabili CSS, componenti, texture)
-   DEVE precedere @tailwind per rispettare la regola CSS di @import. */
+   DEVE precedere @tailwind per rispettare la regola CSS di @import.
+   M2.1: importa anche taccuino-realistic.css per texture 4-layer + ombre
+   multilayer + Z levels + chrome WM + status toggle menu. */
 @import "./styles/taccuino.css";
+@import "./styles/taccuino-realistic.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============================================================
-   DossierFanta v2.2 — M2 base styling
-   Tema taccuino scout 80s completo (vedi styles/taccuino.css).
+   DossierFanta v2.3 — M2.1 base styling
+   Tema taccuino scout 80s realistico (vedi styles/taccuino-realistic.css
+   per texture 4-layer, ombre multilayer, Z levels).
    ============================================================ */
 
 :root {
-  /* Manteniamo le vecchie variabili M1 per compatibilità con tailwind.config.js */
+  /* Manteniamo le vecchie variabili M1/M2 per compatibilità con tailwind.config.js */
   --paper: #F4ECD8;
   --paper-dim: #E8DEC4;
   --ink: #2B1B12;
@@ -34,25 +38,8 @@ body,
   font-family: var(--font-body, "Courier Prime", "Courier New", ui-monospace, monospace);
 }
 
-/* Texture quaderni base sul body (anche senza .tacc-bg) */
-body {
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px,
-      transparent 13px,
-      rgba(43, 27, 18, 0.06) 13px,
-      rgba(43, 27, 18, 0.06) 14px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      transparent 13px,
-      rgba(43, 27, 18, 0.06) 13px,
-      rgba(43, 27, 18, 0.06) 14px
-    );
-  background-attachment: fixed;
-}
+/* Texture realistica sul body è gestita in styles/taccuino-realistic.css
+   (override della M2 base). Toggle "taccuino pulito" via body.tacc-clean-mode. */
 
 /* Webkit search input cleanup */
 input[type="search"]::-webkit-search-decoration,
@@ -104,4 +91,60 @@ select {
   background-position: right 8px center;
   background-size: 12px;
   padding-right: 28px;
+}
+
+/* Banner informativo sharing DB (B6) */
+.tacc-info-banner {
+  background-color: rgba(44, 74, 107, 0.10);
+  border-left: 3px solid var(--blue);
+  border-right: 1px solid rgba(43, 27, 18, 0.15);
+  border-top: 1px solid rgba(43, 27, 18, 0.15);
+  border-bottom: 1px solid rgba(43, 27, 18, 0.15);
+  padding: 0.55rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--ink);
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.tacc-info-banner-dismiss {
+  margin-left: auto;
+  background-color: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.tacc-info-banner-dismiss:hover {
+  color: var(--ink);
+}
+
+/* Player OS-native window body: padding 0 per riempire la window */
+body.player-window {
+  margin: 0;
+  padding: 0;
+  background-color: var(--paper);
+  overflow: auto;
+}
+
+/* Drag handle per WM in-app windows (ragionevole altezza della chrome) */
+.tacc-window-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background-image: radial-gradient(circle, var(--ink-soft) 1px, transparent 1.5px);
+  background-size: 4px 4px;
+  background-position: bottom right;
+  background-repeat: no-repeat;
+  z-index: 2;
 }

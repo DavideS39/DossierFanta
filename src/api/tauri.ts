@@ -7,9 +7,12 @@ import type {
   CreatePlayerInput,
   DatabaseMeta,
   DbInfo,
+  ImportPreview,
   ImportSummary,
   ListFilters,
   Player,
+  SaveScoutingNoteInput,
+  Status,
   UpdatePlayerInput,
 } from "@/types/player";
 
@@ -98,4 +101,50 @@ export const api = {
   /** Ripristina un giocatore dall'archivio (mossa archive → players). */
   restoreArchivedPlayer: (playerId: string) =>
     invoke<boolean>("restore_archived_player", { playerId }),
+
+  // ===== M2.1 — FIX A5 (B7): preview import con diff =====
+
+  /**
+   * Anteprima import: calcola cosa succederebbe senza applicare modifiche.
+   * Ritorna 4 liste (created/archived/updated/restored) con dettagli.
+   * L'UI mostra il risultato in un modale di conferma prima di chiamare
+   * il vero `importListone`.
+   */
+  previewImportListone: (playersJson: string) =>
+    invoke<ImportPreview>("preview_import_listone", {
+      playersJson,
+    }),
+
+  // ===== M2.1 — IMPROVEMENT B3: stato scoutato (auto-toggle + manuale) =====
+
+  /**
+   * Imposta lo status di un giocatore (toggle manuale dal timbro).
+   * `new_status` deve essere uno tra 'totali', 'scoutato', 'da_fare'.
+   */
+  setPlayerStatus: (playerId: string, newStatus: Status) =>
+    invoke<Player>("set_player_status", { playerId, newStatus }),
+
+  /**
+   * Salva una nota scouting per un giocatore. Se il giocatore è in
+   * 'da_fare' e la nota è kind='note' o 'data' con content non vuoto,
+   * status viene automaticamente promosso a 'scoutato' (auto-toggle).
+   */
+  saveScoutingNote: (input: SaveScoutingNoteInput) =>
+    invoke<boolean>("save_scouting_note", { input }),
+
+  // ===== M2.1 — IMPROVEMENT B5 (Cap.17): multi-window OS nativa =====
+
+  /**
+   * Crea una nuova finestra OS nativa per un giocatore (URL /player/:id).
+   * Max 6 finestre contemporanee. Se già aperta, focus + return.
+   */
+  openPlayerWindow: (playerId: string) =>
+    invoke<boolean>("open_player_window", { playerId }),
+
+  /** Chiude una finestra OS aperta per un giocatore. */
+  closePlayerWindow: (playerId: string) =>
+    invoke<boolean>("close_player_window", { playerId }),
+
+  /** Elenca gli id dei giocatori con finestra OS aperta (per UI badge). */
+  listOsPlayerWindows: () => invoke<string[]>("list_os_player_windows"),
 };

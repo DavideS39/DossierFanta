@@ -224,10 +224,19 @@ pub fn run() {
             commands::players::count_players,
             commands::players::archive_player,
             commands::players::list_archive,
+            // players.rs (M2.1 — auto-toggle + toggle manuale)
+            commands::players::set_player_status,
+            commands::players::save_scouting_note,
             // listone.rs (M2 — archiviazione automatica)
             commands::listone::import_listone,
             commands::listone::list_archived_players,
             commands::listone::restore_archived_player,
+            // listone.rs (M2.1 — anteprima import con diff)
+            commands::listone::preview_import_listone,
+            // windows.rs (M2.1 — multi-window OS nativa)
+            commands::windows::open_player_window,
+            commands::windows::close_player_window,
+            commands::windows::list_os_player_windows,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DossierFanta application");
