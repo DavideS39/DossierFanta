@@ -637,7 +637,7 @@ pub fn restore_archived_player(
 
         // Ricrea le tabelle collegate solo se lo snapshot è arricchito (M2.1)
         if is_enriched {
-            _recreate_connected_tables(tx, &snapshot).map_err(AppError::Db)?;
+            _recreate_connected_tables(&tx, &snapshot).map_err(AppError::Db)?;
         }
 
         tx.execute(
