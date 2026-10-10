@@ -1,0 +1,843 @@
+/* ============================================================
+   DossierFanta v2.3.2 — Layer "Scrivania & Cartoline"
+   ============================================================
+   Restyling fotografico della UI (Cap.16 v2.3 + feedback d'uso):
+   - le schede giocatore sono CARTOLINE STRAPPATE reali: il bordo
+     irregolare è l'alpha delle fotografie in src/assets/paper/,
+     le ombre 3-layer del Cap.16 sono drop-shadow filtrati sull'alpha;
+   - la lista giocatori è una scrivania calda con vignettatura, su cui
+     le cartoline "posano" (depth Z1/Z2);
+   - masthead-copertina ink con grana, logo su cartellino con nastro;
+   - striscia stats con progress scouting; toolbar con chip stile timbro.
+
+   Token usati (definiti in taccuino.css / taccuino-realistic.css):
+   --paper --paper-dim --paper-fold --ink --ink-soft --red --red-stamp
+   --green --amber --blue --grid --font-display --font-body
+   ============================================================ */
+
+:root {
+  /* scrivania: toni cartoncino caldo, più scuri del paper per far
+     risaltare le cartoline fotografiche (bianco/crema) */
+  --desk-1: #e7d6ae;
+  --desk-2: #d6bf92;
+  --desk-3: #c3a878;
+  --desk-ink: rgba(43, 27, 18, 0.55);
+}
+
+/* ============================================================
+   1 · SCHEDA CARTOLINA (PlayerCardPaper)
+   ============================================================ */
+
+.pcard-shell {
+  position: relative;
+  transform: rotate(var(--rot, 0deg));
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  will-change: transform;
+  z-index: 10; /* Z1 */
+}
+
+.pcard-shell:hover,
+.pcard-shell:focus-within {
+  transform: rotate(0deg) translateY(-4px);
+  z-index: 20; /* Z2 */
+}
+
+/* Layer di sfondo: la fotografia RGBA. Le ombre multilayer Cap.16 sono
+   drop-shadow sull'alpha → la sagoma strappata proietta la propria ombra. */
+.pcard-paper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--aspect, 1.6);
+  background-image: var(--paper-img);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 1px 2px rgba(43, 27, 18, 0.28))
+    drop-shadow(0 4px 8px rgba(43, 27, 18, 0.16))
+    drop-shadow(0 12px 24px rgba(43, 27, 18, 0.12));
+  transition: filter 220ms ease;
+}
+
+.pcard-shell:hover .pcard-paper,
+.pcard-shell:focus-within .pcard-paper {
+  filter: drop-shadow(0 2px 3px rgba(43, 27, 18, 0.34))
+    drop-shadow(0 7px 12px rgba(43, 27, 18, 0.22))
+    drop-shadow(0 18px 34px rgba(43, 27, 18, 0.16));
+}
+
+.pcard-shell.is-selected .pcard-paper {
+  filter: drop-shadow(0 0 1px rgba(165, 48, 40, 0.9))
+    drop-shadow(0 0 7px rgba(165, 48, 40, 0.45))
+    drop-shadow(0 2px 3px rgba(43, 27, 18, 0.30))
+    drop-shadow(0 10px 20px rgba(43, 27, 18, 0.18));
+}
+
+.pcard-shell.is-archived .pcard-paper {
+  filter: saturate(0.45) opacity(0.82)
+    drop-shadow(0 1px 2px rgba(43, 27, 18, 0.20))
+    drop-shadow(0 4px 8px rgba(43, 27, 18, 0.10));
+}
+
+/* Contenuto: posizionato sopra la fotografia, dentro la safe-area. */
+.pcard-content {
+  position: absolute;
+  inset: 0;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--ink);
+  cursor: inherit;
+}
+
+.pcard-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.pcard-name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.pcard-role {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 5px 2px;
+  color: #fff;
+  border: 1px solid rgba(43, 27, 18, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  transform: rotate(1.5deg);
+}
+
+.pcard-meta {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.pcard-stamps {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+
+.pcard-stars {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--red);
+  text-shadow: 0 0 0.5px rgba(139, 46, 31, 0.6);
+  white-space: nowrap;
+}
+
+.pcard-stars .off {
+  color: rgba(43, 27, 18, 0.28);
+  text-shadow: none;
+}
+
+/* stats: riga con 4 celle separate da hairline tratteggiata */
+.pcard-stats {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgba(43, 27, 18, 0.28);
+}
+
+.pcard-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pcard-stat-label {
+  font-family: var(--font-display);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.pcard-stat-value {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.pcard-stat-value.accent {
+  color: var(--red-stamp, #a53028);
+}
+
+.pcard-foot {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  min-height: 18px;
+}
+
+.pcard-dbchip {
+  font-family: var(--font-body);
+  font-size: 9px;
+  color: var(--ink-soft);
+  border: 1px solid rgba(43, 27, 18, 0.3);
+  padding: 1px 4px;
+  background: rgba(244, 236, 216, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.pcard-id {
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: rgba(90, 70, 50, 0.6);
+  text-transform: uppercase;
+}
+
+.pcard-actions {
+  position: absolute;
+  right: var(--safe-r);
+  bottom: var(--safe-b);
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.pcard-shell:hover .pcard-actions,
+.pcard-shell:focus-within .pcard-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.pcard-action {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  background: rgba(244, 236, 216, 0.92);
+  border: 1px solid rgba(43, 27, 18, 0.45);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(43, 27, 18, 0.25);
+}
+
+.pcard-action:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.pcard-action--del:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+/* pinzatrice posata sulla carta (priority 5/5): glyph □ ruotato con ombra */
+.pcard-staple {
+  position: absolute;
+  top: calc(var(--safe-t) * 0.45);
+  left: calc(var(--safe-l) * 0.55);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1;
+  color: #6e6e6e;
+  transform: rotate(45deg);
+  text-shadow: 0 1px 1px rgba(43, 27, 18, 0.45);
+  pointer-events: none;
+}
+
+/* ============================================================
+   2 · MASTHEAD — copertina ink con grana + cartellino logo
+   ============================================================ */
+
+.df-masthead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 1rem 0.7rem;
+  color: var(--paper);
+  background-color: var(--ink);
+  background-image:
+    /* grana carta fotocopiatrice */
+    radial-gradient(rgba(244, 236, 216, 0.05) 1px, transparent 1.4px),
+    radial-gradient(rgba(244, 236, 216, 0.035) 1px, transparent 1.2px),
+    linear-gradient(180deg, rgba(244, 236, 216, 0.06), transparent 30%, rgba(0, 0, 0, 0.22));
+  background-size: 7px 9px, 11px 13px, 100% 100%;
+  background-position: 0 0, 4px 6px, 0 0;
+  border-bottom: 2px solid var(--red);
+  box-shadow: 0 2px 6px rgba(43, 27, 18, 0.35);
+  z-index: 30;
+}
+
+.df-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+/* cartellino di carta applicato sulla copertina, con nastro adesivo */
+.df-logo-tag {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #f7f0dd, var(--paper) 55%, var(--paper-fold));
+  color: var(--red);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  transform: rotate(-2.5deg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.3);
+  clip-path: polygon(2% 6%, 98% 0%, 100% 94%, 96% 100%, 3% 98%, 0% 92%);
+}
+
+.df-logo-tag::before {
+  /* nastro adesivo v2.3 (Cap.16 comp.3) */
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 34px;
+  height: 11px;
+  transform: translateX(-50%) rotate(-3deg);
+  background: rgba(217, 196, 112, 0.55);
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.14) 0 1px,
+    transparent 1px 3px
+  );
+  border-left: 1px dashed rgba(255, 255, 255, 0.5);
+  border-right: 1px dashed rgba(255, 255, 255, 0.5);
+}
+
+.df-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.df-title .df-ver {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 400;
+  color: rgba(244, 236, 216, 0.62);
+  letter-spacing: 0.08em;
+  margin-left: 0.35rem;
+}
+
+.df-tagline {
+  margin: 1px 0 0;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(244, 236, 216, 0.55);
+}
+
+.df-mockbadge {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--amber);
+  padding: 2px 6px;
+  transform: rotate(-1.5deg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.df-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+/* pulsanti coerenti: carta su ink, timbro rosso per l'azione primaria */
+.df-btn {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  color: var(--paper);
+  background: rgba(244, 236, 216, 0.08);
+  border: 1px solid rgba(244, 236, 216, 0.4);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.df-btn:hover {
+  background: var(--paper);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.df-btn--primary {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper);
+  font-weight: 700;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.df-btn--primary:hover {
+  background: #fff8e6;
+}
+
+.df-btn--warn {
+  border-color: rgba(184, 134, 11, 0.9);
+  color: #f0c465;
+}
+
+.df-btn--warn:hover {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.df-clean-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 236, 216, 0.75);
+  border: 1px dashed rgba(244, 236, 216, 0.35);
+  padding: 4px 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.df-clean-toggle input {
+  accent-color: var(--amber);
+  width: 11px;
+  height: 11px;
+}
+
+/* ============================================================
+   3 · STRISCIA STATS + PROGRESS SCOUTING
+   ============================================================ */
+
+.df-statsbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 1rem;
+  background: linear-gradient(180deg, var(--paper), var(--paper-dim));
+  border-bottom: 1px solid rgba(43, 27, 18, 0.25);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.df-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.df-stat .g {
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.df-stat .v {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.df-stat--scoutato .g { color: var(--green); }
+.df-stat--dafare .g { color: var(--amber); }
+.df-stat--totali .g { color: var(--ink-soft); }
+.df-stat--archivio .g { color: var(--red); }
+
+.df-progress {
+  flex: 1 1 160px;
+  max-width: 340px;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.df-progress-track {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  background: rgba(43, 27, 18, 0.12);
+  border: 1px solid rgba(43, 27, 18, 0.3);
+  box-shadow: inset 0 1px 2px rgba(43, 27, 18, 0.18);
+  overflow: hidden;
+}
+
+.df-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--green) 0 6px,
+    rgba(74, 103, 65, 0.75) 6px 12px
+  );
+  transition: width 400ms ease;
+}
+
+.df-progress-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.df-statsbar .df-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(90, 70, 50, 0.75);
+  font-size: 10px;
+}
+
+.df-dbcode {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--ink);
+  background: rgba(244, 236, 216, 0.9);
+  border: 1px solid rgba(43, 27, 18, 0.3);
+  padding: 1px 5px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   4 · TOOLBAR (search + filtri) su striscia paper
+   ============================================================ */
+
+.df-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  background: var(--paper);
+  border-bottom: 1px solid rgba(43, 27, 18, 0.28);
+  box-shadow: 0 2px 5px rgba(43, 27, 18, 0.1);
+  z-index: 25;
+}
+
+.df-toolbar .tacc-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid rgba(43, 27, 18, 0.45);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  padding: 4px 6px 3px 2rem;
+}
+
+.df-toolbar .tacc-input:focus {
+  outline: none;
+  border-bottom-color: var(--red);
+  background: rgba(139, 46, 31, 0.04);
+}
+
+.df-chip {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  transition: all 130ms ease;
+  opacity: 0.85;
+}
+
+.df-chip:hover { opacity: 1; transform: translateY(-1px); }
+
+.df-chip[aria-pressed="true"] {
+  opacity: 1;
+  box-shadow: 2px 2px 0 rgba(43, 27, 18, 0.25);
+  transform: rotate(-1deg);
+}
+
+.df-chip--ink[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper) !important;
+}
+
+.df-arch-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+
+.df-arch-toggle input { accent-color: var(--red); width: 12px; height: 12px; }
+
+/* ============================================================
+   5 · SCRIVANIA (container lista) — depth Z0 per le cartoline
+   ============================================================ */
+
+.df-desk {
+  position: relative;
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(255, 250, 235, 0.5), transparent 60%),
+    radial-gradient(140% 120% at 50% 110%, rgba(84, 58, 32, 0.28), transparent 62%),
+    repeating-linear-gradient(
+      2deg,
+      rgba(43, 27, 18, 0.022) 0 2px,
+      transparent 2px 7px
+    ),
+    linear-gradient(180deg, var(--desk-1), var(--desk-2) 60%, var(--desk-3));
+  box-shadow: inset 0 6px 14px rgba(43, 27, 18, 0.18),
+    inset 0 -4px 10px rgba(43, 27, 18, 0.14);
+}
+
+.df-desk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));
+  gap: 26px 22px;
+  align-items: start;
+  padding: 26px 24px 34px;
+}
+
+/* ============================================================
+   6 · EMPTY STATE su bigliettino strappato (paper-1)
+   ============================================================ */
+
+.df-empty {
+  position: relative;
+  max-width: 620px;
+  margin: 8vh auto 0;
+  filter: drop-shadow(0 2px 3px rgba(43, 27, 18, 0.3))
+    drop-shadow(0 10px 22px rgba(43, 27, 18, 0.16));
+  transform: rotate(-0.6deg);
+}
+
+.df-empty-paper {
+  aspect-ratio: 2.368;
+  background-image: var(--paper-img);
+  background-size: 100% 100%;
+}
+
+.df-empty-content {
+  position: absolute;
+  inset: 0;
+  padding: 16% 6% 14% 14%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  text-align: left;
+}
+
+.df-empty-content h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.df-empty-content p {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  max-width: 46ch;
+}
+
+/* ============================================================
+   7 · FINESTRE WM: corpo su carta rigata + chrome rifinita
+   ============================================================ */
+
+.tacc-window-body {
+  background-color: #fbf7ee;
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 23px,
+      rgba(44, 74, 107, 0.16) 23px 24px
+    ),
+    linear-gradient(90deg, transparent 0 44px, rgba(165, 48, 40, 0.25) 44px 45px, transparent 45px);
+}
+
+.tacc-window-chrome {
+  background: linear-gradient(180deg, #3a2a1d, var(--ink) 70%);
+  color: var(--paper);
+}
+
+.tacc-window-chrome-title {
+  color: var(--paper);
+}
+
+.tacc-window-chrome-btn {
+  color: rgba(244, 236, 216, 0.85);
+}
+
+.tacc-window-chrome-btn:hover {
+  background: rgba(244, 236, 216, 0.16);
+  color: var(--paper);
+}
+
+.tacc-window-chrome-btn--close:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+/* taskbar WM: striscia legno scuro in fondo */
+.tacc-taskbar {
+  background: linear-gradient(180deg, rgba(43, 27, 18, 0.92), rgba(43, 27, 18, 0.98));
+  border-top: 1px solid rgba(244, 236, 216, 0.25);
+}
+
+/* ============================================================
+   8 · FOOTER LEGENDA — margine di quaderno con hairline rossa
+   ============================================================ */
+
+.tacc-legend {
+  background: linear-gradient(0deg, var(--paper-dim), var(--paper));
+  border-top: 1px solid rgba(139, 46, 31, 0.45);
+  box-shadow: 0 -2px 5px rgba(43, 27, 18, 0.08);
+}
+
+/* ============================================================
+   9 · TOOLTIP GLOSSARIO — popover cartaceo con punta
+   ============================================================ */
+
+.glossary-popover {
+  background: linear-gradient(165deg, #fbf5e6, var(--paper) 70%) !important;
+  border: 1px solid var(--ink-soft) !important;
+  box-shadow: 0 1px 2px rgba(43, 27, 18, 0.3), 0 4px 8px rgba(43, 27, 18, 0.18),
+    0 12px 24px rgba(43, 27, 18, 0.12) !important;
+  transform-origin: bottom center;
+}
+
+.glossary-popover::after {
+  content: "";
+  position: absolute;
+  left: var(--pointer-x, 50%);
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: var(--paper);
+  border-right: 1px solid var(--ink-soft);
+  border-bottom: 1px solid var(--ink-soft);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.glossary-popover.flip-below::after {
+  bottom: auto;
+  top: -5px;
+  transform: translateX(-50%) rotate(-135deg);
+}
+
+/* ============================================================
+   10 · TOAST anteprima web
+   ============================================================ */
+
+.df-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%) rotate(-0.5deg);
+  z-index: 80;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink-soft);
+  border-left: 4px solid var(--amber);
+  padding: 8px 12px;
+  box-shadow: 0 2px 4px rgba(43, 27, 18, 0.3), 0 10px 22px rgba(43, 27, 18, 0.18);
+  animation: df-toast-in 200ms ease;
+  max-width: min(480px, 90vw);
+}
+
+@keyframes df-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ============================================================
+   11 · TACCUINO PULITO — anche scrivania e masthead si asciugano
+   ============================================================ */
+
+body.tacc-clean-mode .df-desk {
+  background: var(--paper-dim);
+  box-shadow: none;
+}
+
+body.tacc-clean-mode .df-masthead {
+  background-image: none;
+}
+
+body.tacc-clean-mode .df-logo-tag {
+  clip-path: none;
+}
+
+body.tacc-clean-mode .df-logo-tag::before {
+  display: none;
+}

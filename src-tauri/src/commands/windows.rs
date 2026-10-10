@@ -1,3 +1,4 @@
+
 //! Comandi per la multi-window Tauri (M2.1 — IMPROVEMENT B5, Cap.17).
 //!
 //! Una scheda giocatore può "staccarsi" dalla finestra principale in-app

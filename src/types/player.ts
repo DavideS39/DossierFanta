@@ -1,3 +1,4 @@
+
 // Tipi TypeScript mirror dei tipi Rust in src-tauri/src/commands/.
 // MANTENERE SINCRONIZZATO con le struct Rust: ogni campo qui deve esistere là.
 //

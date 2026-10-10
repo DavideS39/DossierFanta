@@ -1,7 +1,9 @@
+
 import { useEffect, useState } from "react";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { PlayerCardPaper } from "./PlayerCardPaper";
+import { BANNER_PAPER } from "@/assets/paper";
 import { api } from "@/api/tauri";
 import type { ArchivedPlayer, Player } from "@/types/player";
 
@@ -116,30 +118,29 @@ export function PlayerList({ onEdit, onDelete, onDetachOs }: Props) {
   }
 
   if (total === 0) {
+    // v2.3.2 — empty state su bigliettino strappato reale (paper-1)
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-        <div
-          className="text-5xl mb-3 opacity-40 text-ink-soft"
-          aria-hidden
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          ▤
+      <div
+        className="df-empty"
+        style={{ "--paper-img": `url("${BANNER_PAPER.img}")` } as React.CSSProperties}
+      >
+        <div className="df-empty-paper" aria-hidden />
+        <div className="df-empty-content">
+          <h3>Nessun giocatore in rosa</h3>
+          <p>
+            Il taccuino è aperto su una pagina bianca. Crea il primo giocatore
+            con «+ Nuovo giocatore», oppure importa il listone Serie A per
+            popolare la rosa in un colpo solo. L'app funziona completamente
+            offline: tutto resta nel tuo SQLite locale.
+          </p>
         </div>
-        <h3 className="text-lg text-ink mb-1" style={{ fontFamily: "var(--font-display)" }}>
-          Nessun giocatore
-        </h3>
-        <p className="text-sm text-ink-soft max-w-md" style={{ fontFamily: "var(--font-body)" }}>
-          La rosa è vuota. Crea il tuo primo giocatore con il pulsante «Nuovo giocatore»
-          in alto a destra, oppure importa un listone Serie A per popolare
-          automaticamente la rosa. L'app funziona completamente offline.
-        </p>
       </div>
     );
   }
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 p-5">
+      <div className="df-desk-grid">
         {players.map((p) => (
           <PlayerCardPaper
             key={p.id}

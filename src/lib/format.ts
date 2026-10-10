@@ -1,3 +1,4 @@
+
 // Formattatori per la valuta disambiguata v2.2.
 //
 // Simboli UI (NON confondere — vedi design doc Cap.2):

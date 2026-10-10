@@ -1,3 +1,4 @@
+
 /**
  * StatusToggle — menu a 3 voci (Scoutato / Da fare / Totale) per il toggle
  * manuale dello stato di un giocatore (M2.1, Cap.8 + Cap.16 Componente 2).
@@ -15,6 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/api/tauri";
 import type { Player, Status } from "@/types/player";
 import { usePlayersStore } from "@/stores/usePlayersStore";
@@ -70,7 +72,9 @@ export function StatusToggle({ player, onClose, x, y }: Props) {
   const clampedX = Math.min(x, window.innerWidth - 130);
   const clampedY = Math.min(y, window.innerHeight - 100);
 
-  return (
+  // v2.3.2 — portal su body: le card hanno transform/filter, che rendono
+  // position:fixed relativo alla card invece che al viewport.
+  return createPortal(
     <div
       ref={menuRef}
       className="tacc-status-toggle-menu"
@@ -80,6 +84,7 @@ export function StatusToggle({ player, onClose, x, y }: Props) {
         position: "fixed",
         left: clampedX,
         top: clampedY,
+        zIndex: 75,
       }}
     >
       <button
@@ -122,6 +127,7 @@ export function StatusToggle({ player, onClose, x, y }: Props) {
           {err}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

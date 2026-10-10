@@ -1,8 +1,30 @@
+
 # DossierFanta v2.2 — Milestone M1
 
 App desktop Windows nativa per gestione rosa fantacalcio. **M1: base offline funzionante.**
 
 > *"Come un taccuino da scout: si porta in campo, non ha bisogno di rete. Ma quando c'è, parla col gemello."*
+
+---
+
+## Anteprima web (senza Tauri)
+
+Da v2.3.2 la UI si può provare **nel browser**, senza binario desktop:
+
+```bash
+npm install
+npm run dev        # http://localhost:1420
+```
+
+Fuori da Tauri il gate `isDesktop` in `src/api/tauri.ts` attiva il backend
+in-memory `src/api/mock.ts` (dati dimostrativi: 2 DB, ~24 giocatori, 1
+archiviato); nel masthead appare il badge "anteprima web · mock". Dentro il
+binario desktop vengono usati SOLO i comandi Rust: il mock non entra mai in
+production. Le finestre OS native esistono solo in Tauri: in anteprima web il
+doppio-click sulla card mostra un toast che spiega di usare il WM in-app.
+
+Verifica visiva headless: `npm run build && node scripts/shoot.mjs` →
+screenshot in `shots/`.
 
 ---
 

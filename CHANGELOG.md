@@ -1,3 +1,4 @@
+
 # Changelog
 
 Tutti i cambiamenti notevoli di DossierFanta v2.2 vengono documentati qui.
@@ -15,6 +16,46 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Changed
 - `.gitignore`: rimosso `src-tauri/Cargo.lock` — per le app binarie Tauri il lockfile VA committato per riproducibilità build CI
+
+---
+
+## [0.2.4] — 2026-10-11 — Restyling grafico fotografico (design doc v2.3, Cap.16)
+
+### Added
+- `src/assets/paper/` — 5 texture carta fotografiche fornite dal product owner,
+  normalizzate in WebP RGBA (~180 KB totali) da `scripts/preprocess_paper.py`:
+  crop sul bounding-box alpha, banda postcard 1.50-1.75 senza stretch, safe-area
+  misurate analiticamente (fori, strappi, margine rosa, angolo piegato) in
+  `paper-meta.json` + `src/assets/paper/index.ts`
+- `src/styles/scrivania.css` — layer UI v2.3.2: cartoline strappate reali (bordo
+  = alpha della foto, ombre 3-layer Cap.16 come drop-shadow sull'alpha),
+  scrivania con vignettatura, masthead-copertina ink con cartellino DF e nastro,
+  striscia stats con progress scouting, toolbar a chip stile timbro, empty state
+  su bigliettino strappato, toast cartaceo
+- `src/api/mock.ts` — backend in-memory per ANTEPRIMA WEB dev-only: fuori da
+  Tauri (`npm run dev`) l'app gira nel browser con dati dimostrativi (badge
+  "anteprima web · mock"); dentro il binario desktop il gate `isDesktop` in
+  `tauri.ts` usa solo i comandi Rust
+- `scripts/shoot.mjs` — verifica visiva headless (server statico dist/ +
+  Playwright): screenshot in `shots/` (rosa, hover, tooltip, menu stato, WM, 1280px)
+- `src/vite-env.d.ts` — tipi Vite per import asset (.webp)
+
+### Changed
+- `PlayerCardPaper.tsx` riscritta: niente più clip-path finti né feTurbulence
+  inline; layout postcard dentro safe-area per variante (4 varianti assegnate
+  per hash stabile dell'id), pinzatrice per priorità 5/5, azioni al hover
+- `GlossaryTooltip.tsx` e `StatusToggle.tsx`: popover/menu via portal su
+  document.body con position fixed misurata (flip sopra/sotto + clamp viewport)
+  — prima venivano clippati dall'overflow del container e spostati dai
+  transform/filter delle card
+- `RosaView.tsx`: masthead e toolbar nuovi, scrivania per la lista, toast per
+  il detach OS in anteprima web
+- `StatsBar.tsx`: conteggi per stato (✓/?/○/▤) + barra progress scouting +
+  info workspace, al posto dei conteggi ridondanti "visualizzati/totali"
+- `PlayerForm.tsx` embedded: rimosso il sub-header duplicato (la chrome WM/OS
+  mostra già titolo e pulsanti — audit ridondanze UI Cap.0)
+- `Window.tsx`: corpo finestra su carta rigata da quaderno
+- `index.html`: titolo aggiornato a v2.3
 
 ---
 

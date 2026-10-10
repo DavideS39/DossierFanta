@@ -1,3 +1,4 @@
+
 /**
  * GlossaryTooltip — popover cartaceo per definizioni termini tecnici (M2.1, Cap.9).
  *
@@ -21,7 +22,8 @@
  * modale Z5.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import glossaryJson from "@/data/glossary.json";
 
 type GlossaryEntry = { title: string; def: string; example: string };
@@ -38,6 +40,37 @@ export function GlossaryTooltip({ term, children }: Props) {
   const [pinned, setPinned] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const popRef = useRef<HTMLSpanElement | null>(null);
+  // v2.3.2 — popover renderizzato via PORTAL su document.body con position
+  // fixed: non viene più clippano dall'overflow del container scrollabile
+  // della scrivania. Flip sotto se non c'è spazio sopra, clamp al viewport.
+  // `px` = x della punta rispetto al popover.
+  const [place, setPlace] = useState<{ top: number; left: number; px: number; below: boolean } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!(open || pinned)) {
+      setPlace(null);
+      return;
+    }
+    const el = popRef.current;
+    const wrap = wrapRef.current;
+    if (!el || !wrap) return;
+    const w = el.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let below = false;
+    let top = wr.top - w.height - 8;
+    if (top < 8) {
+      top = wr.bottom + 8;
+      below = true;
+    }
+    if (top + w.height > vh - 8) top = Math.max(8, vh - w.height - 8);
+    const center = Math.min(Math.max(wr.left + wr.width / 2, 8 + w.width / 2), vw - 8 - w.width / 2);
+    const left = center - w.width / 2;
+    const px = wr.left + wr.width / 2 - left;
+    setPlace({ top, left, px, below });
+  }, [open, pinned]);
 
   // ESC chiude il popover (globale, ma solo se è aperto)
   useEffect(() => {
@@ -124,30 +157,32 @@ export function GlossaryTooltip({ term, children }: Props) {
       >
         ?
       </button>
-      {(open || pinned) && (
-        <span
-          className="glossary-popover tacc-realistic-shadow"
-          role="tooltip"
-          style={{
-            position: "absolute",
-            // Sopra il children, leggermente shiftato a sinistra
-            bottom: "calc(100% + 6px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 70,
-            width: "min(280px, 70vw)",
-            padding: "0.55rem 0.75rem",
-            backgroundColor: "var(--paper)",
-            border: "1px solid var(--ink-soft)",
-            boxShadow:
-              "0 1px 2px rgba(43,27,18,0.30), 0 4px 8px rgba(43,27,18,0.18), 0 12px 24px rgba(43,27,18,0.12)",
-            fontFamily: "var(--font-body)",
-            fontSize: "11px",
-            color: "var(--ink)",
-            textAlign: "left",
-            lineHeight: 1.4,
-          }}
-        >
+      {(open || pinned) &&
+        createPortal(
+          <span
+            ref={popRef}
+            className={`glossary-popover tacc-realistic-shadow ${place?.below ? "flip-below" : ""}`}
+            role="tooltip"
+            style={{
+              position: "fixed",
+              top: place ? `${place.top}px` : "-9999px",
+              left: place ? `${place.left}px` : "-9999px",
+              visibility: place ? "visible" : "hidden",
+              ["--pointer-x" as string]: place ? `${place.px}px` : "50%",
+              zIndex: 70,
+              width: "min(280px, 70vw)",
+              padding: "0.55rem 0.75rem",
+              backgroundColor: "var(--paper)",
+              border: "1px solid var(--ink-soft)",
+              boxShadow:
+                "0 1px 2px rgba(43,27,18,0.30), 0 4px 8px rgba(43,27,18,0.18), 0 12px 24px rgba(43,27,18,0.12)",
+              fontFamily: "var(--font-body)",
+              fontSize: "11px",
+              color: "var(--ink)",
+              textAlign: "left",
+              lineHeight: 1.4,
+            }}
+          >
           <span
             className="glossary-popover-title"
             style={{
@@ -177,8 +212,9 @@ export function GlossaryTooltip({ term, children }: Props) {
               {entry.example}
             </span>
           )}
-        </span>
-      )}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }

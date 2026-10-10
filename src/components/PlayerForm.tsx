@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import type {
   CreatePlayerInput,
@@ -180,7 +181,7 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
   // h-full che riempie il parent (corpo della finestra).
   const formContent = (
     <>
-      <div className="p-5 space-y-4 tacc-bg">
+      <div className="p-5 space-y-4">
           {/* Nome (required) */}
           <Field label="Nome *" error={errors.name} htmlFor="name">
             <input
@@ -372,35 +373,16 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
   // il corpo della finestra. La chrome della finestra è gestita dal parent
   // (Window.tsx o la finestra OS nativa di Tauri).
   if (embedded) {
+    // v2.3.2 — audit ridondanze UI (Cap.0): la chrome della finestra WM/OS
+    // mostra già titolo e pulsanti ─ □ ✕. Nessun sub-header duplicato:
+    // il form riempie direttamente il corpo di carta rigata della finestra.
     return (
       <form
         onSubmit={handleSubmit}
-        className="h-full flex flex-col tacc-bg"
+        className="h-full flex flex-col tacc-window-body"
         aria-modal="true"
         role="dialog"
       >
-        <header
-          className="tacc-modal-header"
-          style={{
-            // In embedded mode l'header è il "sub-header" sotto la chrome
-            // della finestra: usiamo un'altezza ridotta e font più piccolo
-            padding: "0.45rem 0.85rem",
-            fontSize: "0.85rem",
-          }}
-        >
-          <h2 className="text-sm font-bold">
-            {player ? `» ${player.name}` : "» Nuovo giocatore"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-paper/70 hover:text-paper text-lg leading-none"
-            aria-label="Chiudi"
-            title="Chiudi finestra"
-          >
-            ×
-          </button>
-        </header>
         <div className="flex-1 overflow-y-auto">{formContent}</div>
       </form>
     );

@@ -1,3 +1,4 @@
+
 //! DossierFanta v2.2 — Tauri 2.0 backend (M2).
 //!
 //! Architettura (M2 — multi-DB workspace):

@@ -1,3 +1,4 @@
+
 // Store separato per metadati DB (path, conteggi globali).
 // Mantenuto separato dal playersStore per evitare re-render quando
 // cambiano solo i filtri UI.

@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 # Helper script: prepara un nuovo release commit + tag.
 #

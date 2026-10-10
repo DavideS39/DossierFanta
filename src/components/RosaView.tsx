@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { PlayerList } from "@/components/PlayerList";
 import { SearchBar } from "@/components/SearchBar";
@@ -13,7 +14,7 @@ import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
-import { api } from "@/api/tauri";
+import { api, isDesktop } from "@/api/tauri";
 import type { CreatePlayerInput, Player, Status, UpdatePlayerInput } from "@/types/player";
 
 type FormState =
@@ -65,6 +66,14 @@ export function RosaView() {
   const [formState, setFormState] = useState<FormState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [modal, setModal] = useState<ModalState>("none");
+  // v2.3.2 — toast cartaceo per messaggi non bloccanti (es. detach OS in web)
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // M2.1 B1 — toggle "taccuino pulito"
   const [cleanMode, setCleanMode] = useState<boolean>(() => {
@@ -151,6 +160,12 @@ export function RosaView() {
   // M2.1 B5 — Doppio-click card → stacca in finestra OS nativa via Tauri.
   // Chiude la versione in-app (se aperta) e traccia il detach nel store.
   const handleDetachOs = async (id: string) => {
+    // v2.3.2 — in anteprima web (mock) le finestre OS non esistono: toast
+    // informativo invece di un errore Tauri.
+    if (!isDesktop) {
+      setToast("Le finestre OS native sono disponibili solo nell'app desktop. In anteprima web usa il Window Manager in-app (click sulla card).");
+      return;
+    }
     const p = players.find((x) => x.id === id);
     if (!p) return;
     try {
@@ -222,57 +237,42 @@ export function RosaView() {
 
   return (
     <div className="flex flex-col h-full tacc-bg tacc-bg--paper-desk relative">
-      {/* Header */}
-      <header
-        className="text-paper px-5 py-3 flex items-center justify-between flex-wrap gap-2"
-        style={{ backgroundColor: "var(--ink)" }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 flex items-center justify-center rounded font-display text-ink font-bold text-sm border border-paper/30"
-            style={{ backgroundColor: "var(--paper)", fontFamily: "var(--font-display)" }}
-          >
+      {/* Masthead-copertina v2.3.2: ink con grana, cartellino DF con nastro */}
+      <header className="df-masthead">
+        <div className="df-brand">
+          <span className="df-logo-tag" aria-hidden>
             DF
-          </div>
+          </span>
           <div>
-            <h1 className="text-lg font-bold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-              DossierFanta{" "}
-              <span className="text-paper/60 text-sm" style={{ fontFamily: "var(--font-body)" }}>
-                v2.3 · M2.1
-              </span>
+            <h1 className="df-title">
+              DossierFanta <span className="df-ver">v2.3 · M2.1</span>
             </h1>
-            <p className="text-[11px] text-paper/60 leading-tight" style={{ fontFamily: "var(--font-body)" }}>
-              Taccuino di progettazione · offline-first · multi-DB · WM ibrido
-            </p>
+            <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido</p>
           </div>
+          {!isDesktop && (
+            <span className="df-mockbadge" title="Stai vedendo l'app nel browser con dati dimostrativi in-memory. Nell'app desktop i dati vivono in SQLite locale.">
+              anteprima web · mock
+            </span>
+          )}
         </div>
 
         {/* Switcher DB + azioni */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* DB attivo (clic → apre manager) */}
+        <div className="df-actions">
           <button
             type="button"
             onClick={() => setModal("databases")}
-            className="px-3 py-1.5 text-paper border border-paper/40 hover:bg-paper hover:text-ink transition-colors flex items-center gap-2"
-            style={{ fontFamily: "var(--font-display)" }}
+            className="df-btn"
             title="Apri gestione database"
           >
-            <span className="text-[10px] uppercase opacity-70" style={{ fontFamily: "var(--font-body)" }}>
-              DB:
-            </span>
-            <span className="text-sm">{activeDb?.name ?? "—"}</span>
-            <span aria-hidden className="text-[10px] opacity-60">»</span>
+            <span style={{ opacity: 0.65, fontSize: 9 }}>DB:</span>
+            <span>{activeDb?.name ?? "—"}</span>
+            <span aria-hidden style={{ opacity: 0.6 }}>»</span>
           </button>
 
           <button
             type="button"
             onClick={() => setModal("import")}
-            className="px-3 py-1.5 text-xs uppercase tracking-wider text-ink"
-            style={{
-              fontFamily: "var(--font-display)",
-              backgroundColor: "var(--amber)",
-              color: "#FFF",
-            }}
+            className="df-btn df-btn--warn"
             title="Import listone Serie A (anteprima diff + archiviazione automatica)"
           >
             ⚑ Import listone
@@ -281,8 +281,7 @@ export function RosaView() {
           <button
             type="button"
             onClick={() => setModal("archive")}
-            className="px-3 py-1.5 text-xs uppercase tracking-wider border border-paper/40 text-paper hover:bg-paper hover:text-ink"
-            style={{ fontFamily: "var(--font-display)" }}
+            className="df-btn"
             title="Vista giocatori archiviati"
           >
             ▤ Archivio
@@ -291,33 +290,22 @@ export function RosaView() {
           <button
             type="button"
             onClick={() => setFormState({ mode: "create" })}
-            className="px-3 py-1.5 text-paper font-bold uppercase tracking-wider text-sm"
-            style={{
-              fontFamily: "var(--font-display)",
-              backgroundColor: "var(--paper)",
-              color: "var(--ink)",
-            }}
+            className="df-btn df-btn--primary"
           >
             + Nuovo giocatore
           </button>
 
           {/* M2.1 B1 — Toggle taccuino pulito */}
           <label
-            className="flex items-center gap-1 cursor-pointer select-none px-2 py-1 border border-paper/30"
+            className="df-clean-toggle"
             title="Disattiva pieghe, invecchiamento angoli e macchie d'inchiostro. Mantenuta solo la griglia quaderno."
           >
             <input
               type="checkbox"
               checked={cleanMode}
               onChange={(e) => setCleanMode(e.target.checked)}
-              className="w-3 h-3 accent-amber"
             />
-            <span
-              className="text-[10px] uppercase tracking-wider text-paper/80"
-              style={{ fontFamily: "var(--font-body)" }}
-            >
-              taccuino pulito
-            </span>
+            taccuino pulito
           </label>
         </div>
       </header>
@@ -325,11 +313,8 @@ export function RosaView() {
       {/* Stats */}
       <StatsBar />
 
-      {/* Toolbar: search + role filter + filtro DB */}
-      <div
-        className="border-b px-4 py-3 flex items-center gap-3 flex-wrap"
-        style={{ backgroundColor: "var(--paper)", borderColor: "rgba(43, 27, 18, 0.2)" }}
-      >
+      {/* Toolbar: search + role filter + filtro DB (striscia paper v2.3.2) */}
+      <div className="df-toolbar">
         <SearchBar />
         <RoleFilter />
         <DbFilterSelect
@@ -337,22 +322,20 @@ export function RosaView() {
           onChange={setDbFilter}
         />
         <label
-          className="flex items-center gap-1.5 text-xs cursor-pointer select-none ml-auto"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="df-arch-toggle"
           title="Mostra anche i giocatori archiviati (read-only)"
         >
           <input
             type="checkbox"
             checked={includeArchive}
             onChange={(e) => setIncludeArchive(e.target.checked)}
-            className="w-3.5 h-3.5 accent-red"
           />
-          <span className="uppercase tracking-wider text-ink-soft">Includi archivio</span>
+          includi archivio
         </label>
       </div>
 
-      {/* Lista giocatori (scrollable) */}
-      <div className="flex-1 overflow-y-auto relative">
+      {/* Lista giocatori (scrollable) — scrivania con vignettatura */}
+      <div className="flex-1 overflow-y-auto relative df-desk">
         <PlayerList onEdit={handleEdit} onDelete={handleDelete} onDetachOs={handleDetachOs} />
       </div>
 
@@ -388,6 +371,21 @@ export function RosaView() {
           offline · SQLite locale · WAL mode · M2.1
         </span>
       </footer>
+
+      {/* Toast cartaceo (v2.3.2) */}
+      {toast && (
+        <div className="df-toast" role="status">
+          {toast}{" "}
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-soft)", fontFamily: "var(--font-display)" }}
+            aria-label="Chiudi messaggio"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Modali residui */}
       {formState.mode === "create" && (
@@ -445,21 +443,21 @@ function DbFilterSelect({
 
   return (
     <div
-      className="flex items-center gap-1 flex-wrap"
+      className="flex items-center gap-1.5 flex-wrap"
       role="group"
       aria-label="Filtra per database"
     >
       <span
-        className="text-[11px] uppercase tracking-wider text-ink-soft mr-1"
-        style={{ fontFamily: "var(--font-display)" }}
+        className="text-[10px] uppercase tracking-wider mr-0.5"
+        style={{ fontFamily: "var(--font-display)", color: "var(--ink-soft)" }}
       >
         DB:
       </span>
       <button
         type="button"
         onClick={() => onChange(null)}
-        className={`px-2.5 py-1 text-xs rounded border transition-colors ${value === null ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/30 hover:border-ink"}`}
-        style={{ fontFamily: "var(--font-body)" }}
+        className="df-chip df-chip--ink"
+        style={{ color: "var(--ink)" }}
         aria-pressed={value === null}
       >
         Attivo
@@ -467,8 +465,8 @@ function DbFilterSelect({
       <button
         type="button"
         onClick={() => onChange("all")}
-        className={`px-2.5 py-1 text-xs rounded border transition-colors ${value === "all" ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/30 hover:border-ink"}`}
-        style={{ fontFamily: "var(--font-body)" }}
+        className="df-chip df-chip--ink"
+        style={{ color: "var(--ink)" }}
         aria-pressed={value === "all"}
       >
         Tutti
@@ -482,8 +480,8 @@ function DbFilterSelect({
               key={d.id}
               type="button"
               onClick={() => onChange(active ? null : d.id)}
-              className={`px-2.5 py-1 text-xs rounded border transition-colors ${active ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/30 hover:border-ink"}`}
-              style={{ fontFamily: "var(--font-body)" }}
+              className="df-chip df-chip--ink"
+              style={{ color: "var(--ink-soft)" }}
               aria-pressed={active}
               title={`Filtra per ${d.name}`}
             >

@@ -3,22 +3,21 @@ import { POS_FANTA_VALUES } from "@/types/player";
 import { ROLE_COLORS } from "@/lib/format";
 
 /**
- * Filtro ruolo: chip "Tutti" + chip per ogni ruolo (P/D/C/A).
- * Click su una chip setta roleFilter nello store, che triggera refresh().
- *
- * M2: stile taccuino applicato (font-family display, border angoli vivi).
+ * Filtro ruolo v2.3.2: chip stile timbro (bordo color ruolo, pressione
+ * = riempimento). Click su una chip setta roleFilter nello store, che
+ * triggera refresh().
  */
 export function RoleFilter() {
   const roleFilter = usePlayersStore((s) => s.roleFilter);
   const setRoleFilter = usePlayersStore((s) => s.setRoleFilter);
 
   return (
-    <div className="flex items-center gap-1 flex-wrap" role="group" aria-label="Filtra per ruolo">
+    <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label="Filtra per ruolo">
       <button
         type="button"
         onClick={() => setRoleFilter(null)}
-        className={`px-3 py-1 text-sm border transition-colors ${roleFilter === null ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/30 hover:border-ink"}`}
-        style={{ fontFamily: "var(--font-display)" }}
+        className="df-chip df-chip--ink"
+        style={{ color: "var(--ink)" }}
         aria-pressed={roleFilter === null}
       >
         Tutti
@@ -31,14 +30,13 @@ export function RoleFilter() {
             key={role}
             type="button"
             onClick={() => setRoleFilter(role)}
-            className="px-3 py-1 text-sm border transition-all"
+            className="df-chip"
             style={{
-              fontFamily: "var(--font-display)",
+              color: active ? "#FFF" : c.bg,
               backgroundColor: active ? c.bg : "transparent",
-              color: active ? c.fg : c.bg,
-              borderColor: c.bg,
             }}
             aria-pressed={active}
+            title={`Solo ${role}`}
           >
             {role}
           </button>

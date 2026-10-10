@@ -1,3 +1,4 @@
+
 //! CRUD giocatore — comandi Tauri per la tabella `players`.
 //!
 //! M2: refactor multi-DB — tutti i comandi accettano un parametro `db_id`

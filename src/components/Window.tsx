@@ -1,3 +1,4 @@
+
 /**
  * Window — singola finestra del Window Manager in-app (M2.1, Cap.17).
  *
@@ -184,12 +185,12 @@ export function Window({ win, children, bounds }: Props) {
         </span>
       </div>
 
-      {/* Contenuto (scrollable) */}
+      {/* Contenuto (scrollable) — carta rigata da quaderno (v2.3.2) */}
       <div
+        className="tacc-window-body"
         style={{
           flex: 1,
           overflow: "auto",
-          backgroundColor: "var(--paper)",
           padding: 0,
         }}
       >

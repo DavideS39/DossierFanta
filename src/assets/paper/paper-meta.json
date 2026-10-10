@@ -1,0 +1,132 @@
+{
+  "paper-1": {
+    "file": "paper-1.webp",
+    "w": 720,
+    "h": 304,
+    "aspect": 2.3684,
+    "pink_margin_x_pct": null,
+    "alpha_edges_pct": {
+      "top": [
+        6.58,
+        8.55
+      ],
+      "bottom": [
+        2.3,
+        0.66
+      ],
+      "left": [
+        0.42,
+        19.62
+      ],
+      "right": [
+        0.0,
+        0.0
+      ]
+    },
+    "bytes": 21650
+  },
+  "paper-2": {
+    "file": "paper-2.webp",
+    "w": 720,
+    "h": 481,
+    "aspect": 1.4969,
+    "pink_margin_x_pct": null,
+    "alpha_edges_pct": {
+      "top": [
+        1.04,
+        6.64
+      ],
+      "bottom": [
+        0.0,
+        0.0
+      ],
+      "left": [
+        6.39,
+        8.06
+      ],
+      "right": [
+        0.83,
+        0.14
+      ]
+    },
+    "bytes": 50008
+  },
+  "paper-3": {
+    "file": "paper-3.webp",
+    "w": 720,
+    "h": 412,
+    "aspect": 1.7476,
+    "pink_margin_x_pct": 14.44,
+    "alpha_edges_pct": {
+      "top": [
+        2.18,
+        2.67
+      ],
+      "bottom": [
+        6.07,
+        1.46
+      ],
+      "left": [
+        0.14,
+        0.28
+      ],
+      "right": [
+        0.0,
+        0.0
+      ]
+    },
+    "bytes": 39262
+  },
+  "paper-4": {
+    "file": "paper-4.webp",
+    "w": 720,
+    "h": 448,
+    "aspect": 1.6071,
+    "pink_margin_x_pct": null,
+    "alpha_edges_pct": {
+      "top": [
+        0.22,
+        2.9
+      ],
+      "bottom": [
+        18.08,
+        10.27
+      ],
+      "left": [
+        0.0,
+        93.23
+      ],
+      "right": [
+        0.14,
+        0.14
+      ]
+    },
+    "bytes": 19540
+  },
+  "paper-5": {
+    "file": "paper-5.webp",
+    "w": 720,
+    "h": 422,
+    "aspect": 1.7062,
+    "pink_margin_x_pct": null,
+    "alpha_edges_pct": {
+      "top": [
+        3.08,
+        21.2
+      ],
+      "bottom": [
+        10.19,
+        2.37
+      ],
+      "left": [
+        2.22,
+        3.06
+      ],
+      "right": [
+        2.36,
+        0.14
+      ]
+    },
+    "bytes": 49050
+  }
+}

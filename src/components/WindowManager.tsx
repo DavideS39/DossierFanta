@@ -1,3 +1,4 @@
+
 /**
  * WindowManager — container per le finestre WM in-app + taskbar (M2.1, Cap.17).
  *

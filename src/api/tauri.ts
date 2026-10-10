@@ -1,7 +1,14 @@
+
 // Wrapper per le invoke Tauri. Un singolo posto per tutti i comandi Rust.
 // Se la signature di un comando cambia lato Rust, basta aggiornare qui.
+//
+// v2.3.2 — GATE ANTEPRIMA WEB: fuori da Tauri (browser, `npm run dev`)
+// l'app usa il backend in-memory `mock.ts` (dati dimostrativi, badge
+// "anteprima web · mock" nel masthead). Dentro il binario desktop questo
+// file usa SOLO i comandi Rust: zero rischio production.
 
 import { invoke } from "@tauri-apps/api/core";
+import { mockApi } from "./mock";
 import type {
   ArchivedPlayer,
   CreatePlayerInput,
@@ -16,7 +23,7 @@ import type {
   UpdatePlayerInput,
 } from "@/types/player";
 
-export const api = {
+export const tauriApi = {
   // ===== database (M1) =====
 
   /** Inizializza il DB (idempotente). Ritorna il path del file mio.db. */
@@ -155,3 +162,13 @@ export const api = {
   /** Elenca gli id dei giocatori con finestra OS aperta (per UI badge). */
   listOsPlayerWindows: () => invoke<string[]>("list_os_player_windows"),
 };
+
+/** True solo dentro il binario Tauri (WebView con internals iniettati). */
+export const isDesktop =
+  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/**
+ * API attiva: comandi Rust dentro Tauri, mock in-memory nel browser
+ * (anteprima web dev-only). Tutti i componenti consumano solo `api`.
+ */
+export const api = isDesktop ? tauriApi : mockApi;

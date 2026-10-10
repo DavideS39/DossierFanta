@@ -1,69 +1,82 @@
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
+import { GlossaryTooltip } from "./GlossaryTooltip";
 
 /**
- * Barra superiore con statistiche: numero giocatori totali, filtrati,
- * archiviati, path DB, versione schema, DB attivo. Aggiornata
- * automaticamente dallo store.
+ * Striscia statistiche v2.3.2: conteggi per stato con glyph del design
+ * system (✓ scoutati · ? da fare · ○ totali · ▤ archiviati) + barra
+ * progress scouting (riempimento verde a tratteggio) + info workspace
+ * (DB attivo, schema, orario ultimo aggiornamento).
  *
- * M2: mostra anche il numero di DB logici caricati nel workspace.
+ * Sostituisce la vecchia barra "Visualizzati/Totale" ridondante: i
+ * conteggi per stato sono gli stessi che l'utente vede come timbri
+ * sulle cartoline, con tooltip glossario sul significato degli stati.
  */
 export function StatsBar() {
   const players = usePlayersStore((s) => s.players);
-  const totalCount = usePlayersStore((s) => s.totalCount);
-  const lastUpdated = usePlayersStore((s) => s.lastUpdated);
   const meta = useDbMetaStore((s) => s.info);
   const databases = useDbStore((s) => s.databases);
+  const lastUpdated = usePlayersStore((s) => s.lastUpdated);
+
+  const scoutati = players.filter((p) => p.status === "scoutato").length;
+  const daFare = players.filter((p) => p.status === "da_fare").length;
+  const totali = players.length;
+  const pct = totali > 0 ? Math.round((scoutati / totali) * 100) : 0;
 
   return (
-    <div
-      className="px-4 py-2 flex items-center gap-4 flex-wrap text-xs text-ink-soft"
-      style={{
-        fontFamily: "var(--font-body)",
-        backgroundColor: "var(--paper-dim)",
-        borderBottom: "1px solid rgba(43, 27, 18, 0.2)",
-      }}
-    >
-      <Stat label="Visualizzati" value={players.length} />
-      <Stat label="Totale (con filtri)" value={totalCount} />
+    <div className="df-statsbar" role="status">
+      <GlossaryTooltip term="status">
+        <span className="df-stat df-stat--scoutato">
+          <span className="g" aria-hidden>✓</span>
+          <span className="v">{scoutati}</span>
+          <span>scoutati</span>
+        </span>
+      </GlossaryTooltip>
+
+      <GlossaryTooltip term="status">
+        <span className="df-stat df-stat--dafare">
+          <span className="g" aria-hidden>?</span>
+          <span className="v">{daFare}</span>
+          <span>da fare</span>
+        </span>
+      </GlossaryTooltip>
+
+      <span className="df-stat df-stat--totali">
+        <span className="g" aria-hidden>○</span>
+        <span className="v">{totali}</span>
+        <span>in rosa</span>
+      </span>
+
       {meta && (
-        <>
-          <Stat label="Archiviati" value={meta.archived_count} />
-          <Stat label="DB logici" value={databases.length} />
-          <div className="hidden sm:flex items-center gap-1">
-            <span className="uppercase tracking-wider">Attivo:</span>
-            <code
-              className="px-1.5 py-0.5 truncate max-w-xs"
-              style={{
-                backgroundColor: "var(--paper)",
-                color: "var(--ink)",
-                border: "1px solid rgba(43, 27, 18, 0.2)",
-                fontFamily: "var(--font-display)",
-              }}
-              title={meta.db_path}
-            >
-              {meta.active_db_name}
-            </code>
-            <span className="text-ink-soft/60">·</span>
-            <span>schema v{meta.schema_version}</span>
-          </div>
-        </>
+        <span className="df-stat df-stat--archivio">
+          <span className="g" aria-hidden>▤</span>
+          <span className="v">{meta.archived_count}</span>
+          <span>archiviati</span>
+        </span>
       )}
-      {lastUpdated && (
-        <div className="ml-auto text-ink-soft/60">
-          Aggiornato: {new Date(lastUpdated).toLocaleTimeString("it-IT")}
-        </div>
-      )}
-    </div>
-  );
-}
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="uppercase tracking-wider">{label}:</span>
-      <span className="font-bold text-ink">{value}</span>
+      <span className="df-progress" title="Quota della rosa con almeno una nota scouting">
+        <span className="df-progress-track" aria-hidden>
+          <span className="df-progress-fill" style={{ width: `${pct}%` }} />
+        </span>
+        <span className="df-progress-label">scouting {pct}%</span>
+      </span>
+
+      <span className="df-right">
+        {meta && (
+          <>
+            <span className="df-dbcode" title={meta.db_path}>
+              {meta.active_db_name}
+            </span>
+            <span>· schema v{meta.schema_version}</span>
+            <span>· {databases.length} DB</span>
+          </>
+        )}
+        {lastUpdated && (
+          <span>· agg. {new Date(lastUpdated).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</span>
+        )}
+      </span>
     </div>
   );
 }

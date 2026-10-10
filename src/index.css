@@ -1,9 +1,11 @@
+
 /* Import design system taccuino (variabili CSS, componenti, texture)
    DEVE precedere @tailwind per rispettare la regola CSS di @import.
    M2.1: importa anche taccuino-realistic.css per texture 4-layer + ombre
    multilayer + Z levels + chrome WM + status toggle menu. */
 @import "./styles/taccuino.css";
 @import "./styles/taccuino-realistic.css";
+@import "./styles/scrivania.css";
 
 @tailwind base;
 @tailwind components;
