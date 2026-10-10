@@ -132,6 +132,13 @@ export const api = {
   saveScoutingNote: (input: SaveScoutingNoteInput) =>
     invoke<boolean>("save_scouting_note", { input }),
 
+  /**
+   * M2.1 B5 — Legge un singolo giocatore per id (usato dalla finestra OS
+   * nativa `/player/:id` che non ha il Zustand store con la lista caricata).
+   */
+  getPlayer: (playerId: string) =>
+    invoke<Player>("get_player", { playerId }),
+
   // ===== M2.1 — IMPROVEMENT B5 (Cap.17): multi-window OS nativa =====
 
   /**

@@ -56,21 +56,31 @@
 .tacc-bg.tacc-bg--realistic {
   background-color: var(--paper);
   background-image:
-    /* Layer 4 — Macchie d'inchiostro SVG inline (3 macchie fisse, non casuali) */
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.05'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.06'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.04'/><circle cx='177' cy='88' r='1.5' fill='%232B1B12' opacity='0.05'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.05'/><circle cx='92' cy='158' r='2' fill='%232B1B12' opacity='0.04'/></svg>"),
-    /* Layer 3 — Invecchiamento angoli: 4 radial-gradient */
-    radial-gradient(circle 200px at 0% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 100% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 0% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 100% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
-    /* Layer 2 — Piega centrale verticale: linear-gradient 80px centrato */
+    /* Layer 4 — Macchie d'inchiostro SVG inline (3 macchie fisse, molto soft).
+       Opacity già bassa (0.03-0.05) — quasi impercettibili. */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.03'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.04'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.03'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.04'/></svg>"),
+    /* Layer 3 — Invecchiamento angoli: 4 radial-gradient SOFT.
+       Opacity ridotta da 0.08 a 0.04, raggio più ampio (320px) per transizione
+       più organica. Dà profondità senza "macchia visibile". */
+    radial-gradient(circle 320px at 0% 0%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 100% 0%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 0% 100%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 100% 100%, rgba(43, 27, 18, 0.04), transparent 75%),
+    /* Layer 2 — Piega centrale verticale RIPROGETTATA (v2.3.1):
+       Era una linea netta a 50% opacity 0.15 larghezza 80px → faceva
+       "riga tagliata a metà". Ora è un'ombra MOLTO soft e larga (240px)
+       con opacity massima 0.025 (6x meno di prima) e multiple stop per
+       transizione organica. La piega è percepita tattilmente, non vista. */
     linear-gradient(
       90deg,
       transparent 0%,
-      transparent calc(50% - 40px),
-      rgba(43, 27, 18, 0.15) calc(50% - 0px),
-      rgba(43, 27, 18, 0.15) 50%,
-      transparent calc(50% + 40px),
+      transparent calc(50% - 120px),
+      rgba(43, 27, 18, 0.012) calc(50% - 80px),
+      rgba(43, 27, 18, 0.020) calc(50% - 30px),
+      rgba(43, 27, 18, 0.025) 50%,
+      rgba(43, 27, 18, 0.020) calc(50% + 30px),
+      rgba(43, 27, 18, 0.012) calc(50% + 80px),
+      transparent calc(50% + 120px),
       transparent 100%
     ),
     /* Layer 1 — Griglia quaderno 14px (linee 0deg + 90deg) — replicato da taccuino.css */
@@ -95,18 +105,24 @@
 body {
   background-color: var(--paper);
   background-image:
-    /* Layer 4 — Macchie SVG inline (stesso SVG di sopra, replicato su body per coerenza) */
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.05'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.06'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.04'/><circle cx='177' cy='88' r='1.5' fill='%232B1B12' opacity='0.05'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.05'/><circle cx='92' cy='158' r='2' fill='%232B1B12' opacity='0.04'/></svg>"),
-    radial-gradient(circle 200px at 0% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 100% 0%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 0% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
-    radial-gradient(circle 200px at 100% 100%, rgba(43, 27, 18, 0.08), transparent 70%),
+    /* Layer 4 — Macchie SVG inline soft (stesso SVG di sopra, replicato su body per coerenza) */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.03'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.04'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.03'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.04'/></svg>"),
+    /* Layer 3 — Invecchiamento angoli soft */
+    radial-gradient(circle 320px at 0% 0%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 100% 0%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 0% 100%, rgba(43, 27, 18, 0.04), transparent 75%),
+    radial-gradient(circle 320px at 100% 100%, rgba(43, 27, 18, 0.04), transparent 75%),
+    /* Layer 2 — Piega centrale verticale RIPROGETTATA */
     linear-gradient(
       90deg,
       transparent 0%,
-      transparent calc(50% - 40px),
-      rgba(43, 27, 18, 0.15) 50%,
-      transparent calc(50% + 40px),
+      transparent calc(50% - 120px),
+      rgba(43, 27, 18, 0.012) calc(50% - 80px),
+      rgba(43, 27, 18, 0.020) calc(50% - 30px),
+      rgba(43, 27, 18, 0.025) 50%,
+      rgba(43, 27, 18, 0.020) calc(50% + 30px),
+      rgba(43, 27, 18, 0.012) calc(50% + 80px),
+      transparent calc(50% + 120px),
       transparent 100%
     ),
     repeating-linear-gradient(
@@ -231,6 +247,88 @@ body.tacc-clean-mode .tacc-bg.tacc-bg--realistic {
   inset: 0;
   background-color: rgba(43, 27, 18, 0.4);
   z-index: 50;
+}
+
+/* ============================================================
+   COMPONENTE 8 — TORN PAPER CARD (Cap.16, v2.3.1 reference vecteezy)
+   ============================================================
+   Card giocatore stile "foglio di carta strappata" realistica.
+   Il componente React PlayerCardPaper gestisce inline:
+     - clip-path organico 24+ punti top + 24+ punti bottom (via useMemo)
+     - ombra multi-layer 3-strati (contact + ambient + depth)
+     - SVG noise texture overlay
+     - Layer ombra posteriore ruotata per profondità 3D
+     - Nastro adesivo arancione in alto
+     - Pinzatrice SVG per priority 5/5
+
+   Qui definiamo solo hover/transition + stati (selected, archived).
+   ============================================================ */
+
+.tacc-paper-shell {
+  position: relative;
+  transition: transform 200ms ease;
+}
+
+.tacc-paper-shell:hover {
+  transform: rotate(0deg) translateY(-3px);
+}
+
+.tacc-paper {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  position: relative;
+}
+
+.tacc-paper.is-archived {
+  opacity: 0.65;
+  filter: grayscale(0.3);
+}
+
+.tacc-paper.is-archived:hover {
+  opacity: 0.85;
+  filter: grayscale(0.1);
+}
+
+/* Variante di sfondo per RosaView: carta + desk più scura per fare poppare le card.
+   Attivata automaticamente quando RosaView ha la classe .tacc-bg--paper-desk.
+   Mantiene il paper-color di base ma aggiunge un leggero darken per
+   simulare la scrivania legnosa su cui le card sono posate. */
+.tacc-bg--paper-desk {
+  background-color: #E8DEC4;
+  background-image:
+    /* Layer 4 — Macchie SVG soft */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='30' cy='40' r='6' fill='%232B1B12' opacity='0.03'/><circle cx='28' cy='38' r='2' fill='%232B1B12' opacity='0.04'/><circle cx='175' cy='90' r='4' fill='%232B1B12' opacity='0.03'/><circle cx='90' cy='160' r='5' fill='%232B1B12' opacity='0.04'/></svg>"),
+    /* Layer 3 — Invecchiamento angoli soft */
+    radial-gradient(circle 320px at 0% 0%, rgba(43, 27, 18, 0.05), transparent 75%),
+    radial-gradient(circle 320px at 100% 0%, rgba(43, 27, 18, 0.05), transparent 75%),
+    radial-gradient(circle 320px at 0% 100%, rgba(43, 27, 18, 0.05), transparent 75%),
+    radial-gradient(circle 320px at 100% 100%, rgba(43, 27, 18, 0.05), transparent 75%),
+    /* Layer 2 — Piega centrale molto soft */
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent calc(50% - 120px),
+      rgba(43, 27, 18, 0.015) calc(50% - 30px),
+      rgba(43, 27, 18, 0.020) 50%,
+      rgba(43, 27, 18, 0.015) calc(50% + 30px),
+      transparent calc(50% + 120px),
+      transparent 100%
+    ),
+    /* Layer 1 — Griglia quaderno 14px */
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 13px,
+      rgba(43, 27, 18, 0.05) 13px,
+      rgba(43, 27, 18, 0.05) 14px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      rgba(43, 27, 18, 0.05) 13px,
+      rgba(43, 27, 18, 0.05) 14px
+    );
+  background-attachment: fixed;
 }
 
 /* ============================================================

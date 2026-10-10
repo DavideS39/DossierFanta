@@ -635,7 +635,9 @@ pub fn restore_archived_player(
             ],
         )?;
 
-        // Ricrea le tabelle collegate solo se lo snapshot è arricchito (M2.1)
+        // Ricrea le tabelle collegate solo se lo snapshot è arricchito (M2.1).
+        // Nota: passiamo &tx (=&Transaction<'_>) che viene deref-coerced a
+        // &Connection perché Transaction implementa Deref<Target = Connection>.
         if is_enriched {
             _recreate_connected_tables(&tx, &snapshot).map_err(AppError::Db)?;
         }

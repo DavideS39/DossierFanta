@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RosaView } from "@/components/RosaView";
+import { PlayerOSWindow } from "@/components/PlayerOSWindow";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { api } from "@/api/tauri";
@@ -7,6 +8,12 @@ import { api } from "@/api/tauri";
 /**
  * App root. Avvia l'inizializzazione del DB al primo render.
  * Mostra uno splash screen mentre il DB non è pronto.
+ *
+ * M2.1 B5 — Multi-window OS nativa: quando il pathname inizia con `/player/`,
+ * l'app è stata caricata dentro una finestra OS nativa (creata da
+ * `api.openPlayerWindow(player_id)`). Estraiamo il player_id e renderizziamo
+ * `PlayerOSWindow` invece di `RosaView`. Questo evita che la finestra OS
+ * appaia bianca (perché manca il router frontend per la route `/player/:id`).
  *
  * M2: inizializza anche lo store multi-DB (useDbStore) oltre al meta store.
  */
@@ -17,6 +24,13 @@ export function App() {
   const refreshDbs = useDbStore((s) => s.refresh);
   const restoreFromLocalStorage = useDbStore((s) => s.restoreFromLocalStorage);
 
+  // M2.1 B5 — Rileva se siamo in una finestra OS nativa via pathname.
+  // Tauri 2 carica la stessa app (dist/index.html) per tutte le finestre,
+  // ma il pathname distingue: "/" = main, "/player/:id" = finestra OS.
+  const path = typeof window !== "undefined" ? window.location.pathname : "/";
+  const playerMatch = path.match(/^\/player\/([^/]+)/);
+  const osPlayerId = playerMatch ? playerMatch[1] : null;
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -26,9 +40,11 @@ export function App() {
         // M2.1 — FIX A4 (A8): ripristina il DB attivo da localStorage PRIMA
         // di refreshMeta + refreshDbs. Il backend imposta il DB attivo e
         // refreshDbs leggerà quello giusto. Sopravvive al riavvio dell'app.
-        await restoreFromLocalStorage();
-        // Recupera metadati + databases (M2)
-        await Promise.all([refreshMeta(), refreshDbs()]);
+        // Skip se siamo in finestra OS nativa (non serve il refresh completo).
+        if (!osPlayerId) {
+          await restoreFromLocalStorage();
+          await Promise.all([refreshMeta(), refreshDbs()]);
+        }
         if (!cancelled) setBooting(false);
       } catch (e) {
         if (!cancelled) {
@@ -40,7 +56,13 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [refreshMeta, refreshDbs, restoreFromLocalStorage]);
+  }, [refreshMeta, refreshDbs, restoreFromLocalStorage, osPlayerId]);
+
+  // M2.1 B5 — Se siamo in finestra OS nativa, renderizza PlayerOSWindow
+  // dopo che il DB è inizializzato.
+  if (osPlayerId && !booting && !bootError) {
+    return <PlayerOSWindow playerId={osPlayerId} />;
+  }
 
   if (bootError) {
     return (
@@ -85,7 +107,7 @@ export function App() {
           }}
         />
         <div className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}>
-          DossierFanta v2.2
+          DossierFanta v2.3 · M2.1
         </div>
         <div className="text-xs mt-1" style={{ fontFamily: "var(--font-body)", color: "var(--ink-soft)" }}>
           Inizializzazione DB locale + workspace multi-DB…

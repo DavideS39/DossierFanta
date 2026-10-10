@@ -37,6 +37,12 @@ interface Props {
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /**
+   * M2.1 B5 — Doppio-click sulla card: stacca la scheda in finestra OS nativa
+   * via api.openPlayerWindow(player_id). Se omitted, il doppio-click non fa
+   * nulla di diverso dal single-click (apre WM in-app).
+   */
+  onDetachOs?: () => void;
   /** Se true, mostra il chip "ARCHIVIATO" rosso sbiadito e disabilita le azioni. */
   archived?: boolean;
   /** Nome del DB di provenienza, se diverso dal DB attivo (per chip). */
@@ -49,6 +55,7 @@ export function PlayerCardTaccuino({
   onSelect,
   onEdit,
   onDelete,
+  onDetachOs,
   archived = false,
   dbLabel,
 }: Props) {
@@ -85,6 +92,13 @@ export function PlayerCardTaccuino({
       className={`tacc-card tacc-card--v23 ${selected ? "is-selected" : ""} ${archived ? "is-archived" : ""}`}
       style={{ transform: `rotate(${rotation}deg)` }}
       onClick={handleCardClick}
+      onDoubleClick={(e) => {
+        // M2.1 B5: doppio-click sulla card → stacca in finestra OS nativa
+        if (archived) return;
+        e.stopPropagation();
+        e.preventDefault();
+        if (onDetachOs) onDetachOs();
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -93,6 +107,7 @@ export function PlayerCardTaccuino({
           handleCardClick();
         }
       }}
+      title={`${archived ? "Archiviato: " : ""}${player.name} — doppio-click per aprire in finestra OS nativa`}
       aria-label={`${archived ? "Archiviato: " : ""}${player.name}`}
     >
       {/* Pinzatrice (priority 5/5) */}

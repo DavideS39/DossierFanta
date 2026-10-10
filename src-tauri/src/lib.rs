@@ -224,9 +224,10 @@ pub fn run() {
             commands::players::count_players,
             commands::players::archive_player,
             commands::players::list_archive,
-            // players.rs (M2.1 — auto-toggle + toggle manuale)
+            // players.rs (M2.1 — auto-toggle + toggle manuale + get_player per finestra OS)
             commands::players::set_player_status,
             commands::players::save_scouting_note,
+            commands::players::get_player,
             // listone.rs (M2 — archiviazione automatica)
             commands::listone::import_listone,
             commands::listone::list_archived_players,

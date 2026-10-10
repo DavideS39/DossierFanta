@@ -13,6 +13,13 @@ interface Props {
   player: Player | null;
   onClose: () => void;
   onSubmit: (input: CreatePlayerInput | UpdatePlayerInput) => Promise<void>;
+  /**
+   * M2.1 B5 — Se true, omette il backdrop modale a tutto schermo e renderizza
+   * come contenuto embedded che riempie il parent (usato dentro Window WM e
+   * finestra OS nativa). Se false (default), renderizza come modale a tutto
+   * schermo (comportamento M2 base, usato dal pulsante "Nuovo giocatore").
+   */
+  embedded?: boolean;
 }
 
 interface FormState {
@@ -60,7 +67,7 @@ const EMPTY: FormState = {
  *   - Header nero + footer grigio dim (coerenza design system)
  *   - Etichette in Special Elite (font-display)
  */
-export function PlayerForm({ player, onClose, onSubmit }: Props) {
+export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -168,30 +175,12 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
     }
   };
 
-  return (
-    <div className="tacc-modal-backdrop" onClick={onClose}>
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="tacc-modal w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-        aria-modal="true"
-        role="dialog"
-      >
-        <header className="tacc-modal-header sticky top-0 z-10">
-          <h2 className="text-lg font-bold">
-            {player ? `» Modifica: ${player.name}` : "» Nuovo giocatore"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-paper/70 hover:text-paper text-xl leading-none"
-            aria-label="Chiudi"
-          >
-            ×
-          </button>
-        </header>
-
-        <div className="p-5 space-y-4 tacc-bg">
+  // M2.1 B5: in modalità embedded NON renderizziamo il backdrop (position: fixed
+  // inset: 0) perché coprirebbe la chrome della finestra WM/OS. Usiamo un div
+  // h-full che riempie il parent (corpo della finestra).
+  const formContent = (
+    <>
+      <div className="p-5 space-y-4 tacc-bg">
           {/* Nome (required) */}
           <Field label="Nome *" error={errors.name} htmlFor="name">
             <input
@@ -367,14 +356,80 @@ export function PlayerForm({ player, onClose, onSubmit }: Props) {
           )}
         </div>
 
-        <footer className="tacc-modal-footer sticky bottom-0">
-          <button type="button" onClick={onClose} className="tacc-btn">
-            Annulla
+      <footer className="tacc-modal-footer sticky bottom-0">
+        <button type="button" onClick={onClose} className="tacc-btn">
+          Annulla
+        </button>
+        <button type="submit" disabled={submitting} className="tacc-btn tacc-btn--primary">
+          {submitting ? "Salvataggio…" : player ? "Salva modifiche" : "Crea giocatore"}
+        </button>
+      </footer>
+    </>
+  );
+
+  // M2.1 B5: modalità embedded (dentro Window WM o OS native window).
+  // Renderizza il form senza backdrop: un div h-full flex flex-col che riempie
+  // il corpo della finestra. La chrome della finestra è gestita dal parent
+  // (Window.tsx o la finestra OS nativa di Tauri).
+  if (embedded) {
+    return (
+      <form
+        onSubmit={handleSubmit}
+        className="h-full flex flex-col tacc-bg"
+        aria-modal="true"
+        role="dialog"
+      >
+        <header
+          className="tacc-modal-header"
+          style={{
+            // In embedded mode l'header è il "sub-header" sotto la chrome
+            // della finestra: usiamo un'altezza ridotta e font più piccolo
+            padding: "0.45rem 0.85rem",
+            fontSize: "0.85rem",
+          }}
+        >
+          <h2 className="text-sm font-bold">
+            {player ? `» ${player.name}` : "» Nuovo giocatore"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-paper/70 hover:text-paper text-lg leading-none"
+            aria-label="Chiudi"
+            title="Chiudi finestra"
+          >
+            ×
           </button>
-          <button type="submit" disabled={submitting} className="tacc-btn tacc-btn--primary">
-            {submitting ? "Salvataggio…" : player ? "Salva modifiche" : "Crea giocatore"}
+        </header>
+        <div className="flex-1 overflow-y-auto">{formContent}</div>
+      </form>
+    );
+  }
+
+  // Modalità modale a tutto schermo (comportamento M2 base, per "Nuovo giocatore")
+  return (
+    <div className="tacc-modal-backdrop" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="tacc-modal w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        aria-modal="true"
+        role="dialog"
+      >
+        <header className="tacc-modal-header sticky top-0 z-10">
+          <h2 className="text-lg font-bold">
+            {player ? `» Modifica: ${player.name}` : "» Nuovo giocatore"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-paper/70 hover:text-paper text-xl leading-none"
+            aria-label="Chiudi"
+          >
+            ×
           </button>
-        </footer>
+        </header>
+        {formContent}
       </form>
     </div>
   );

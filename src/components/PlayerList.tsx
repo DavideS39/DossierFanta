@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbStore } from "@/stores/useDbStore";
-import { PlayerCardTaccuino } from "./PlayerCardTaccuino";
+import { PlayerCardPaper } from "./PlayerCardPaper";
 import { api } from "@/api/tauri";
 import type { ArchivedPlayer, Player } from "@/types/player";
 
 interface Props {
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  /** M2.1 B5 — Doppio-click card: stacca in finestra OS nativa. */
+  onDetachOs?: (id: string) => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * Mostra chip DB provenienza quando il filtro DB è "all" e il giocatore
  * appartiene a un DB diverso dal attivo.
  */
-export function PlayerList({ onEdit, onDelete }: Props) {
+export function PlayerList({ onEdit, onDelete, onDetachOs }: Props) {
   const players = usePlayersStore((s) => s.players);
   const loading = usePlayersStore((s) => s.loading);
   const error = usePlayersStore((s) => s.error);
@@ -137,21 +139,22 @@ export function PlayerList({ onEdit, onDelete }: Props) {
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 p-5">
         {players.map((p) => (
-          <PlayerCardTaccuino
+          <PlayerCardPaper
             key={p.id}
             player={p}
             selected={selectedId === p.id}
             onSelect={() => setSelectedId(p.id)}
             onEdit={() => onEdit(p.id)}
             onDelete={() => onDelete(p.id)}
+            onDetachOs={onDetachOs ? () => onDetachOs(p.id) : undefined}
             dbLabel={dbLabelFor(p.db_id)}
           />
         ))}
         {includeArchive && archivedAsPlayers.length > 0 && (
           archivedAsPlayers.map((p) => (
-            <PlayerCardTaccuino
+            <PlayerCardPaper
               key={`arch-${p.id}`}
               player={p}
               selected={false}

@@ -1153,6 +1153,48 @@ pub(crate) fn _collect_player_snapshot(
     collect_player_snapshot(conn, player_id)
 }
 
+/// M2.1 — B5: legge un singolo giocatore per id (usato dalla finestra OS nativa
+/// che non ha il Zustand store con la lista players caricata).
+#[tauri::command]
+pub fn get_player(state: State<'_, DbState>, player_id: String) -> AppResult<Player> {
+    let active_id = state.active_db_id()?;
+    state.with_conn(&active_id, |conn| {
+        let player = conn
+            .query_row(
+                r#"SELECT id, db_id, name, team, pos_fanta, pos_real, status, fascia,
+                          priority, fmil_spesi, med, medv, fvm, updated_at, updated_by
+                   FROM players WHERE id = ?1"#,
+                params![&player_id],
+                |row| {
+                    Ok(Player {
+                        id: row.get(0)?,
+                        db_id: row.get(1)?,
+                        name: row.get(2)?,
+                        team: row.get(3)?,
+                        pos_fanta: row.get(4)?,
+                        pos_real: row.get(5)?,
+                        status: row.get(6)?,
+                        fascia: row.get(7)?,
+                        priority: row.get(8)?,
+                        fmil_spesi: row.get(9)?,
+                        med: row.get(10)?,
+                        medv: row.get(11)?,
+                        fvm: row.get(12)?,
+                        updated_at: row.get(13)?,
+                        updated_by: row.get(14)?,
+                    })
+                },
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    AppError::NotFound(format!("giocatore id={} non trovato", player_id))
+                }
+                other => AppError::Db(other),
+            })?;
+        Ok(player)
+    })
+}
+
 /// M2.1 — Helper esposto per listone.rs: recreate_connected_tables.
 /// Permette a `restore_archived_player` di listone.rs di ricreare le 4 tabelle
 /// collegate dallo snapshot arricchito (inversa di collect_player_snapshot).

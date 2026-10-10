@@ -148,6 +148,28 @@ export function RosaView() {
     openPlayerWindow(p.id, p.name);
   };
 
+  // M2.1 B5 — Doppio-click card → stacca in finestra OS nativa via Tauri.
+  // Chiude la versione in-app (se aperta) e traccia il detach nel store.
+  const handleDetachOs = async (id: string) => {
+    const p = players.find((x) => x.id === id);
+    if (!p) return;
+    try {
+      // Chiudi la finestra WM in-app (se aperta)
+      useWindowsStore.getState().closeWindow(id);
+      // Crea la finestra OS nativa
+      await api.openPlayerWindow(id);
+      // Traccia il detach: il WM non renderizzerà la versione in-app
+      useWindowsStore.getState().detachToOs(id);
+      // Aggiorna il set dal backend per coerenza
+      const ids = await api.listOsPlayerWindows();
+      setDetachedToOs(ids);
+    } catch (e) {
+      // Mostriamo l'errore come toast — per ora solo in console
+      console.error("openPlayerWindow failed:", e);
+      alert(`Impossibile aprire la finestra OS nativa: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const handleDelete = (id: string) => {
     const p = players.find((x) => x.id === id);
     if (p) setDeleteTarget(p);
@@ -168,7 +190,14 @@ export function RosaView() {
   };
 
   // M2.1 B5 — Render-prop per WindowManager: dato un playerId, renderizza
-  // il contenuto della finestra (PlayerForm in modalità edit).
+  // il contenuto della finestra (PlayerForm embedded, senza backdrop modale).
+  //
+  // BUG FIX M2.1: l'onSubmit chiama SEMPRE updatePlayer (non handleSubmit).
+  // handleSubmit controlla formState.mode (lo stato modale del pulsante
+  // "Nuovo giocatore" in RosaView), che è "closed" quando si salva da dentro
+  // una Window. Caderebbe nel branch else → createPlayer → DUPLICATO.
+  // Siamo in modalità edit (player è sempre passato non-null alle Window),
+  // quindi chiamiamo direttamente updatePlayer.
   const renderWindow = (playerId: string) => {
     const p = players.find((x) => x.id === playerId);
     if (!p) {
@@ -181,16 +210,18 @@ export function RosaView() {
     return (
       <PlayerForm
         player={p}
+        embedded
         onClose={() => useWindowsStore.getState().closeWindow(playerId)}
         onSubmit={async (input) => {
-          await handleSubmit(input);
+          // Sempre update: la Window contiene sempre un player esistente.
+          await updatePlayer(input as UpdatePlayerInput);
         }}
       />
     );
   };
 
   return (
-    <div className="flex flex-col h-full tacc-bg tacc-bg--realistic relative">
+    <div className="flex flex-col h-full tacc-bg tacc-bg--paper-desk relative">
       {/* Header */}
       <header
         className="text-paper px-5 py-3 flex items-center justify-between flex-wrap gap-2"
@@ -322,11 +353,13 @@ export function RosaView() {
 
       {/* Lista giocatori (scrollable) */}
       <div className="flex-1 overflow-y-auto relative">
-        <PlayerList onEdit={handleEdit} onDelete={handleDelete} />
-
-        {/* M2.1 B5 — Window Manager in-app layer (Z4) */}
-        <WindowManager renderWindow={renderWindow} />
+        <PlayerList onEdit={handleEdit} onDelete={handleDelete} onDetachOs={handleDetachOs} />
       </div>
+
+      {/* M2.1 B5 — Window Manager in-app layer (Z4). Renderizzato al root level
+          di RosaView (non dentro lo scroll container) così le finestre con
+          position: absolute non vengono tagliate dal overflow-y-auto del parent. */}
+      <WindowManager renderWindow={renderWindow} />
 
       {/* Footer: legenda simboli */}
       <footer className="tacc-legend">
