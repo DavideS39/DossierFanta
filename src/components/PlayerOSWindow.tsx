@@ -84,7 +84,7 @@ export function PlayerOSWindow({ playerId }: Props) {
 
   return (
     <div
-      className="flex flex-col h-screen tacc-bg tacc-bg--realistic"
+      className="flex flex-col h-screen wm-body-bg"
       style={{ overflow: "hidden" }}
     >
       {/* Header locale della finestra OS — distinto dalla chrome nativa di Windows.

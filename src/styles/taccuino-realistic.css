@@ -332,6 +332,33 @@ body.tacc-clean-mode .tacc-bg.tacc-bg--realistic {
 }
 
 /* ============================================================
+   Sfondo finestre WM (Window.tsx corpo): texture PNG reali
+   ============================================================
+   Quando apri una scheda giocatore come finestra WM in-app
+   (Window.tsx) o come finestra OS nativa (PlayerOSWindow), il corpo
+   della finestra ha come sfondo i 2 PNG forniti dal product owner:
+     - desk-tile.png (legal pad bianco con righe azzurre + margine rosa)
+       → tiled come base, dà l'effetto "quaderno aperto su cui scrivi"
+     - desk-vintage.png (pergamena con testo sbiadito) → overlay fisso
+       in top layer con mix-blend-mode: multiply, opacity ~30% via blend
+   L'effetto è che la finestra aperta "sembra un foglio di quaderno
+   vero" su cui sta il PlayerForm embedded, non un pannello CSS bianco.
+   ============================================================ */
+.wm-body-bg {
+  background-color: #F4F6F7; /* fallback uguale al desk-tile.png */
+  background-image:
+    /* Layer top — Pergamena vintage come overlay decorativo fisso */
+    url("../assets/backgrounds/desk-vintage.png"),
+    /* Layer base — Legal pad bianco rigato, tiled */
+    url("../assets/backgrounds/desk-tile.png");
+  background-repeat: no-repeat, repeat;
+  background-size: 100% auto, 440px 584px;
+  background-position: center top, top left;
+  background-attachment: local, local;
+  background-blend-mode: multiply, normal;
+}
+
+/* ============================================================
    COMPONENTE 7 — CHROME FINESTRA WM (Cap.16)
    ============================================================
    Barra superiore 32px con titolo Special Elite 12px + 3 pulsanti glyph

@@ -316,8 +316,11 @@ export function Window({ win, children, bounds }: Props) {
         </div>
       </header>
 
-      {/* Contenuto (scrollable) dentro la safe-area del foglio */}
-      <div className="wf-body">{children}</div>
+      {/* Contenuto (scrollable) dentro la safe-area del foglio.
+          Sfondo = PNG del product owner (legal pad + pergamena vintage):
+          la finestra aperta "sembra un foglio di quaderno vero"
+          su cui sta il PlayerForm embedded, non un pannello CSS bianco. */}
+      <div className="wf-body wm-body-bg">{children}</div>
 
       {/* Angolo piegato: resize handle cartaceo (↘) */}
       {!win.maximized && (
