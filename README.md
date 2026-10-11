@@ -1,4 +1,3 @@
-
 # DossierFanta v2.2 — Milestone M1
 
 App desktop Windows nativa per gestione rosa fantacalcio. **M1: base offline funzionante.**

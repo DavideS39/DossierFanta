@@ -1,4 +1,3 @@
-
 //! SQLite connection management + schema migration.
 //!
 //! Lo schema è `migrations/schema_v2.2.sql` (copiato pari pari dal file

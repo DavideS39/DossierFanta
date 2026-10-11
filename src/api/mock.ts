@@ -14,6 +14,7 @@
 
 import type {
   ArchivedPlayer,
+  AuctionData,
   CreatePlayerInput,
   DatabaseMeta,
   DbInfo,
@@ -22,6 +23,7 @@ import type {
   ListFilters,
   Player,
   SaveScoutingNoteInput,
+  ScoutingNote,
   Status,
   UpdatePlayerInput,
 } from "@/types/player";
@@ -30,6 +32,11 @@ const delay = (ms = 70) => new Promise((r) => setTimeout(r, ms));
 
 let seq = 100;
 const nid = () => `mock-${(seq++).toString(16).padStart(4, "0")}`;
+
+// M2.1.1 — Map in-memory per auction_data + scouting_notes (mock browser)
+const auctionDataMock = new Map<string, AuctionData>();
+const scoutingNotesMock = new Map<string, ScoutingNote[]>();
+let noteIdSeq = 1;
 
 const DB_MIO: DatabaseMeta = {
   id: "db-mio",
@@ -372,6 +379,19 @@ export const mockApi = {
 
   async saveScoutingNote(input: SaveScoutingNoteInput) {
     await delay();
+    // Crea la nota e aggiungi alla Map
+    const note: ScoutingNote = {
+      id: noteIdSeq++,
+      player_id: input.player_id,
+      kind: input.kind,
+      label: input.label ?? null,
+      content: input.content ?? null,
+      source: input.source ?? null,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+    };
+    const list = scoutingNotesMock.get(input.player_id) ?? [];
+    scoutingNotesMock.set(input.player_id, [...list, note]);
+
     // auto-toggle Cap.8: nota non vuota su "da fare" → "scoutato"
     const content = (input.content ?? "").trim();
     if (content && (input.kind === "note" || input.kind === "data")) {
@@ -387,6 +407,68 @@ export const mockApi = {
     const p = players.find((x) => x.id === playerId);
     if (!p) throw new Error("Giocatore non trovato");
     return { ...p };
+  },
+
+  // ===== M2.1.1 — Cap.9: auction_data + scouting_notes (mock in-memory) =====
+
+  async getAuctionData(playerId: string) {
+    await delay();
+    return auctionDataMock.get(playerId) ?? null;
+  },
+
+  async saveAuctionData(
+    playerId: string,
+    titolarita: number | null,
+    infortuni: string | null,
+    fmilMax: number | null,
+    quickNote: string | null,
+  ) {
+    await delay();
+    const existing = auctionDataMock.get(playerId) ?? {
+      player_id: playerId,
+      titolarita: null,
+      infortuni: null,
+      quick_note: null,
+      fmil_max: null,
+      assigned_to: null,
+      fmil_paid: null,
+      assigned_at: null,
+    };
+    const updated = {
+      ...existing,
+      titolarita: titolarita ?? existing.titolarita,
+      infortuni: infortuni ?? existing.infortuni,
+      fmil_max: fmilMax ?? existing.fmil_max,
+      quick_note: quickNote ?? existing.quick_note,
+    };
+    auctionDataMock.set(playerId, updated);
+    return true;
+  },
+
+  async listScoutingNotes(playerId: string) {
+    await delay();
+    return scoutingNotesMock.get(playerId) ?? [];
+  },
+
+  async assignPlayer(playerId: string, assignedTo: string, fmilPaid: number) {
+    await delay();
+    const existing = auctionDataMock.get(playerId) ?? {
+      player_id: playerId,
+      titolarita: null,
+      infortuni: null,
+      quick_note: null,
+      fmil_max: null,
+      assigned_to: null,
+      fmil_paid: null,
+      assigned_at: null,
+    };
+    auctionDataMock.set(playerId, {
+      ...existing,
+      assigned_to: assignedTo,
+      fmil_paid: fmilPaid,
+      assigned_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+    });
+    return true;
   },
 
   // Finestre OS native: solo Tauri. In browser RosaView mostra un toast

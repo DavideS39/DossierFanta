@@ -1,4 +1,3 @@
-
 # Cargo config per DossierFanta M1.
 # Aggiunge i path del linker per le librerie GTK/WebKit scaricate in localprefix
 # (necessario su host Linux senza i dev packages installati system-wide).

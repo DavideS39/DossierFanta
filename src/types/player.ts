@@ -1,4 +1,3 @@
-
 // Tipi TypeScript mirror dei tipi Rust in src-tauri/src/commands/.
 // MANTENERE SINCRONIZZATO con le struct Rust: ogni campo qui deve esistere là.
 //
@@ -228,4 +227,38 @@ export interface SaveScoutingNoteInput {
   label?: string | null;
   content?: string | null;
   source?: string | null;
+}
+
+// ----------------------------------------------------------------------
+// M2.1.1 — Cap.9: auction_data + scouting_notes tipizzati
+// ----------------------------------------------------------------------
+
+/** Riga 1:1 di `auction_data` per un giocatore. */
+export interface AuctionData {
+  player_id: string;
+  /** Titolarità stimata 1-10 (10 = titolare inamovibile) */
+  titolarita: number | null;
+  /** Stato infortunistico: 'nessuno' | 'lieve' | 'grave' */
+  infortuni: string | null;
+  /** Nota rapida per consultazione durante la chiamata d'asta */
+  quick_note: string | null;
+  /** f₥ BUDGET MAX che SON DISPOSTO a spendere all'asta corrente (diverso da fmil_spesi storico) */
+  fmil_max: number | null;
+  /** Team lega a cui è stato assegnato il giocatore (NULL se non ancora assegnato) */
+  assigned_to: string | null;
+  /** f₥ prezzo di assegnazione effettivo (NULL se non ancora assegnato) */
+  fmil_paid: number | null;
+  /** Timestamp ISO di assegnazione */
+  assigned_at: string | null;
+}
+
+/** Riga di `scouting_notes` (multi-row per player). */
+export interface ScoutingNote {
+  id: number;
+  player_id: string;
+  kind: ScoutingNoteKind;
+  label: string | null;
+  content: string | null;
+  source: string | null;
+  created_at: string | null;
 }

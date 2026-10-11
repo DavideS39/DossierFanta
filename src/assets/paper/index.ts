@@ -22,6 +22,9 @@ import paper2 from "./paper-2.webp";
 import paper3 from "./paper-3.webp";
 import paper4 from "./paper-4.webp";
 import paper5 from "./paper-5.webp";
+import sheet1 from "./sheet-1.webp";
+import sheet2 from "./sheet-2.webp";
+import sheet3 from "./sheet-3.webp";
 
 export interface PaperSafeArea {
   /** inset superiore in % dell'altezza card */
@@ -101,4 +104,75 @@ export function hashString(s: string): number {
 /** Variante carta di un giocatore: stabile nel tempo (hash dell'id). */
 export function paperFor(playerId: string): PaperVariant {
   return CARD_PAPERS[hashString(playerId) % CARD_PAPERS.length];
+}
+
+/* ============================================================
+   FOGLI FINESTRA WM (v2.3.4 — "schede windowed su fogli strappati")
+   ============================================================
+   Le 3 fotografie fornite dal product owner (1.png/2.png/3.png,
+   normalizzate da scripts/preprocess_sheets.py in sheet-*.webp)
+   diventano il fondo delle finestre del Window Manager in-app e
+   delle finestre OS native: la finestra NON è un rettangolo CSS,
+   è un foglio strappato posato sulla scrivania.
+
+   Geometrie misurate analiticamente (alpha + profilo righe):
+   - safe  : area interna (%) dove il contenuto non collide con
+             strappi, fori di spiralatura, perforazione o nastro;
+   - ruled : prima riga e passo della rigatura (% altezza foglio),
+             per ancorare visivamente titolo e blocchi al rigo;
+   - tape  : dove va il nastro adesivo CSS ("top" = aggiunto noi,
+             "baked" = già impresso nella fotografia, non duplicare).
+   ============================================================ */
+
+export interface SheetRuling {
+  /** y della prima riga scrivibile, in % dell'altezza foglio */
+  start: number;
+  /** passo fra le righe, in % dell'altezza foglio */
+  step: number;
+}
+
+export interface SheetVariant {
+  id: string;
+  img: string;
+  /** aspect ratio larghezza/altezza della texture */
+  aspect: number;
+  safe: PaperSafeArea;
+  ruled: SheetRuling;
+  tape: "top" | "baked";
+  note: string;
+}
+
+export const SHEET_PAPERS: SheetVariant[] = [
+  {
+    id: "tape-note",
+    img: sheet1,
+    aspect: 0.7488,
+    safe: { t: 13, r: 8, b: 5, l: 10 },
+    ruled: { start: 8.2, step: 4.93 },
+    tape: "baked", // il nastro grigio è già nella foto: non duplicarlo
+    note: "bigliettino rigato con nastro adesivo impresso in alto",
+  },
+  {
+    id: "spiral",
+    img: sheet2,
+    aspect: 0.717,
+    safe: { t: 14, r: 6, b: 4, l: 24 },
+    ruled: { start: 16.9, step: 5.19 },
+    tape: "top",
+    note: "foglio da quaderno spiralato: fori a sx, righe blu, margine rosa",
+  },
+  {
+    id: "pad",
+    img: sheet3,
+    aspect: 0.7827,
+    safe: { t: 11, r: 6, b: 4, l: 7 },
+    ruled: { start: 11.8, step: 3.3 },
+    tape: "top",
+    note: "blocco perforato strappato: righe fitte grigie, denti in alto",
+  },
+];
+
+/** Foglio di una finestra WM: stabile per player_id (hash dell'id). */
+export function sheetFor(playerId: string): SheetVariant {
+  return SHEET_PAPERS[hashString(playerId + ":sheet") % SHEET_PAPERS.length];
 }

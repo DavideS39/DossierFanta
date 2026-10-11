@@ -1,4 +1,3 @@
-
 //! Test end-to-end del layer DB Rust (M1 smoke test).
 //!
 //! Verifica che:

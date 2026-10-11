@@ -1,4 +1,3 @@
-
 //! Comandi per l'import del listone Serie A e l'archiviazione automatica (M2).
 //!
 //! Flusso `import_listone(players_json)`:

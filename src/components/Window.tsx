@@ -1,34 +1,54 @@
-
 /**
  * Window — singola finestra del Window Manager in-app (M2.1, Cap.17).
  *
+ * v2.3.4 — "schede windowed su fogli strappati": la finestra non è più un
+ * rettangolo CSS con chrome ink, è un FOGLIO STRAPPATO posato sulla
+ * scrivania (texture fotografica sheet-*.webp, alpha = sagoma strappata):
+ *
+ *  - il fondo è uno dei 3 fogli del product owner (sheetFor(playerId),
+ *    assegnazione stabile via hash); le ombre multilayer Cap.16 sono
+ *    drop-shadow sull'alpha → la sagoma strappata proietta la PROPRIA
+ *    ombra sul piano della scrivania;
+ *  - nastro adesivo CSS in alto (tranne sul foglio che ce l'ha impresso);
+ *  - chrome "protocollata" scritta sul foglio: riga protocollo in alto
+ *    (» scheda · wm in-app), nome giocatore in Special Elite con
+ *    sottolineatura a pennarello rosso (SVG inline), pulsanti glyph
+ *    ─ □ ✕ in riquadri timbrati. Drag da tutta l'intestazione;
+ *  - corpo dentro la safe-area misurata del foglio (fori, strappi,
+ *    perforazione): il contenuto non copre mai i bordi vivi;
+ *  - resize dall'angolo piegato in basso a dx (piega cartacea, non handle);
+ *  - snap ai bordi con GHOST tratteggiato a matita mentre trascini
+ *    (sx → metà sx, dx → metà dx, alto → massimizza);
+ *  - animazioni: il foglio "cala" sulla scrivania all'apertura (drop con
+ *    assestamento), vola via ruotando in chiusura, si ripiega in taskbar
+ *    minimizzando; mentre trascini si solleva (scala + tilt + ombra max);
+ *  - rotazione ±0.6° stabile per player_id: nessuna finestra è parallela
+ *    a un'altra, come fogli posati a mano.
+ *
  * Props:
  *  - `win`: stato della finestra (posizione, dimensioni, z, flags)
- *  - `children`: contenuto (tipicamente PlayerForm renderizzato dentro)
- *
- * Caratteristiche:
- *  - position: absolute, traslata in base a win.x/y
- *  - Chrome 32px in alto: titolo Special Elite 12px + 3 pulsanti glyph
- *    (─ minimizza, □ massimizza, ✕ chiudi)
- *  - Drag dalla chrome (pointer events con capture)
- *  - Resize dall'angolo ↘ (handle visibile in basso a destra)
- *  - Snap ai bordi: sinistra → metà sx, destra → metà dx, sopra → max
- *  - Doppio-click sulla chrome → massimizza/restore
- *  - Click su corpo → focusWindow (porta in primo piano)
- *
- * Styling: usa .tacc-window-shell + .tacc-window-chrome da taccuino-realistic.css
+ *  - `children`: contenuto (PlayerForm embedded)
+ *  - `bounds`: layout bounds (viewport del container WM) per clamp/snap
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { WindowState } from "@/stores/useWindowsStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
+import { sheetFor, hashString } from "@/assets/paper";
 
 interface Props {
   win: WindowState;
   children: ReactNode;
-  /** Layout bounds (viewport del container WM). Per clamp drag/resize. */
+  /** Layout bounds (viewport del container WM). Per clamp drag/resize/snap. */
   bounds: { w: number; h: number };
 }
+
+type SnapTarget =
+  | { kind: "left" | "right"; x: number; y: number; w: number; h: number }
+  | { kind: "max" }
+  | null;
+
+const SNAP_EDGE = 26; // px dal bordo del container per agganciare lo snap
 
 export function Window({ win, children, bounds }: Props) {
   const focusWindow = useWindowsStore((s) => s.focusWindow);
@@ -37,6 +57,17 @@ export function Window({ win, children, bounds }: Props) {
   const resizeWindow = useWindowsStore((s) => s.resizeWindow);
   const minimizeWindow = useWindowsStore((s) => s.minimizeWindow);
   const toggleMaximize = useWindowsStore((s) => s.toggleMaximize);
+  const activeId = useWindowsStore((s) => s.activeId);
+
+  // Foglio strappato assegnato stabilmente al giocatore + seed estetico
+  const sheet = useMemo(() => sheetFor(win.id), [win.id]);
+  const seed = useMemo(() => hashString(win.id), [win.id]);
+  const rotation = ((seed % 13) - 6) / 10; // -0.6° .. +0.6°
+  const tapeCorner = sheet.tape === "top" && seed % 3 === 0; // nastro d'angolo extra
+
+  const [dragging, setDragging] = useState(false);
+  const [leaving, setLeaving] = useState<"close" | "min" | null>(null);
+  const [snap, setSnap] = useState<SnapTarget>(null);
 
   // Refs per il drag/resize via pointer events
   const dragState = useRef<{
@@ -47,6 +78,9 @@ export function Window({ win, children, bounds }: Props) {
     startWY: number;
     startWW: number;
     startWH: number;
+    /** origine client del container WM, per calcolare lo snap ai bordi */
+    originX: number;
+    originY: number;
   }>({
     mode: null,
     startX: 0,
@@ -55,9 +89,11 @@ export function Window({ win, children, bounds }: Props) {
     startWY: 0,
     startWW: 0,
     startWH: 0,
+    originX: 0,
+    originY: 0,
   });
 
-  // Pointer event handlers (drag + resize)
+  // Pointer event handlers (drag + resize + snap ghost)
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const ds = dragState.current;
@@ -66,15 +102,27 @@ export function Window({ win, children, bounds }: Props) {
       const dy = e.clientY - ds.startY;
       if (ds.mode === "drag") {
         // Sposta la finestra. Clamp per non uscire dai bounds.
-        const newX = Math.max(
-          0,
-          Math.min(bounds.w - 80, ds.startWX + dx),
-        );
-        const newY = Math.max(
-          0,
-          Math.min(bounds.h - 40, ds.startWY + dy),
-        );
+        const newX = Math.max(0, Math.min(bounds.w - 80, ds.startWX + dx));
+        const newY = Math.max(0, Math.min(bounds.h - 40, ds.startWY + dy));
         moveWindow(win.id, newX, newY);
+        // Snap ghost: puntatore vicino a un bordo del container WM?
+        const px = e.clientX - ds.originX;
+        const py = e.clientY - ds.originY;
+        if (py < SNAP_EDGE) {
+          setSnap({ kind: "max" });
+        } else if (px < SNAP_EDGE) {
+          setSnap({ kind: "left", x: 0, y: 0, w: Math.round(bounds.w / 2), h: bounds.h });
+        } else if (px > bounds.w - SNAP_EDGE) {
+          setSnap({
+            kind: "right",
+            x: Math.round(bounds.w / 2),
+            y: 0,
+            w: Math.round(bounds.w / 2),
+            h: bounds.h,
+          });
+        } else {
+          setSnap(null);
+        }
       } else if (ds.mode === "resize") {
         // Ridimensiona. Min 320x400.
         const newW = Math.max(320, ds.startWW + dx);
@@ -86,7 +134,21 @@ export function Window({ win, children, bounds }: Props) {
       }
     };
     const onUp = () => {
-      dragState.current.mode = null;
+      const ds = dragState.current;
+      if (ds.mode === "drag") {
+        // Rilascio sul bordo: applica lo snap evidenziato dal ghost
+        setSnap((current) => {
+          if (current?.kind === "left" || current?.kind === "right") {
+            moveWindow(win.id, current.x, current.y);
+            resizeWindow(win.id, current.w, current.h);
+          } else if (current?.kind === "max") {
+            if (!win.maximized) toggleMaximize(win.id);
+          }
+          return null;
+        });
+        setDragging(false);
+      }
+      ds.mode = null;
       document.body.style.userSelect = "";
     };
     window.addEventListener("pointermove", onMove);
@@ -95,40 +157,90 @@ export function Window({ win, children, bounds }: Props) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [win.id, win.x, win.y, bounds.w, bounds.h, moveWindow, resizeWindow]);
+  }, [win.id, win.x, win.y, win.maximized, bounds.w, bounds.h, moveWindow, resizeWindow, toggleMaximize]);
+
+  // Chiusura/minimizza animata: il foglio vola via / si ripiega, poi store
+  const handleClose = () => {
+    if (leaving) return;
+    setLeaving("close");
+    window.setTimeout(() => closeWindow(win.id), 250);
+  };
+  const handleMinimize = () => {
+    if (leaving) return;
+    setLeaving("min");
+    window.setTimeout(() => minimizeWindow(win.id), 190);
+  };
 
   if (win.minimized) return null;
 
   // Se è "detached" su OS nativa, non renderizzare la versione in-app
   // (gestito dal parent WindowManager che filtra già)
 
+  const isActive = activeId === win.id;
+
   return (
     <div
-      className={`tacc-window-shell ${win.z === useWindowsStore.getState().nextZ - 1 ? "is-active" : ""}`}
-      style={{
-        position: "absolute",
-        left: win.x,
-        top: win.y,
-        width: win.w,
-        height: win.h,
-        zIndex: win.z,
-        backgroundColor: "var(--paper)",
-        border: "2px solid var(--ink)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
+      className={[
+        "wf-shell",
+        isActive ? "is-active" : "",
+        dragging ? "is-dragging" : "",
+        win.maximized ? "is-maximized" : "",
+        leaving === "close" ? "wf-leave-close" : "",
+        leaving === "min" ? "wf-leave-min" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={
+        {
+          position: "absolute",
+          left: win.x,
+          top: win.y,
+          width: win.w,
+          height: win.h,
+          zIndex: win.z,
+          "--rot": `${rotation}deg`,
+          "--sheet-img": `url("${sheet.img}")`,
+          "--safe-t": `${sheet.safe.t}%`,
+          "--safe-r": `${sheet.safe.r}%`,
+          "--safe-b": `${sheet.safe.b}%`,
+          "--safe-l": `${sheet.safe.l}%`,
+        } as CSSProperties
+      }
       onPointerDown={() => focusWindow(win.id)}
       role="dialog"
       aria-label={`Finestra: ${win.title}`}
     >
-      {/* Chrome (drag handle + buttons) */}
-      <div
-        className="tacc-window-chrome"
+      {/* Layer foglio strappato: la sagoma (alpha) proietta la propria ombra */}
+      <div className="wf-paper" aria-hidden />
+
+      {/* Nastro adesivo: quello impresso nella foto non va duplicato */}
+      {sheet.tape === "top" && <span className="wf-tape wf-tape--top" aria-hidden />}
+      {tapeCorner && <span className="wf-tape wf-tape--corner" aria-hidden />}
+
+      {/* Ghost tratteggiato dello snap (matita rossa) mentre trascini.
+          Coordinate container WM → translate relative al guscio finestra. */}
+      {snap && (
+        <div
+          className="wf-snap-ghost"
+          style={
+            snap.kind === "max"
+              ? { left: -win.x, top: -win.y, width: bounds.w, height: bounds.h }
+              : { left: snap.x - win.x, top: snap.y - win.y, width: snap.w, height: snap.h }
+          }
+          aria-hidden
+        />
+      )}
+
+      {/* Intestazione protocollata — drag handle + pulsanti timbrati */}
+      <header
+        className="wf-head"
         onPointerDown={(e) => {
           // Solo drag se primario e non sui pulsanti
           if (e.button !== 0) return;
           if ((e.target as HTMLElement).closest("button")) return;
+          if (win.maximized) return;
+          const root = (e.currentTarget as HTMLElement).closest("[data-wm-root]");
+          const r = root?.getBoundingClientRect();
           dragState.current = {
             mode: "drag",
             startX: e.clientX,
@@ -137,70 +249,80 @@ export function Window({ win, children, bounds }: Props) {
             startWY: win.y,
             startWW: win.w,
             startWH: win.h,
+            originX: r?.left ?? 0,
+            originY: r?.top ?? 0,
           };
+          setDragging(true);
           document.body.style.userSelect = "none";
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
         }}
         onDoubleClick={() => toggleMaximize(win.id)}
-        title="Drag per spostare · doppio-click per massimizzare/restore"
+        title="Drag per spostare · doppio-click per massimizzare/restore · bordo finestra per snap"
       >
-        <span className="tacc-window-chrome-title">{win.title}</span>
-        <span className="tacc-window-chrome-buttons">
-          <button
-            type="button"
-            className="tacc-window-chrome-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              minimizeWindow(win.id);
-            }}
-            title="Minimizza (taskbar)"
-            aria-label="Minimizza"
+        <div className="wf-head-top">
+          <span className="wf-protocol">
+            » scheda giocatore · wm in-app
+            {win.maximized ? " · massimizzata" : ""}
+          </span>
+          <span className="wf-btns">
+            <button
+              type="button"
+              className="wf-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMinimize();
+              }}
+              title="Minimizza (taskbar)"
+              aria-label="Minimizza"
+            >
+              ─
+            </button>
+            <button
+              type="button"
+              className="wf-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMaximize(win.id);
+              }}
+              title="Massimizza / Ripristina"
+              aria-label="Massimizza o ripristina"
+            >
+              □
+            </button>
+            <button
+              type="button"
+              className="wf-btn wf-btn--close"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClose();
+              }}
+              title="Chiudi"
+              aria-label="Chiudi"
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+        <div className="wf-title-row">
+          <h2 className="wf-title">{win.title}</h2>
+          <svg
+            className="wf-squiggle"
+            viewBox="0 0 220 9"
+            preserveAspectRatio="none"
+            aria-hidden
           >
-            ─
-          </button>
-          <button
-            type="button"
-            className="tacc-window-chrome-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleMaximize(win.id);
-            }}
-            title="Massimizza / Ripristina"
-            aria-label="Massimizza o ripristina"
-          >
-            □
-          </button>
-          <button
-            type="button"
-            className="tacc-window-chrome-btn tacc-window-chrome-btn--close"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeWindow(win.id);
-            }}
-            title="Chiudi"
-            aria-label="Chiudi"
-          >
-            ✕
-          </button>
-        </span>
-      </div>
+            <path d="M2 6 C 28 2, 52 8, 84 4.5 S 148 2.5, 178 5.5 S 208 4, 218 5" />
+          </svg>
+        </div>
+      </header>
 
-      {/* Contenuto (scrollable) — carta rigata da quaderno (v2.3.2) */}
-      <div
-        className="tacc-window-body"
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: 0,
-        }}
-      >
-        {children}
-      </div>
+      {/* Contenuto (scrollable) dentro la safe-area del foglio */}
+      <div className="wf-body">{children}</div>
 
-      {/* Resize handle (angolo ↘) */}
+      {/* Angolo piegato: resize handle cartaceo (↘) */}
       {!win.maximized && (
         <div
-          className="tacc-window-resize-handle"
+          className="wf-fold"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
@@ -212,10 +334,13 @@ export function Window({ win, children, bounds }: Props) {
               startWY: win.y,
               startWW: win.w,
               startWH: win.h,
+              originX: 0,
+              originY: 0,
             };
             document.body.style.userSelect = "none";
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
           }}
+          title="Trascina per ridimensionare"
         />
       )}
     </div>

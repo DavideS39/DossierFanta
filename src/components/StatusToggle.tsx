@@ -1,4 +1,3 @@
-
 /**
  * StatusToggle — menu a 3 voci (Scoutato / Da fare / Totale) per il toggle
  * manuale dello stato di un giocatore (M2.1, Cap.8 + Cap.16 Componente 2).

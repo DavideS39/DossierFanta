@@ -1,4 +1,3 @@
-
 import type { Player } from "@/types/player";
 import {
   FASCIA_COLORS,

@@ -1,4 +1,3 @@
-
 /**
  * PlayerOSWindow — contenuto per la finestra OS nativa (M2.1, B5 Layer 2).
  *
@@ -120,7 +119,7 @@ export function PlayerOSWindow({ playerId }: Props) {
         </button>
       </header>
 
-      {/* Corpo */}
+      {/* Corpo: foglio strappato come le finestre in-app (v2.3.4) */}
       <div className="flex-1 overflow-hidden">
         {loading && (
           <div
@@ -152,12 +151,14 @@ export function PlayerOSWindow({ playerId }: Props) {
         )}
 
         {player && !loading && !error && (
-          <PlayerForm
-            player={player}
-            embedded
-            onClose={handleClose}
-            onSubmit={handleSubmit}
-          />
+          <div className="wf-os-sheet">
+            <PlayerForm
+              player={player}
+              embedded
+              onClose={handleClose}
+              onSubmit={handleSubmit}
+            />
+          </div>
         )}
       </div>
     </div>

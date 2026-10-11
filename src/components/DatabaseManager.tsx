@@ -1,4 +1,3 @@
-
 /**
  * DatabaseManager — schermata gestione database multi-DB (M2 + M2.1 B6).
  *

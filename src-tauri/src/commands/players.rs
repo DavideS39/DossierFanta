@@ -1,4 +1,3 @@
-
 //! CRUD giocatore — comandi Tauri per la tabella `players`.
 //!
 //! M2: refactor multi-DB — tutti i comandi accettano un parametro `db_id`
@@ -1270,4 +1269,231 @@ pub fn list_archive(
 #[allow(dead_code)]
 pub(crate) fn _resolve_db_filter(state: &State<'_, DbState>, db_id: &Option<String>) -> Result<Option<String>, AppError> {
     resolve_db_filter(state, db_id)
+}
+
+// ----------------------------------------------------------------------
+// M2.1.1 — Cap.9: CRUD per auction_data + scouting_notes
+// ----------------------------------------------------------------------
+// Permette alla scheda giocatore (PlayerForm embedded in Window WM o
+// finestra OS nativa) di leggere e scrivere i dati 1:1 di auction_data
+// (titolarità, infortuni, budget max f₥, nota rapida, assegnazione) e
+// di elencare le note scouting del giocatore.
+// ----------------------------------------------------------------------
+
+/// Rappresentazione di una riga di `auction_data` (1:1 con player).
+/// Tutti i campi tranne `player_id` sono opzionali (lo schema lo permette).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuctionData {
+    pub player_id: String,
+    pub titolarita: Option<i64>,      // 1-10
+    pub infortuni: Option<String>,    // 'nessuno' | 'lieve' | 'grave'
+    pub quick_note: Option<String>,
+    pub fmil_max: Option<i64>,        // f₥ budget max all'asta (NUOVO: quello che SON DISPOSTO a spendere)
+    pub assigned_to: Option<String>,  // team lega, NULL se non assegnato
+    pub fmil_paid: Option<i64>,       // f₥ prezzo di assegnazione effettivo
+    pub assigned_at: Option<String>,
+}
+
+/// Rappresentazione di una riga di `scouting_notes` (multi-row per player).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoutingNote {
+    pub id: i64,
+    pub player_id: String,
+    pub kind: String,           // 'data' | 'link' | 'note'
+    pub label: Option<String>,
+    pub content: Option<String>,
+    pub source: Option<String>,
+    pub created_at: Option<String>,
+}
+
+/// Legge i dati asta di un giocatore (1:1 da `auction_data`).
+/// Ritorna null se il giocatore non ha ancora dati asta.
+#[tauri::command]
+pub fn get_auction_data(
+    state: State<'_, DbState>,
+    player_id: String,
+) -> AppResult<Option<AuctionData>> {
+    let active_id = state.active_db_id()?;
+    state.with_conn(&active_id, |conn| {
+        let result = conn
+            .query_row(
+                r#"SELECT player_id, titolarita, infortuni, quick_note,
+                          fmil_max, assigned_to, fmil_paid, assigned_at
+                   FROM auction_data WHERE player_id = ?1"#,
+                params![&player_id],
+                |row| {
+                    Ok(AuctionData {
+                        player_id: row.get(0)?,
+                        titolarita: row.get(1)?,
+                        infortuni: row.get(2)?,
+                        quick_note: row.get(3)?,
+                        fmil_max: row.get(4)?,
+                        assigned_to: row.get(5)?,
+                        fmil_paid: row.get(6)?,
+                        assigned_at: row.get(7)?,
+                    })
+                },
+            )
+            .ok();
+        Ok(result)
+    })
+}
+
+/// Salva (upsert) i dati asta di un giocatore. Solo i campi passati vengono
+/// aggiornati; gli altri restano invariati. Inserisce la riga se non esiste.
+///
+/// Vincoli rispettati:
+///  - titolarita in 1..=10 (CHECK schema)
+///  - infortuni in ('nessuno', 'lieve', 'grave') (CHECK schema)
+///  - fmil_max integer >= 0 (validazione Rust, schema permette NULL)
+#[tauri::command]
+pub fn save_auction_data(
+    state: State<'_, DbState>,
+    player_id: String,
+    titolarita: Option<i64>,
+    infortuni: Option<String>,
+    fmil_max: Option<i64>,
+    quick_note: Option<String>,
+) -> AppResult<bool> {
+    // Validazione
+    if let Some(t) = titolarita {
+        if !(1..=10).contains(&t) {
+            return Err(AppError::Validation(format!("titolarita deve essere 1-10, avuto {}", t)));
+        }
+    }
+    if let Some(ref inf) = infortuni {
+        let valid = ["nessuno", "lieve", "grave"];
+        if !valid.contains(&inf.as_str()) {
+            return Err(AppError::Validation(format!(
+                "infortuni deve essere uno di {:?}, avuto {:?}",
+                valid, inf
+            )));
+        }
+    }
+    if let Some(fm) = fmil_max {
+        if fm < 0 {
+            return Err(AppError::Validation(format!("fmil_max deve essere >= 0, avuto {}", fm)));
+        }
+    }
+
+    let active_id = state.active_db_id()?;
+    // Verifica che il player esista + trova il suo db_id
+    let db_id = state.with_conn(&active_id, |conn| {
+        let d: String = conn
+            .query_row(
+                "SELECT db_id FROM players WHERE id = ?1",
+                params![&player_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    AppError::NotFound(format!("giocatore id={} non trovato", player_id))
+                }
+                other => AppError::Db(other),
+            })?;
+        Ok(d)
+    })?;
+
+    state.with_conn(&db_id, |conn| {
+        ensure_writable_db(conn, &db_id)?;
+
+        // Upsert: INSERT OR REPLACE con i valori passati + COALESCE per i vecchi
+        // Usiamo INSERT ... ON CONFLICT(player_id) DO UPDATE (SQLite 3.24+)
+        conn.execute(
+            r#"INSERT INTO auction_data (player_id, titolarita, infortuni, quick_note, fmil_max)
+               VALUES (?1, ?2, ?3, ?4, ?5)
+               ON CONFLICT(player_id) DO UPDATE SET
+                 titolarita = COALESCE(excluded.titolarita, auction_data.titolarita),
+                 infortuni = COALESCE(excluded.infortuni, auction_data.infortuni),
+                 quick_note = COALESCE(excluded.quick_note, auction_data.quick_note),
+                 fmil_max = COALESCE(excluded.fmil_max, auction_data.fmil_max)
+               WHERE auction_data.player_id = ?1"#,
+            params![&player_id, titolarita, infortuni, quick_note, fmil_max],
+        )?;
+        Ok(true)
+    })
+}
+
+/// Elenca le note scouting di un giocatore (multi-row da `scouting_notes`).
+/// Ordinate per id ASC (ordine di inserimento).
+#[tauri::command]
+pub fn list_scouting_notes(
+    state: State<'_, DbState>,
+    player_id: String,
+) -> AppResult<Vec<ScoutingNote>> {
+    let active_id = state.active_db_id()?;
+    state.with_conn(&active_id, |conn| {
+        let mut stmt = conn.prepare(
+            r#"SELECT id, player_id, kind, label, content, source, created_at
+               FROM scouting_notes WHERE player_id = ?1
+               ORDER BY id ASC"#,
+        )?;
+        let rows = stmt.query_map(params![&player_id], |row| {
+            Ok(ScoutingNote {
+                id: row.get(0)?,
+                player_id: row.get(1)?,
+                kind: row.get(2)?,
+                label: row.get(3)?,
+                content: row.get(4)?,
+                source: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    })
+}
+
+/// Assegna un giocatore a un team lega con un prezzo pagato (f₥).
+/// Setta auction_data.assigned_to + fmil_paid + assigned_at.
+/// Se la riga auction_data non esiste ancora, la crea.
+#[tauri::command]
+pub fn assign_player(
+    state: State<'_, DbState>,
+    player_id: String,
+    assigned_to: String,
+    fmil_paid: i64,
+) -> AppResult<bool> {
+    if fmil_paid < 0 {
+        return Err(AppError::Validation(format!("fmil_paid deve essere >= 0, avuto {}", fmil_paid)));
+    }
+    if assigned_to.trim().is_empty() {
+        return Err(AppError::Validation("assigned_to è obbligatorio".to_string()));
+    }
+
+    let active_id = state.active_db_id()?;
+    let db_id = state.with_conn(&active_id, |conn| {
+        let d: String = conn
+            .query_row(
+                "SELECT db_id FROM players WHERE id = ?1",
+                params![&player_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    AppError::NotFound(format!("giocatore id={} non trovato", player_id))
+                }
+                other => AppError::Db(other),
+            })?;
+        Ok(d)
+    })?;
+
+    state.with_conn(&db_id, |conn| {
+        ensure_writable_db(conn, &db_id)?;
+        // Upsert con INSERT OR REPLACE su assigned_to/fmil_paid/assigned_at
+        conn.execute(
+            r#"INSERT INTO auction_data (player_id, assigned_to, fmil_paid, assigned_at)
+               VALUES (?1, ?2, ?3, datetime('now'))
+               ON CONFLICT(player_id) DO UPDATE SET
+                 assigned_to = excluded.assigned_to,
+                 fmil_paid = excluded.fmil_paid,
+                 assigned_at = excluded.assigned_at
+               WHERE auction_data.player_id = ?1"#,
+            params![&player_id, &assigned_to, fmil_paid],
+        )?;
+        Ok(true)
+    })
 }

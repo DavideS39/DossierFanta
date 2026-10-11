@@ -1,4 +1,3 @@
-
 // Store Zustand per stato workspace multi-DB (M2).
 // Mantiene: lista databases, active_id, loading/error.
 // Mutazioni: refresh, createDatabase, deleteDatabase, setActiveDatabase.

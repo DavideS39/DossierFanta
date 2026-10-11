@@ -1,4 +1,3 @@
-
 /**
  * PlayerCardTaccuino — card giocatore redesigned (M2 design system + M2.1 v2.3 realistic).
  *

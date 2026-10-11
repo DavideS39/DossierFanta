@@ -1,4 +1,3 @@
-
 // Store Zustand per stato finestre del Window Manager in-app (M2.1, Cap.17).
 //
 // Stato finestre: posizione (x, y), dimensioni (w, h), z-order, minimized.

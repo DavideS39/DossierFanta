@@ -1,4 +1,3 @@
-
 /**
  * Stamp — timbro rotato riusabile (design system taccuino M2).
  *

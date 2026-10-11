@@ -1,4 +1,3 @@
-
 //! DossierFanta v2.2 — Tauri 2.0 backend (M2).
 //!
 //! Architettura (M2 — multi-DB workspace):
@@ -229,6 +228,11 @@ pub fn run() {
             commands::players::set_player_status,
             commands::players::save_scouting_note,
             commands::players::get_player,
+            // players.rs (M2.1.1 — Cap.9: auction_data + scouting_notes CRUD)
+            commands::players::get_auction_data,
+            commands::players::save_auction_data,
+            commands::players::list_scouting_notes,
+            commands::players::assign_player,
             // listone.rs (M2 — archiviazione automatica)
             commands::listone::import_listone,
             commands::listone::list_archived_players,

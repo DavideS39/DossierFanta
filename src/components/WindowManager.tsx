@@ -1,4 +1,3 @@
-
 /**
  * WindowManager — container per le finestre WM in-app + taskbar (M2.1, Cap.17).
  *
@@ -22,7 +21,7 @@
  * principale (misurato con ResizeObserver).
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 import { Window } from "./Window";
 
@@ -73,6 +72,7 @@ export function WindowManager({ renderWindow }: Props) {
     <div
       ref={containerRef}
       className="tacc-window-manager"
+      data-wm-root
       style={{
         position: "absolute",
         inset: 0,
@@ -99,10 +99,10 @@ export function WindowManager({ renderWindow }: Props) {
         ))}
       </div>
 
-      {/* Taskbar (in fondo) — mostra le finestre minimizzate */}
+      {/* Taskbar (in fondo) — striscia di carta strappata con cartellini */}
       {minimizedWindows.length > 0 && (
         <div
-          className="tacc-taskbar"
+          className="wf-taskbar"
           style={{
             position: "absolute",
             bottom: 0,
@@ -112,25 +112,17 @@ export function WindowManager({ renderWindow }: Props) {
             zIndex: 41,
           }}
         >
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "10px",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--ink-soft)",
-            }}
-          >
-            » Task:
-          </span>
-          {minimizedWindows.map((w) => (
+          <span className="wf-taskbar-label">» task:</span>
+          {minimizedWindows.map((w, i) => (
             <button
               key={w.id}
               type="button"
-              className="tacc-taskbar-item"
+              className="wf-taskbar-item"
+              style={{ "--tilt": `${i % 2 === 0 ? -1.2 : 1.4}deg` } as CSSProperties}
               onClick={() => restoreFromTaskbar(w.id)}
               title={`Ripristina ${w.title}`}
             >
+              <span aria-hidden className="wf-taskbar-glyph">▤</span>
               {w.title}
             </button>
           ))}

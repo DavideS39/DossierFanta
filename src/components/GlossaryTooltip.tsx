@@ -1,4 +1,3 @@
-
 /**
  * GlossaryTooltip — popover cartaceo per definizioni termini tecnici (M2.1, Cap.9).
  *

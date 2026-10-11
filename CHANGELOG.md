@@ -1,4 +1,3 @@
-
 # Changelog
 
 Tutti i cambiamenti notevoli di DossierFanta v2.2 vengono documentati qui.

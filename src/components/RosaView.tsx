@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { PlayerList } from "@/components/PlayerList";
 import { SearchBar } from "@/components/SearchBar";

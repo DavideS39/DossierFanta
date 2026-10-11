@@ -1,4 +1,3 @@
-
 # Release — Crea GitHub Release con bundle per tutte le piattaforme
 #
 # Trigger: push di un tag `v*` (es. `v0.1.0`, `v0.2.0-m1`).

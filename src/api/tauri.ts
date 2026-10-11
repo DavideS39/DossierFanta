@@ -1,4 +1,3 @@
-
 // Wrapper per le invoke Tauri. Un singolo posto per tutti i comandi Rust.
 // Se la signature di un comando cambia lato Rust, basta aggiornare qui.
 //
@@ -11,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { mockApi } from "./mock";
 import type {
   ArchivedPlayer,
+  AuctionData,
   CreatePlayerInput,
   DatabaseMeta,
   DbInfo,
@@ -19,6 +19,7 @@ import type {
   ListFilters,
   Player,
   SaveScoutingNoteInput,
+  ScoutingNote,
   Status,
   UpdatePlayerInput,
 } from "@/types/player";
@@ -145,6 +146,42 @@ export const tauriApi = {
    */
   getPlayer: (playerId: string) =>
     invoke<Player>("get_player", { playerId }),
+
+  // ===== M2.1.1 — Cap.9: auction_data + scouting_notes CRUD =====
+
+  /** Legge i dati asta di un giocatore (1:1 da auction_data). null se non esiste. */
+  getAuctionData: (playerId: string) =>
+    invoke<AuctionData | null>("get_auction_data", { playerId }),
+
+  /**
+   * Upsert dati asta. Solo i campi passati vengono aggiornati.
+   * Passa null per i campi che non vuoi toccare.
+   */
+  saveAuctionData: (
+    playerId: string,
+    titolarita: number | null,
+    infortuni: string | null,
+    fmilMax: number | null,
+    quickNote: string | null,
+  ) =>
+    invoke<boolean>("save_auction_data", {
+      playerId,
+      titolarita,
+      infortuni,
+      fmilMax,
+      quickNote,
+    }),
+
+  /** Elenca le note scouting di un giocatore (multi-row). */
+  listScoutingNotes: (playerId: string) =>
+    invoke<ScoutingNote[]>("list_scouting_notes", { playerId }),
+
+  /**
+   * Assegna un giocatore a un team lega con prezzo pagato.
+   * Setta auction_data.assigned_to + fmil_paid + assigned_at.
+   */
+  assignPlayer: (playerId: string, assignedTo: string, fmilPaid: number) =>
+    invoke<boolean>("assign_player", { playerId, assignedTo, fmilPaid }),
 
   // ===== M2.1 — IMPROVEMENT B5 (Cap.17): multi-window OS nativa =====
 

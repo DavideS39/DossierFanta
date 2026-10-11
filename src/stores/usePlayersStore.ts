@@ -1,4 +1,3 @@
-
 // Store Zustand per stato giocatori + filtri UI.
 // Tutte le mutazioni passano per api/tauri.ts (comandi Rust), mai SQL diretto.
 //

@@ -1,4 +1,3 @@
-
 //! Tauri commands esposti al frontend.
 //!
 //! Convenzione: ogni comando è sincrono (rusqlite è sync, niente async necessario).

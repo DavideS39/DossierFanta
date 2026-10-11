@@ -1,0 +1,531 @@
+/* ============================================================
+   DossierFanta v2.3.4 — Layer "Finestre su fogli strappati"
+   ============================================================
+   Restyling delle schede windowed (Cap.17 + Cap.16): le finestre del
+   Window Manager in-app (e il corpo delle finestre OS) non sono più
+   rettangoli CSS con chrome ink, sono FOGLI STRAPPATI reali posati
+   sulla scrivania:
+
+   - fondo = sheet-*.webp (foto fornite dal product owner, alpha =
+     sagoma strappata); le ombre multilayer Cap.16 sono drop-shadow
+     sull'alpha, quindi è il bordo strappato a proiettare la propria
+     ombra sul piano;
+   - nastro adesivo CSS in alto (con trama a strisce, come nastro vero);
+   - intestazione "protocollata" scritta sul foglio: riga protocollo,
+     nome in Special Elite con sottolineatura a pennarello (SVG),
+     pulsanti glyph ─ □ ✕ in riquadri timbrati;
+   - corpo dentro la safe-area misurata del foglio (--safe-*);
+   - resize = angolo piegato (piega cartacea ↘);
+   - snap ai bordi con ghost tratteggiato a matita rossa;
+   - animazioni: drop d'apertura con assestamento, volo via in chiusura,
+     ripiegamento in taskbar, sollevamento durante il drag;
+   - rotazione ±0.6° stabile per foglio: niente finestre parallele.
+
+   Token: --paper --ink --ink-soft --red --red-stamp --green --amber
+          --font-display --font-body --font-hand (Cormorant italic)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1 · GUSCIO FINESTRA = foglio posato a mano
+   ------------------------------------------------------------ */
+
+.wf-shell {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border: none;
+  transform: rotate(var(--rot, 0deg));
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1), filter 220ms ease;
+  will-change: transform;
+  animation: wf-drop 460ms cubic-bezier(0.22, 0.9, 0.32, 1.06) backwards;
+}
+
+@keyframes wf-drop {
+  0% {
+    opacity: 0;
+    transform: rotate(calc(var(--rot, 0deg) + 3.2deg)) translateY(-36px) scale(1.05);
+  }
+  62% {
+    opacity: 1;
+    transform: rotate(calc(var(--rot, 0deg) - 0.7deg)) translateY(4px) scale(0.997);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(var(--rot, 0deg)) translateY(0) scale(1);
+  }
+}
+
+/* Il foglio fotografico: sagoma strappata + ombra propria */
+.wf-paper {
+  position: absolute;
+  inset: 0;
+  background-image: var(--sheet-img);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 1px 2px rgba(43, 27, 18, 0.22))
+    drop-shadow(0 5px 10px rgba(43, 27, 18, 0.13))
+    drop-shadow(0 16px 30px rgba(43, 27, 18, 0.10));
+  transition: filter 220ms ease;
+  pointer-events: none;
+}
+
+/* Foglio non in primo piano: più "disteso" sulla scrivania */
+.wf-shell:not(.is-active) {
+  filter: saturate(0.88) brightness(0.982);
+}
+
+.wf-shell:not(.is-active) .wf-paper {
+  filter: drop-shadow(0 1px 1px rgba(43, 27, 18, 0.18))
+    drop-shadow(0 3px 6px rgba(43, 27, 18, 0.10))
+    drop-shadow(0 8px 16px rgba(43, 27, 18, 0.07));
+}
+
+/* Foglio attivo: si solleva dal piano */
+.wf-shell.is-active .wf-paper {
+  filter: drop-shadow(0 2px 3px rgba(43, 27, 18, 0.30))
+    drop-shadow(0 8px 16px rgba(43, 27, 18, 0.18))
+    drop-shadow(0 22px 44px rgba(43, 27, 18, 0.14));
+}
+
+/* Mentre trascini: il foglio è in mano al scout */
+.wf-shell.is-dragging {
+  transform: rotate(calc(var(--rot, 0deg) * 2.6)) scale(1.013);
+  transition: transform 120ms ease;
+  cursor: grabbing;
+}
+
+.wf-shell.is-dragging .wf-paper {
+  filter: drop-shadow(0 3px 5px rgba(43, 27, 18, 0.34))
+    drop-shadow(0 14px 26px rgba(43, 27, 18, 0.22))
+    drop-shadow(0 30px 60px rgba(43, 27, 18, 0.18));
+}
+
+/* Massimizzata: il foglio si stira a tutto il piano, niente rotazione */
+.wf-shell.is-maximized {
+  --rot: 0deg;
+}
+
+.wf-shell.is-maximized .wf-tape {
+  display: none;
+}
+
+/* Chiusura: il foglio vola via ruotando */
+.wf-shell.wf-leave-close {
+  animation: wf-fly 250ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes wf-fly {
+  to {
+    opacity: 0;
+    transform: rotate(calc(var(--rot, 0deg) + 8deg)) translate(52px, -34px) scale(1.07);
+  }
+}
+
+/* Minimizza: si ripiega verso la taskbar */
+.wf-shell.wf-leave-min {
+  animation: wf-fold-away 190ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes wf-fold-away {
+  to {
+    opacity: 0;
+    transform: rotate(var(--rot, 0deg)) translateY(46px) scale(0.86);
+  }
+}
+
+/* ------------------------------------------------------------
+   2 · NASTRO ADESIVO (componente 3 Cap.16, versione finestra)
+   ------------------------------------------------------------ */
+
+.wf-tape {
+  position: absolute;
+  width: 118px;
+  height: 27px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.16) 0 2px,
+      rgba(255, 255, 255, 0) 2px 5px
+    ),
+    linear-gradient(180deg, rgba(228, 208, 128, 0.62), rgba(214, 192, 106, 0.52));
+  border-left: 2px dashed rgba(255, 255, 255, 0.5);
+  border-right: 2px dashed rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 2px rgba(43, 27, 18, 0.22);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.wf-tape--top {
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2.2deg);
+}
+
+.wf-tape--corner {
+  top: 2px;
+  right: -34px;
+  width: 96px;
+  height: 22px;
+  transform: rotate(38deg);
+}
+
+/* ------------------------------------------------------------
+   3 · INTESTAZIONE PROTOCOLLATA (drag handle)
+   ------------------------------------------------------------ */
+
+.wf-head {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  padding: calc(var(--safe-t, 8%) * 0.55) var(--safe-r, 6%) 0.35rem var(--safe-l, 8%);
+  cursor: grab;
+  user-select: none;
+}
+
+.wf-head:active {
+  cursor: grabbing;
+}
+
+.wf-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.wf-protocol {
+  font-family: var(--font-body);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(90, 70, 50, 0.75);
+  padding-top: 3px;
+}
+
+/* Pulsanti glyph in riquadri timbrati a matita */
+.wf-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.wf-btn {
+  width: 24px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.35);
+  border: 1.5px solid rgba(43, 27, 18, 0.55);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 rgba(43, 27, 18, 0.25);
+  cursor: pointer;
+  transition: background-color 110ms ease, color 110ms ease, transform 110ms ease;
+}
+
+.wf-btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+  transform: rotate(-2deg);
+}
+
+.wf-btn--close {
+  border-color: rgba(139, 46, 31, 0.65);
+  color: var(--red);
+}
+
+.wf-btn--close:hover {
+  background: var(--red-stamp, #a53028);
+  border-color: var(--red-stamp, #a53028);
+  color: #fff;
+  transform: rotate(2deg) scale(1.06);
+}
+
+/* Nome giocatore: scritto grande, sottolineato a pennarello rosso */
+.wf-title-row {
+  position: relative;
+  margin-top: 2px;
+  padding-right: 4px;
+}
+
+.wf-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.wf-squiggle {
+  display: block;
+  width: min(62%, 240px);
+  height: 8px;
+  margin-top: 1px;
+  overflow: visible;
+}
+
+.wf-squiggle path {
+  fill: none;
+  stroke: var(--red-stamp, #a53028);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------
+   4 · CORPO: contenuto dentro la safe-area del foglio
+   ------------------------------------------------------------ */
+
+.wf-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.35rem var(--safe-r, 6%) var(--safe-b, 5%) var(--safe-l, 8%);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(43, 27, 18, 0.45) transparent;
+}
+
+.wf-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.wf-body::-webkit-scrollbar-thumb {
+  background: rgba(43, 27, 18, 0.35);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.wf-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Ghost snap: traccia a matita rossa della zona di aggancio */
+.wf-snap-ghost {
+  position: absolute;
+  z-index: 0;
+  border: 2px dashed rgba(165, 48, 40, 0.55);
+  background: rgba(165, 48, 40, 0.06);
+  border-radius: 6px;
+  pointer-events: none;
+  transform: rotate(calc(var(--rot, 0deg) * -1));
+}
+
+/* ------------------------------------------------------------
+   5 · ANGOLO PIEGATO (resize handle cartaceo)
+   ------------------------------------------------------------ */
+
+.wf-fold {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 40px;
+  height: 40px;
+  cursor: nwse-resize;
+  z-index: 4;
+  background: linear-gradient(
+    315deg,
+    rgba(0, 0, 0, 0) 44%,
+    rgba(43, 27, 18, 0.28) 46%,
+    #efe5cd 50%,
+    #fdfaf2 68%,
+    #e2d5b6 100%
+  );
+  clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  filter: drop-shadow(-1px -1px 2px rgba(43, 27, 18, 0.18));
+  transition: width 140ms ease, height 140ms ease;
+}
+
+.wf-fold:hover {
+  width: 52px;
+  height: 52px;
+}
+
+/* ------------------------------------------------------------
+   6 · TASKBAR = striscia di carta strappata con cartellini
+   ------------------------------------------------------------ */
+
+.wf-taskbar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 0.5rem;
+  min-height: 44px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 21px,
+      rgba(44, 74, 107, 0.10) 21px 22px
+    ),
+    linear-gradient(180deg, rgba(244, 236, 216, 0.96), rgba(228, 216, 186, 0.98));
+  box-shadow: 0 -3px 10px rgba(43, 27, 18, 0.18);
+  clip-path: polygon(
+    0% 8px, 3% 3px, 7% 9px, 12% 4px, 18% 8px, 23% 2px, 29% 7px, 34% 3px,
+    40% 9px, 46% 4px, 52% 8px, 57% 2px, 63% 7px, 69% 3px, 74% 9px, 80% 4px,
+    86% 8px, 91% 3px, 96% 7px, 100% 4px, 100% 100%, 0% 100%
+  );
+}
+
+.wf-taskbar-label {
+  font-family: var(--font-hand, var(--font-body));
+  font-style: italic;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.wf-taskbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 190px;
+  padding: 0.22rem 0.6rem;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: rgba(255, 253, 246, 0.9);
+  border: 1px solid rgba(43, 27, 18, 0.6);
+  box-shadow: 0 1px 2px rgba(43, 27, 18, 0.25);
+  transform: rotate(var(--tilt, 0deg));
+  cursor: pointer;
+  transition: transform 140ms ease, background-color 140ms ease, color 140ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wf-taskbar-item:hover {
+  transform: rotate(0deg) translateY(-2px);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.wf-taskbar-glyph {
+  color: var(--red);
+  font-size: 11px;
+}
+
+.wf-taskbar-item:hover .wf-taskbar-glyph {
+  color: var(--amber);
+}
+
+/* ------------------------------------------------------------
+   7 · FORM SUL FOGLIO: scrittura su righe, non riquadri UI
+   ------------------------------------------------------------ */
+
+.wf-body .tacc-input,
+.wf-os-sheet .tacc-input {
+  background-color: rgba(255, 255, 255, 0.28);
+  border: 1px solid transparent;
+  border-bottom: 1.5px solid rgba(43, 27, 18, 0.42);
+  border-radius: 0;
+  box-shadow: none;
+  transition: border-color 130ms ease, background-color 130ms ease;
+}
+
+.wf-body .tacc-input:hover,
+.wf-os-sheet .tacc-input:hover {
+  background-color: rgba(255, 255, 255, 0.42);
+}
+
+.wf-body .tacc-input:focus,
+.wf-os-sheet .tacc-input:focus {
+  outline: none;
+  border-bottom-color: var(--red);
+  background-color: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+}
+
+.wf-body select.tacc-input,
+.wf-os-sheet select.tacc-input {
+  border-bottom-style: dashed;
+}
+
+/* Pannelli ASTA / SCOUTING = schedine allegate sul foglio, col nastro */
+.wf-panel {
+  position: relative;
+  background-color: rgba(255, 252, 244, 0.72) !important;
+  border: 1px dashed rgba(43, 27, 18, 0.5) !important;
+  box-shadow: 0 1px 2px rgba(43, 27, 18, 0.2), 0 6px 14px rgba(43, 27, 18, 0.1);
+}
+
+.wf-panel::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 64px;
+  height: 16px;
+  transform: translateX(-50%) rotate(-1.6deg);
+  background: linear-gradient(180deg, rgba(228, 208, 128, 0.55), rgba(214, 192, 106, 0.45));
+  border-left: 2px dashed rgba(255, 255, 255, 0.5);
+  border-right: 2px dashed rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 1px rgba(43, 27, 18, 0.2);
+  pointer-events: none;
+}
+
+.wf-panel-head {
+  background-color: rgba(43, 27, 18, 0.88) !important;
+  letter-spacing: 0.08em;
+}
+
+/* Header del form: niente fondo grigio, solo il tratto di separazione */
+.wf-form-head {
+  background-color: transparent !important;
+  border-bottom: 2px dashed rgba(43, 27, 18, 0.28) !important;
+}
+
+/* Note scouting: mano corsiva sul foglio */
+.wf-body .wf-note-content,
+.wf-os-sheet .wf-note-content {
+  font-family: var(--font-hand, var(--font-body));
+  font-style: italic;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------
+   8 · FINESTRA OS NATIVA: stesso foglio, a tutto vetro
+   ------------------------------------------------------------ */
+
+.wf-os-sheet {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  background-image: url("../assets/paper/sheet-3.webp");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  --safe-t: 11%;
+  --safe-r: 6%;
+  --safe-b: 4%;
+  --safe-l: 7%;
+  padding: calc(var(--safe-t) * 0.6) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+
+/* ------------------------------------------------------------
+   9 · MODALITÀ "TACCUINO PULITO": foglie senza orpelli
+   ------------------------------------------------------------ */
+
+body.tacc-clean-mode .wf-tape,
+body.tacc-clean-mode .wf-panel::before {
+  display: none;
+}
+
+body.tacc-clean-mode .wf-shell {
+  animation: none;
+  --rot: 0deg;
+}
