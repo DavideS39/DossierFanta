@@ -312,13 +312,15 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
   // Contenuto condiviso tra modalità embedded e modale
   const formContent = (
     <>
-      {/* ============ HEADER: nome + stelle + stats ============ */}
+      {/* ============ HEADER: nome + stelle + stats ============ 
+          v2.3.5: sfondo TRASPARENTE per non coprire il PNG legal pad della
+          finestra WM. Solo border-bottom dashed come separatore. */}
       <div
         className="wf-form-head"
         style={{
           padding: "0.85rem 1rem",
           borderBottom: "2px dashed rgba(43,27,18,0.20)",
-          backgroundColor: "rgba(43,27,18,0.04)",
+          background: "transparent",
         }}
       >
         {/* Riga 1: nome + stelle priorità */}
@@ -460,7 +462,7 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
             gridTemplateColumns: "1fr 1fr",
             gap: "0.6rem",
             padding: "0.85rem 1rem",
-            backgroundColor: "rgba(43,27,18,0.02)",
+            background: "transparent",
           }}
         >
           {/* ----- PANNELLO ASTA ----- */}

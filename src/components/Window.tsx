@@ -210,8 +210,10 @@ export function Window({ win, children, bounds }: Props) {
       role="dialog"
       aria-label={`Finestra: ${win.title}`}
     >
-      {/* Layer foglio strappato: la sagoma (alpha) proietta la propria ombra */}
-      <div className="wf-paper" aria-hidden />
+      {/* Layer foglio strappato RIMOSSO (v2.3.5): creava 3 fogli sovrapposti
+          con wf-body wm-body-bg + formContent header. Lo sfondo del corpo
+          della finestra è ora SOLTANTO il PNG del product owner (legal pad
+          + pergamena vintage) applicato via .wm-body-bg su wf-body. */}
 
       {/* Nastro adesivo: quello impresso nella foto non va duplicato */}
       {sheet.tape === "top" && <span className="wf-tape wf-tape--top" aria-hidden />}
