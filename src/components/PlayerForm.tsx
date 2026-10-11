@@ -894,31 +894,25 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
   );
 
   // ===== Render finale: embedded (no backdrop) vs modale (backdrop) =====
+  // In modalità embedded NON abbiamo né backdrop né header modale: la
+  // chrome della finestra WM (wf-head con wf-title + pulsanti ─ □ ✕) o
+  // della finestra OS nativa (header con "Torna in-app") ha già il titolo
+  // del giocatore + il close button. Aggiungere un secondo header qui
+  // duplicherebbe il nome e creerebbe l'effetto "3 fogli sovrapposti".
+  // Lo sfondo del form è TRANSPARENT: lascia vedere il wf-body wm-body-bg
+  // (legal pad + pergamena vintage) della finestra WM sotto.
   if (embedded) {
     return (
       <form
         onSubmit={handleSubmit}
-        className="h-full flex flex-col tacc-bg"
+        className="h-full flex flex-col"
+        style={{
+          background: "transparent",
+          color: "var(--ink)",
+        }}
         aria-modal="true"
         role="dialog"
       >
-        <header
-          className="tacc-modal-header"
-          style={{ padding: "0.45rem 0.85rem", fontSize: "0.85rem" }}
-        >
-          <h2 className="text-sm font-bold">
-            {player ? `» ${player.name}` : "» Nuovo giocatore"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-paper/70 hover:text-paper text-lg leading-none"
-            aria-label="Chiudi"
-            title="Chiudi finestra"
-          >
-            ×
-          </button>
-        </header>
         <div className="flex-1 overflow-y-auto">{formContent}</div>
       </form>
     );
