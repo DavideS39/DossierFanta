@@ -332,17 +332,25 @@ body.tacc-clean-mode .tacc-bg.tacc-bg--realistic {
 }
 
 /* ============================================================
-   Sfondo finestre WM (Window.tsx corpo): texture PNG reali
+   Sfondo finestre WM — DEPRECATO in v2.3.6
    ============================================================
-   Quando apri una scheda giocatore come finestra WM in-app
-   (Window.tsx) o come finestra OS nativa (PlayerOSWindow), il corpo
-   della finestra ha come sfondo i 2 PNG forniti dal product owner:
-     - desk-tile.png (legal pad bianco con righe azzurre + margine rosa)
-       → tiled come base, dà l'effetto "quaderno aperto su cui scrivi"
-     - desk-vintage.png (pergamena con testo sbiadito) → overlay fisso
-       in top layer con mix-blend-mode: multiply, opacity ~30% via blend
-   L'effetto è che la finestra aperta "sembra un foglio di quaderno
-   vero" su cui sta il PlayerForm embedded, non un pannello CSS bianco.
+   PRIMA di v2.3.6 questa classe applicava DUE PNG sovrapposti
+   (desk-tile.png come base + desk-vintage.png come overlay multiply)
+   al corpo della finestra WM. Risultato: "due fogli uno sopra l'altro",
+   e il titolo della finestra era su una zona trasparente (il .wf-head
+   non aveva sfondo, solo il .wf-body aveva wm-body-bg).
+
+   Da v2.3.6:
+   - Window.tsx e PlayerOSWindow.tsx scelgono UNO dei 2 PNG a caso
+     (hashString per player_id) e lo applicano a TUTTO il guscio finestra
+     (header + corpo). Vedi window-fogli.css `.wf-shell`.
+   - Questa classe è mantenuta solo per backward-compat nel caso qualche
+     vista la referenzi ancora, ma NON è più usata dai componenti WM.
+
+   Se usi questa classe, vedi un foglio "doppio" come prima del fix.
+   NON usare per le finestre WM — passa al nuovo sistema via CSS vars
+   --sheet-img / --sheet-size / --sheet-repeat / --sheet-pos sul
+   guscio .wf-shell o sul div root di PlayerOSWindow.
    ============================================================ */
 .wm-body-bg {
   background-color: #F4F6F7; /* fallback uguale al desk-tile.png */

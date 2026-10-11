@@ -13,6 +13,11 @@
  *  - Renderizza PlayerForm embedded (senza backdrop modale, riempie la finestra)
  *  - Header con pulsante "Torna in-app" → api.closePlayerWindow(player_id)
  *
+ * v2.3.6: lo sfondo è UNO dei 2 PNG forniti dal product owner
+ * (desk-tile.png = legal pad rigato, desk-vintage.png = pergamena),
+ * scelto stabilmente per player_id via hashString. Non più due PNG
+ * sovrapposti (legal pad + pergamena in multiply) come in v2.3.5.
+ *
  * Stato sincronizzato via eventi Tauri: quando l'utente modifica in questa
  * finestra, il backend applica l'update. La finestra principale (RosaView)
  * deve refreshare la lista per vedere le modifiche — questo avviene via
@@ -20,10 +25,27 @@
  * l'utente deve refreshare manualmente o chiudere/riaprire la vista.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "@/api/tauri";
 import type { CreatePlayerInput, Player, UpdatePlayerInput } from "@/types/player";
 import { PlayerForm } from "./PlayerForm";
+import { hashString } from "@/assets/paper";
+// I 2 PNG "dati" dal product owner per lo sfondo della finestra OS nativa.
+// Stessa logica della WM in-app: uno solo, scelto a caso per player_id.
+import deskTileUrl from "@/assets/backgrounds/desk-tile.png";
+import deskVintageUrl from "@/assets/backgrounds/desk-vintage.png";
+
+interface SheetBgConfig {
+  img: string;
+  size: string;
+  repeat: "repeat" | "no-repeat";
+  pos: string;
+}
+
+const WM_SHEET_BG: SheetBgConfig[] = [
+  { img: deskTileUrl, size: "440px 584px", repeat: "repeat", pos: "top left" },
+  { img: deskVintageUrl, size: "100% 100%", repeat: "no-repeat", pos: "center top" },
+];
 
 interface Props {
   /** player_id estratto dal pathname `/player/:id`. */
@@ -35,6 +57,14 @@ export function PlayerOSWindow({ playerId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+
+  // Sfondo foglio: 1 dei 2 PNG "dati" dal product owner. Stabile per
+  // player_id (hashString) → la stessa finestra OS mostra sempre lo
+  // stesso foglio, finestre diverse ne possono mostrare uno diverso.
+  const sheetBg = useMemo(
+    () => WM_SHEET_BG[hashString(playerId + ":wm-sheet") % WM_SHEET_BG.length],
+    [playerId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -84,12 +114,28 @@ export function PlayerOSWindow({ playerId }: Props) {
 
   return (
     <div
-      className="flex flex-col h-screen wm-body-bg"
-      style={{ overflow: "hidden" }}
+      className="flex flex-col h-screen"
+      style={
+        {
+          overflow: "hidden",
+          // Sfondo foglio: UNO dei 2 PNG, copre tutto (header + corpo).
+          // backgroundColor TRASPARENTE: i PNG hanno già i buchi della
+          // spiralatura forati (alpha=0); con un colore solido di
+          // fallback riempiremmo i buchi → sembrerebbero finti.
+          backgroundColor: "transparent",
+          backgroundImage: `url("${sheetBg.img}")`,
+          backgroundSize: sheetBg.size,
+          backgroundRepeat: sheetBg.repeat,
+          backgroundPosition: sheetBg.pos,
+          backgroundAttachment: "local",
+        } as CSSProperties
+      }
     >
       {/* Header locale della finestra OS — distinto dalla chrome nativa di Windows.
           In Tauri 2 con `decorations: true` la chrome nativa mostra già i pulsanti
-          minimizza/massimizza/chiudi. Aggiungiamo qui solo "Torna in-app". */}
+          minimizza/massimizza/chiudi. Aggiungiamo qui solo "Torna in-app".
+          v2.3.6: l'header è OPACO (background ink) per leggibilità del titolo
+          anche quando il foglio sottostante è una pergamena con testo sbiadito. */}
       <header
         className="text-paper px-4 py-2 flex items-center justify-between flex-shrink-0"
         style={{ backgroundColor: "var(--ink)" }}

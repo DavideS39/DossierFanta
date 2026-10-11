@@ -1,14 +1,18 @@
 /**
  * Window — singola finestra del Window Manager in-app (M2.1, Cap.17).
  *
- * v2.3.4 — "schede windowed su fogli strappati": la finestra non è più un
- * rettangolo CSS con chrome ink, è un FOGLIO STRAPPATO posato sulla
- * scrivania (texture fotografica sheet-*.webp, alpha = sagoma strappata):
+ * v2.3.6 — "un foglio per finestra, titolo incluso nel foglio":
+ * la finestra è un FOGLIO rettangolare posato sulla scrivania. Lo sfondo
+ * è UNO dei 2 PNG forniti dal product owner (desk-tile.png = legal pad
+ * rigato, desk-vintage.png = pergamena), scelto stabilmente per player_id
+ * via hashString (look "casuale" ma senza flicker tra i render):
  *
- *  - il fondo è uno dei 3 fogli del product owner (sheetFor(playerId),
- *    assegnazione stabile via hash); le ombre multilayer Cap.16 sono
- *    drop-shadow sull'alpha → la sagoma strappata proietta la PROPRIA
- *    ombra sul piano della scrivania;
+ *  - il foglio copre TUTTO il guscio finestra (header + corpo): il titolo
+ *    non è più su una zona trasparente, è scritto SUL foglio come su un
+ *    quaderno vero. niente più due PNG sovrapposti (legal pad + pergamena
+ *    in multiply): uno solo, scelto a caso;
+ *  - ombra 3-layer (contact + mid + ambient) come box-shadow sul guscio,
+ *    intensificata quando attiva o in drag (effetto foglio sollevato);
  *  - nastro adesivo CSS in alto (tranne sul foglio che ce l'ha impresso);
  *  - chrome "protocollata" scritta sul foglio: riga protocollo in alto
  *    (» scheda · wm in-app), nome giocatore in Special Elite con
@@ -35,6 +39,43 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import type { WindowState } from "@/stores/useWindowsStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 import { sheetFor, hashString } from "@/assets/paper";
+// I 2 PNG forniti dal product owner per lo sfondo delle finestre WM.
+// Prima di v2.3.6 venivano sovrapposti (legal pad come base + pergamena
+// in multiply) creando l'effetto "due fogli uno sopra l'altro". Ora la
+// finestra ne usa UNO solo, scelto a caso per player_id (hashString).
+import deskTileUrl from "@/assets/backgrounds/desk-tile.png";
+import deskVintageUrl from "@/assets/backgrounds/desk-vintage.png";
+
+/**
+ * I 2 fogli "dati" dal product owner per lo sfondo finestra. Ognuno ha le
+ * sue regole di sizing/repeat: desk-tile è un tile ripetibile (legal pad
+ * "infinito"), desk-vintage è un'immagine unica (pergamena da stendere).
+ *
+ * L'indice viene scelto stabilmente per player_id via hashString, in modo
+ * che finestre diverse mostrino fogli diversi ma la stessa finestra, se
+ * chiusa e riaperta, mantenga lo stesso foglio (no flicker).
+ */
+interface SheetBgConfig {
+  img: string;
+  size: string;
+  repeat: "repeat" | "no-repeat";
+  pos: string;
+}
+
+const WM_SHEET_BG: SheetBgConfig[] = [
+  {
+    img: deskTileUrl,
+    size: "440px 584px",
+    repeat: "repeat",
+    pos: "top left",
+  },
+  {
+    img: deskVintageUrl,
+    size: "100% 100%",
+    repeat: "no-repeat",
+    pos: "center top",
+  },
+];
 
 interface Props {
   win: WindowState;
@@ -59,11 +100,22 @@ export function Window({ win, children, bounds }: Props) {
   const toggleMaximize = useWindowsStore((s) => s.toggleMaximize);
   const activeId = useWindowsStore((s) => s.activeId);
 
-  // Foglio strappato assegnato stabilmente al giocatore + seed estetico
+  // Foglio strappato assegnato stabilmente al giocatore + seed estetico.
+  // sheetFor() continua a fornire safe-area + posizione del nastro (quei
+  // metadati restano validi per qualunque sfondo), ma la texture non è più
+  // sheet-*.webp bensì uno dei 2 PNG desk-tile/desk-vintage, scelto a caso.
   const sheet = useMemo(() => sheetFor(win.id), [win.id]);
   const seed = useMemo(() => hashString(win.id), [win.id]);
   const rotation = ((seed % 13) - 6) / 10; // -0.6° .. +0.6°
   const tapeCorner = sheet.tape === "top" && seed % 3 === 0; // nastro d'angolo extra
+
+  // Sfondo foglio: 1 dei 2 PNG "dati" dal product owner. Stabile per
+  // player_id (hashString) → la stessa finestra mostra sempre lo stesso
+  // foglio, finestre diverse ne possono mostrare uno diverso.
+  const sheetBg = useMemo(
+    () => WM_SHEET_BG[hashString(win.id + ":wm-sheet") % WM_SHEET_BG.length],
+    [win.id],
+  );
 
   const [dragging, setDragging] = useState(false);
   const [leaving, setLeaving] = useState<"close" | "min" | null>(null);
@@ -199,7 +251,14 @@ export function Window({ win, children, bounds }: Props) {
           height: win.h,
           zIndex: win.z,
           "--rot": `${rotation}deg`,
-          "--sheet-img": `url("${sheet.img}")`,
+          // Lo sfondo foglio copre TUTTO il guscio (header + corpo).
+          // Il titolo non è più trasparente: è posato SUL foglio.
+          "--sheet-img": `url("${sheetBg.img}")`,
+          "--sheet-size": sheetBg.size,
+          "--sheet-repeat": sheetBg.repeat,
+          "--sheet-pos": sheetBg.pos,
+          // Safe-area misurata sul foglio originale (fori, strappi,
+          // perforazione): usata da .wf-head e .wf-body per il padding.
           "--safe-t": `${sheet.safe.t}%`,
           "--safe-r": `${sheet.safe.r}%`,
           "--safe-b": `${sheet.safe.b}%`,
@@ -210,10 +269,11 @@ export function Window({ win, children, bounds }: Props) {
       role="dialog"
       aria-label={`Finestra: ${win.title}`}
     >
-      {/* Layer foglio strappato RIMOSSO (v2.3.5): creava 3 fogli sovrapposti
-          con wf-body wm-body-bg + formContent header. Lo sfondo del corpo
-          della finestra è ora SOLTANTO il PNG del product owner (legal pad
-          + pergamena vintage) applicato via .wm-body-bg su wf-body. */}
+      {/* v2.3.6: il guscio .wf-shell ha DIRETTAMENTE il foglio come
+          background-image (via CSS vars), quindi header e corpo sono
+          entrambi "sopra il foglio". Non serve un layer .wf-paper
+          separato, e non serve wm-body-bg sul corpo: il corpo eredita
+          la trasparenza e lascia vedere il foglio del guscio. */}
 
       {/* Nastro adesivo: quello impresso nella foto non va duplicato */}
       {sheet.tape === "top" && <span className="wf-tape wf-tape--top" aria-hidden />}
@@ -319,10 +379,11 @@ export function Window({ win, children, bounds }: Props) {
       </header>
 
       {/* Contenuto (scrollable) dentro la safe-area del foglio.
-          Sfondo = PNG del product owner (legal pad + pergamena vintage):
-          la finestra aperta "sembra un foglio di quaderno vero"
-          su cui sta il PlayerForm embedded, non un pannello CSS bianco. */}
-      <div className="wf-body wm-body-bg">{children}</div>
+          v2.3.6: il guscio .wf-shell ha già il foglio come background,
+          quindi il corpo è TRASPARENTE: lascia vedere il foglio sotto.
+          Niente più wm-body-bg (era il doppio PNG legal pad + pergamena
+          sovrapposti): il foglio è uno solo, scelto a caso, sul guscio. */}
+      <div className="wf-body">{children}</div>
 
       {/* Angolo piegato: resize handle cartaceo (↘) */}
       {!win.maximized && (
