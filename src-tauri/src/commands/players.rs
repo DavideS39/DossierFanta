@@ -756,7 +756,12 @@ pub fn update_player(
         Ok(d)
     })?;
 
-    state.with_conn(&db_id, |conn| {
+    // M2.2 — bugfix ispezione: estratto il player da with_conn in una
+    // variabile `let player = ...` prima di fare l'emit, così è accessibile
+    // nell'Ok(player) di ritorno. Prima del fix with_conn era l'ultima
+    // espressione della funzione (valore di ritorno automatico); ora con
+    // l'emit dopo serve assegnare esplicitamente.
+    let player = state.with_conn(&db_id, |conn| {
         ensure_writable_db(conn, &db_id)?;
 
         let affected = conn.execute(
