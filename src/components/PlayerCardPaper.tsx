@@ -160,26 +160,32 @@ export function PlayerCardPaper({
             </GlossaryTooltip>
           )}
 
-          {!archived ? (
-            <span
-              onClick={handleStatusClick}
-              title="Click per cambiare stato (toggle manuale)"
-              style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
-            >
-              {player.status === "scoutato" ? (
-                <Stamp variant="scoutato">Scoutato</Stamp>
-              ) : player.status === "da_fare" ? (
-                <Stamp variant="da-fare">Da fare</Stamp>
-              ) : (
-                <Stamp variant="custom" color="#5C5347">Totale</Stamp>
-              )}
-              <span aria-hidden style={{ fontSize: 9, color: "rgba(90,70,50,0.65)", fontFamily: "var(--font-display)" }}>
-                ⇄
+          {/* M2.2 — FIX A4 (E3): tooltip glossario su badge stato.
+              Avvolge sia il caso non-archiviato (toggle manuale ⇄) che
+              archiviato (timbro fisso). Il popover mostra la definizione
+              di 'status' (scoutato / da fare / totali + auto-toggle B3). */}
+          <GlossaryTooltip term="status">
+            {!archived ? (
+              <span
+                onClick={handleStatusClick}
+                title="Click per cambiare stato (toggle manuale)"
+                style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
+              >
+                {player.status === "scoutato" ? (
+                  <Stamp variant="scoutato">Scoutato</Stamp>
+                ) : player.status === "da_fare" ? (
+                  <Stamp variant="da-fare">Da fare</Stamp>
+                ) : (
+                  <Stamp variant="custom" color="#5C5347">Totale</Stamp>
+                )}
+                <span aria-hidden style={{ fontSize: 9, color: "rgba(90,70,50,0.65)", fontFamily: "var(--font-display)" }}>
+                  ⇄
+                </span>
               </span>
-            </span>
-          ) : (
-            <Stamp variant="archiviato">Archiviato</Stamp>
-          )}
+            ) : (
+              <Stamp variant="archiviato">Archiviato</Stamp>
+            )}
+          </GlossaryTooltip>
         </div>
 
         <div className="pcard-stats">
@@ -201,11 +207,10 @@ export function PlayerCardPaper({
             <button type="button" className="pcard-action" title="Apri scheda (WM)" onClick={onEdit}>
               ✎
             </button>
-            {onDetachOs && (
-              <button type="button" className="pcard-action" title="Stacca in finestra OS" onClick={onDetachOs}>
-                ⧉
-              </button>
-            )}
+            {/* M2.2 — FIX A1: pulsante ⧉ rimosso — è ridondante ora che
+                il doppio-click sulla chrome WM stacca in finestra OS
+                (Cap.17 spec). Il doppio-click sul corpo card resta come
+                gesture alternativa (onDetachOs sopra). */}
             <button type="button" className="pcard-action pcard-action--del" title="Elimina" onClick={onDelete}>
               ✕
             </button>

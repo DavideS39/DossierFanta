@@ -28,7 +28,13 @@ use crate::db::new_uuid;
 use crate::DbState;
 use rusqlite::{params, params_from_iter, types::Value as SqlValue};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+// M2.2 — FIX A2 (F12, Cap.17): import `Emitter` trait per `app.emit(...)`.
+// Importiamo `AppHandle` per passare l'handle Tauri ai comandi write
+// (save_scouting_note, save_auction_data, set_player_status, assign_player)
+// così, dopo il commit DB, possono emettere l'evento `player-updated` a
+// tutte le finestre (main + player-* OS native). Il frontend ascolta e
+// refresha la vista senza intervento manuale.
+use tauri::{AppHandle, Emitter, State};
 
 // ----------------------------------------------------------------------
 // M2.1 — Snapshot arricchito (FIX A2, B5) + restore con ricreazione collegati (FIX A3, B12)
@@ -978,9 +984,15 @@ pub fn archive_player(
 /// dall'auto-toggle lato Rust (vedi save_scouting_note).
 ///
 /// Validazione: `new_status` DEVE essere uno tra 'totali', 'scoutato', 'da_fare'.
+///
+/// M2.2 — FIX A2 (F12): dopo il commit DB, emette l'evento Tauri
+/// `player-updated` con payload `{ id: player_id }`. Tutte le finestre
+/// aperte (main + player-* OS native) lo ascoltano e refreshano la vista
+/// senza intervento manuale.
 #[tauri::command]
 pub fn set_player_status(
     state: State<'_, DbState>,
+    app: AppHandle,
     player_id: String,
     new_status: String,
 ) -> AppResult<Player> {
@@ -1009,7 +1021,7 @@ pub fn set_player_status(
         Ok(d)
     })?;
 
-    state.with_conn(&db_id, |conn| {
+    let player = state.with_conn(&db_id, |conn| {
         ensure_writable_db(conn, &db_id)?;
         let affected = conn.execute(
             "UPDATE players SET status = ?2, updated_by = 'me' WHERE id = ?1",
@@ -1052,7 +1064,14 @@ pub fn set_player_status(
             .map_err(|e| AppError::Db(e))?;
 
         Ok(player)
-    })
+    })?;
+
+    // M2.2 — FIX A2: notifica tutte le finestre che il player è cambiato.
+    // `let _ = ...` perché emit fallisce silenziosamente se non ci sono
+    // listener registrati (situazione normale: l'evento è opzionale).
+    let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
+
+    Ok(player)
 }
 
 /// M2.1 — IMPROVEMENT B3: save_scouting_note con auto-toggle status.
@@ -1064,9 +1083,13 @@ pub fn set_player_status(
 ///
 /// Non torna mai indietro automaticamente (se l'utente vuole rimettere
 /// 'da_fare', usa il toggle manuale sul timbro).
+///
+/// M2.2 — FIX A2 (F12): dopo il commit DB, emette `player-updated` così
+/// la scheda in app + la finestra OS eventualmente aperta refreshano.
 #[tauri::command]
 pub fn save_scouting_note(
     state: State<'_, DbState>,
+    app: AppHandle,
     player_id: String,
     kind: String,
     label: Option<String>,
@@ -1098,7 +1121,7 @@ pub fn save_scouting_note(
         Ok(d)
     })?;
 
-    state.with_conn(&db_id, |conn| {
+    let result = state.with_conn(&db_id, |conn| {
         ensure_writable_db(conn, &db_id)?;
 
         let tx = conn.unchecked_transaction()?;
@@ -1140,7 +1163,14 @@ pub fn save_scouting_note(
 
         tx.commit()?;
         Ok(true)
-    })
+    })?;
+
+    // M2.2 — FIX A2: notifica tutte le finestre che il player è cambiato
+    // (la nota scouting è stata aggiunta e, se auto-toggle, lo status è
+    // passato da 'da_fare' a 'scoutato' — entrambe le viste devono refreshare).
+    let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
+
+    result
 }
 
 /// M2.1 — Helper esposto per listone.rs: collect_player_snapshot (snapshot arricchito).
@@ -1346,9 +1376,13 @@ pub fn get_auction_data(
 ///  - titolarita in 1..=10 (CHECK schema)
 ///  - infortuni in ('nessuno', 'lieve', 'grave') (CHECK schema)
 ///  - fmil_max integer >= 0 (validazione Rust, schema permette NULL)
+///
+/// M2.2 — FIX A2 (F12): dopo il commit DB, emette `player-updated` per
+/// refreshare le viste (la finestra OS mostra auction_data nel form).
 #[tauri::command]
 pub fn save_auction_data(
     state: State<'_, DbState>,
+    app: AppHandle,
     player_id: String,
     titolarita: Option<i64>,
     infortuni: Option<String>,
@@ -1394,7 +1428,7 @@ pub fn save_auction_data(
         Ok(d)
     })?;
 
-    state.with_conn(&db_id, |conn| {
+    let result = state.with_conn(&db_id, |conn| {
         ensure_writable_db(conn, &db_id)?;
 
         // Upsert: INSERT OR REPLACE con i valori passati + COALESCE per i vecchi
@@ -1411,7 +1445,13 @@ pub fn save_auction_data(
             params![&player_id, titolarita, infortuni, quick_note, fmil_max],
         )?;
         Ok(true)
-    })
+    })?;
+
+    // M2.2 — FIX A2: notifica tutte le finestre che il player è cambiato
+    // (auction_data è mostrata nella scheda + il form ne fa edit).
+    let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
+
+    result
 }
 
 /// Elenca le note scouting di un giocatore (multi-row da `scouting_notes`).
@@ -1450,9 +1490,13 @@ pub fn list_scouting_notes(
 /// Assegna un giocatore a un team lega con un prezzo pagato (f₥).
 /// Setta auction_data.assigned_to + fmil_paid + assigned_at.
 /// Se la riga auction_data non esiste ancora, la crea.
+///
+/// M2.2 — FIX A2 (F12): dopo il commit DB, emette `player-updated` così
+/// la scheda e la lista Rosa refreshano (assegnazione visible in StatsBar).
 #[tauri::command]
 pub fn assign_player(
     state: State<'_, DbState>,
+    app: AppHandle,
     player_id: String,
     assigned_to: String,
     fmil_paid: i64,
@@ -1481,7 +1525,7 @@ pub fn assign_player(
         Ok(d)
     })?;
 
-    state.with_conn(&db_id, |conn| {
+    let result = state.with_conn(&db_id, |conn| {
         ensure_writable_db(conn, &db_id)?;
         // Upsert con INSERT OR REPLACE su assigned_to/fmil_paid/assigned_at
         conn.execute(
@@ -1495,5 +1539,11 @@ pub fn assign_player(
             params![&player_id, &assigned_to, fmil_paid],
         )?;
         Ok(true)
-    })
+    })?;
+
+    // M2.2 — FIX A2: notifica tutte le finestre che il player è cambiato
+    // (assegnazione impatta la lista Rosa + StatsBar conteggi).
+    let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
+
+    result
 }

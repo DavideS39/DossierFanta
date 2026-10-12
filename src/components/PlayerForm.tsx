@@ -54,6 +54,11 @@ import type {
 } from "@/types/player";
 import { FASCIA_VALUES, POS_FANTA_VALUES, STATUS_VALUES } from "@/types/player";
 import { api } from "@/api/tauri";
+// M2.2 — FIX A2 (F12): sync live tra finestra OS e WM in-app. Quando il
+// backend emette `player-updated` per il player in edit, refreshiamo
+// auctionData + scoutingNotes + i campi base del form. Questo tiene
+// allineate le 2 viste (main window + finestra OS) senza intervento manuale.
+import { usePlayerSync } from "@/lib/usePlayerSync";
 import { GlossaryTooltip } from "./GlossaryTooltip";
 import { Stamp } from "./Stamp";
 import { fmtFmil } from "@/lib/format";
@@ -135,6 +140,38 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
 
   // Tab attiva nel pannello SCOUTING
   const [scoutingTab, setScoutingTab] = useState<"data" | "link">("data");
+
+  // M2.2 — FIX A2 (F12): ascolta `player-updated` per il player in edit.
+  // Quando il backend emette l'evento (dopo save_scouting_note /
+  // save_auction_data / set_player_status / assign_player), refreshiamo
+  // auctionData + scoutingNotes. NOTA: NON resettiamo i campi del form
+  // (l'utente potrebbe starli editando — i suoi cambiamenti locali
+  // prevalgono sui cambiamenti remoti). Refresh solo i dati collaterali
+  // (auction_data + note scouting) che l'utente non sta editando diretamente.
+  usePlayerSync(player?.id ?? null, async (id) => {
+    if (!player || player.id !== id) return;
+    try {
+      // Refresh auction_data (mostra titolarità, infortuni, fmil_max,
+      // quick_note, assigned_to, fmil_paid — tutti campi che potrebbero
+      // essere cambiati da un'altra finestra).
+      const ad = await api.getAuctionData(id);
+      setAuctionData(ad);
+      if (ad) {
+        setAstaForm({
+          titolarita: ad.titolarita !== null ? String(ad.titolarita) : "",
+          infortuni: ad.infortuni ?? "nessuno",
+          fmil_max: ad.fmil_max !== null ? String(ad.fmil_max) : "",
+          quick_note: ad.quick_note ?? "",
+        });
+      }
+      // Refresh scouting notes (l'utente potrebbe averne aggiunta una da
+      // un'altra finestra — la lista qui deve rifletterlo).
+      const notes = await api.listScoutingNotes(id);
+      setScoutingNotes(notes);
+    } catch (e) {
+      console.warn("[PlayerForm] refresh post player-updated failed:", e);
+    }
+  });
 
   // Pre-popola in edit mode + fetch auction_data + scouting_notes
   useEffect(() => {

@@ -1,9 +1,9 @@
 {
   "name": "dossierfanta-m2",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.5",
   "type": "module",
-  "description": "DossierFanta v2.3 — Milestone M2.1 (Tauri 2.0 desktop app: chiusura 4 FAIL M2 + 6 miglioramenti d'uso v2.3: design realistico, tooltip glossario, WM ibrido, auto-toggle status, anteprima import diff, snapshot arricchito)",
+  "description": "DossierFanta v2.4 — Milestone M2.2 sprint zero M3 (Tauri 2.0 desktop app: 4 fix bloccanti ispezione M2.1 + 2 bug grafici v2.4. F11 doppio-click chrome → detach OS, F12 sync eventi Tauri emit/listen, H9 Cargo.lock, E3 tooltip glossario su badge stato, B1 gap resize texture, B2 finestre native Windows).",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

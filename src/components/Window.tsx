@@ -39,6 +39,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import type { WindowState } from "@/stores/useWindowsStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 import { sheetFor, hashString } from "@/assets/paper";
+// M2.2 — FIX A1 (F11): il doppio-click sulla chrome stacca in finestra OS
+// nativa, NON massimizza (che resta sul pulsante □ dedicato). L'helper
+// centralizza il flusso detach (close in-app → open OS → track store).
+import { detachWindowToOs } from "@/lib/windowActions";
 // I 2 PNG forniti dal product owner per lo sfondo delle finestre WM.
 // Prima di v2.3.6 venivano sovrapposti (legal pad come base + pergamena
 // in multiply) creando l'effetto "due fogli uno sopra l'altro". Ora la
@@ -58,15 +62,22 @@ import deskVintageUrl from "@/assets/backgrounds/desk-vintage.png";
 interface SheetBgConfig {
   img: string;
   size: string;
-  repeat: "repeat" | "no-repeat";
+  repeat: "repeat" | "round" | "no-repeat";
   pos: string;
 }
 
+// M2.2 — BUG B1 (Cap.16 "Texture handling"): il desk-tile.png era
+// ripetuto con `background-repeat: repeat` — al resize della finestra
+// si vedevano gap trasparenti di 1-2px tra le ripetizioni (sia in mezzo
+// che in fondo). `round` dice al browser di scalare la texture per farla
+// combaciare esattamente N volte senza gap (con leggera distorsione,
+// impercettibile sui tile di carta rigata). La texture desk-vintage è
+// già no-repeat + 100% 100% → niente gap di partenza.
 const WM_SHEET_BG: SheetBgConfig[] = [
   {
     img: deskTileUrl,
     size: "440px 584px",
-    repeat: "repeat",
+    repeat: "round",
     pos: "top left",
   },
   {
@@ -318,8 +329,13 @@ export function Window({ win, children, bounds }: Props) {
           document.body.style.userSelect = "none";
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
         }}
-        onDoubleClick={() => toggleMaximize(win.id)}
-        title="Drag per spostare · doppio-click per massimizzare/restore · bordo finestra per snap"
+        onDoubleClick={() => {
+          // M2.2 — FIX A1 (F11, Cap.17): doppio-click sulla chrome → stacca
+          // in finestra OS nativa (NON massimizza). Il maximize resta sul
+          // pulsante □ dedicato qui sotto (Opzione 1 del brief M2.2).
+          void detachWindowToOs(win.id);
+        }}
+        title="Drag per spostare · doppio-click per staccare in finestra OS nativa · □ per massimizzare"
       >
         <div className="wf-head-top">
           <span className="wf-protocol">

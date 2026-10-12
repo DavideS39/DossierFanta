@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RosaView } from "@/components/RosaView";
 import { PlayerOSWindow } from "@/components/PlayerOSWindow";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
+import { usePlayersStore } from "@/stores/usePlayersStore";
 import { api } from "@/api/tauri";
+// M2.2 — FIX A2 (F12): hook per sync live tra finestre. Quando il backend
+// emette `player-updated` (dopo save_scouting_note/save_auction_data/
+// set_player_status/assign_player), la main window refresha usePlayersStore
+// (lista Rosa) senza intervento manuale. La finestra OS ha il suo listener
+// interno in PlayerOSWindow per refreshare il singolo player corrente.
+import { usePlayerSync } from "@/lib/usePlayerSync";
 
 /**
  * App root. Avvia l'inizializzazione del DB al primo render.
@@ -16,6 +23,11 @@ import { api } from "@/api/tauri";
  * appaia bianca (perché manca il router frontend per la route `/player/:id`).
  *
  * M2: inizializza anche lo store multi-DB (useDbStore) oltre al meta store.
+ *
+ * M2.2 — FIX A2 (F12): la main window (path "/") sottoscrive l'evento
+ * `player-updated`. Quando l'utente modifica una scheda nella finestra OS
+ * (o nella WM in-app), la main window refresha la lista Rosa + i metadati DB
+ * (conteggi). In finestra OS il listener è no-op (delega a PlayerOSWindow).
  */
 export function App() {
   const [booting, setBooting] = useState(true);
@@ -23,6 +35,9 @@ export function App() {
   const refreshMeta = useDbMetaStore((s) => s.refresh);
   const refreshDbs = useDbStore((s) => s.refresh);
   const restoreFromLocalStorage = useDbStore((s) => s.restoreFromLocalStorage);
+  // M2.2 — FIX A2: refresh lista Rosa su evento player-updated.
+  const refreshPlayers = usePlayersStore((s) => s.refresh);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // M2.1 B5 — Rileva se siamo in una finestra OS nativa via pathname.
   // Tauri 2 carica la stessa app (dist/index.html) per tutte le finestre,
@@ -30,6 +45,21 @@ export function App() {
   const path = typeof window !== "undefined" ? window.location.pathname : "/";
   const playerMatch = path.match(/^\/player\/([^/]+)/);
   const osPlayerId = playerMatch ? playerMatch[1] : null;
+
+  // M2.2 — FIX A2: sottoscrivi player-updated (sempre attivo, per le rules
+  // of hooks). In finestra OS il callback è no-op (delega a PlayerOSWindow).
+  // Debounce 150ms: se l'utente fa 3 modifiche ravvicinate (es. 3 note
+  // scouting in 100ms), refreshiamo una sola volta invece di 3.
+  usePlayerSync(null, () => {
+    // Skip in finestra OS — PlayerOSWindow ha il suo listener interno.
+    // osPlayerId è fisso per finestra (Tauri non naviga via pathname).
+    if (osPlayerId) return;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      void refreshPlayers();
+      void refreshMeta();
+    }, 150);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +137,7 @@ export function App() {
           }}
         />
         <div className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}>
-          DossierFanta v2.3 · M2.1
+          DossierFanta v2.4 · M2.2
         </div>
         <div className="text-xs mt-1" style={{ fontFamily: "var(--font-body)", color: "var(--ink-soft)" }}>
           Inizializzazione DB locale + workspace multi-DB…

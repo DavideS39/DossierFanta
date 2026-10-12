@@ -18,15 +18,22 @@
  * scelto stabilmente per player_id via hashString. Non più due PNG
  * sovrapposti (legal pad + pergamena in multiply) come in v2.3.5.
  *
- * Stato sincronizzato via eventi Tauri: quando l'utente modifica in questa
- * finestra, il backend applica l'update. La finestra principale (RosaView)
- * deve refreshare la lista per vedere le modifiche — questo avviene via
- * evento Tauri `player-updated` (vedi implementazione futura). In M2.1
- * l'utente deve refreshare manualmente o chiudere/riaprire la vista.
+ * M2.2 — FIX A2 (F12, Cap.17): stato sincronizzato via eventi Tauri.
+ * Quando il backend emette `player-updated` (dopo save_scouting_note /
+ * save_auction_data / set_player_status / assign_player), questa finestra
+ * OS refresha il player + i dati collegati (auction_data, scouting_notes)
+ * in automatico. Simmetricamente, le modifiche fatte qui refreshano la
+ * main window (RosaView). Niente più refresh manuale come in M2.1.
+ *
+ * M2.2 — BUG B1 (Cap.16 "Texture handling"): il desk-tile.png è ora
+ * ripetuto con `background-repeat: round` invece di `repeat` per evitare
+ * il gap trasparente al resize della finestra.
  */
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "@/api/tauri";
+// M2.2 — FIX A2 (F12): hook per sync live con la main window.
+import { usePlayerSync } from "@/lib/usePlayerSync";
 import type { CreatePlayerInput, Player, UpdatePlayerInput } from "@/types/player";
 import { PlayerForm } from "./PlayerForm";
 import { hashString } from "@/assets/paper";
@@ -38,12 +45,17 @@ import deskVintageUrl from "@/assets/backgrounds/desk-vintage.png";
 interface SheetBgConfig {
   img: string;
   size: string;
-  repeat: "repeat" | "no-repeat";
+  repeat: "repeat" | "round" | "no-repeat";
   pos: string;
 }
 
+// M2.2 — BUG B1 (Cap.16 "Texture handling"): come in Window.tsx, il
+// desk-tile.png era ripetuto con `background-repeat: repeat` — al resize
+// della finestra OS nativa si vedevano gap trasparenti tra le ripetizioni.
+// `round` scala la texture per evitare gap (leggera distorsione su tile
+// di carta rigata, impercettibile). desk-vintage è già 100% 100% no-repeat.
 const WM_SHEET_BG: SheetBgConfig[] = [
-  { img: deskTileUrl, size: "440px 584px", repeat: "repeat", pos: "top left" },
+  { img: deskTileUrl, size: "440px 584px", repeat: "round", pos: "top left" },
   { img: deskVintageUrl, size: "100% 100%", repeat: "no-repeat", pos: "center top" },
 ];
 
@@ -90,6 +102,21 @@ export function PlayerOSWindow({ playerId }: Props) {
     };
   }, [playerId]);
 
+  // M2.2 — FIX A2 (F12): ascolta `player-updated` per il playerId corrente.
+  // Quando l'utente (o un'altra finestra) modifica il player, refreshiamo
+  // i dati qui. Include il caso "auto-toggle da fare → scoutato" quando si
+  // salva una nota scouting: lo status del player cambia e la card nella
+  // finestra OS deve rifletterlo.
+  usePlayerSync(playerId, async (id) => {
+    try {
+      const updated = await api.getPlayer(id);
+      setPlayer(updated);
+    } catch (e) {
+      // Il player potrebbe essere stato eliminato nel frattempo — chiudiamo.
+      console.warn("[PlayerOSWindow] refresh post player-updated failed:", e);
+    }
+  });
+
   const handleClose = async () => {
     setClosing(true);
     try {
@@ -104,7 +131,8 @@ export function PlayerOSWindow({ playerId }: Props) {
   const handleSubmit = async (input: CreatePlayerInput | UpdatePlayerInput) => {
     if (!player) return;
     await api.updatePlayer(input as UpdatePlayerInput);
-    // Re-fetch per mostrare i dati aggiornati
+    // Re-fetch per mostrare i dati aggiornati (l'evento player-updated
+    // non viene emesso da update_player — vedi M2.2 FIX A2 scope).
     const updated = await api.getPlayer(playerId);
     setPlayer(updated);
   };

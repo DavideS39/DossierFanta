@@ -6,6 +6,156 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ---
 
+## [0.2.5] — 2026-10-12 — M2.2 sprint zero M3: 4 fix ispettore + 2 bug grafici
+
+Sprint zero chirurgico che chiude i 4 fix bloccanti dell'ispezione M2.1
+(F11, F12, H9, E3) e i 2 bug grafici segnalati dall'utente in v2.4 (B1 gap
+resize texture, B2 finestre native Windows). Niente nuove feature, niente
+refactor architetturale. Solo dopo M2.2 verde, M3 può partire.
+
+### Blocco A — 4 FIX ISPETTORE M2.1
+
+#### FIX A1 — F11: Doppio-click chrome stacca in OS nativa
+- `src/lib/windowActions.ts` (NEW) — helper condiviso
+  `detachWindowToOs(playerId)` + `attachWindowFromOs(playerId)` che
+  centralizza il flusso detach (close in-app → open OS → track store →
+  sync backend). Chiamato da Window.tsx (chrome) e RosaView (fallback).
+- `src/components/Window.tsx:325-330` — l'handler `onDoubleClick` sul
+  `<header className="wf-head">` ora chiama `detachWindowToOs(win.id)`
+  invece di `toggleMaximize(win.id)`. Il pulsante □ resta dedicato al
+  maximize (Opzione 1 del brief M2.2). Aggiornato anche il `title`
+  descrittivo della chrome.
+- `src/components/PlayerCardPaper.tsx:204-208` — rimosso il pulsante ⧉
+  (era ridondante ora che la chrome fa detach). Il doppio-click sul corpo
+  card resta come gesture alternativa via `onDetachOs`.
+
+#### FIX A2 — F12: Sync eventi Tauri emit/listen
+- `src-tauri/src/commands/players.rs`:
+  - Aggiunto `use tauri::{AppHandle, Emitter, State};` per il trait
+    `Emitter` (metodo `app.emit(event, payload)`)
+  - `set_player_status` (riga 992), `save_scouting_note` (riga 1089),
+    `save_auction_data` (riga 1382), `assign_player` (riga 1496):
+    aggiunto parametro `app: AppHandle` + dopo il commit DB chiamano
+    `let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));`
+    per notificare tutte le finestre (main + player-* OS native)
+- `src-tauri/capabilities/default.json`: aggiunti
+  `core:event:allow-emit` + `core:event:allow-listen` (espliciti oltre
+  al default) per garantire che il frontend possa sottoscrivere gli eventi
+- `src/api/tauri.ts`: aggiunto helper `onPlayerUpdated(callback)` che
+  wrappa `listen<{ id: string }>("player-updated", ...)`. In mock mode
+  è no-op (ritorna una UnlistenFn vuota)
+- `src/lib/usePlayerSync.ts` (NEW) — hook React che sottoscrive
+  `player-updated` per un singolo player. Usa un ref interno alla
+  callback per permettere al caller di passare callback inline senza
+  useCallback. In anteprima web è no-op.
+- `src/App.tsx`: montato `usePlayerSync(null, ...)` con debounce 150ms
+  per refreshare usePlayersStore (lista Rosa) + useDbMetaStore quando
+  un qualunque player viene aggiornato. Skip in finestra OS (gestito da
+  PlayerOSWindow).
+- `src/components/PlayerOSWindow.tsx`: montato `usePlayerSync(playerId, ...)`
+  per refreshare il player quando l'evento arriva per il playerId
+  corrente. Commento top aggiornato: niente più "refresh manuale" (era
+  il TODO F12 noto nel report M2.1).
+- `src/components/PlayerForm.tsx`: montato `usePlayerSync(player?.id, ...)`
+  per refreshare auction_data + scouting_notes quando il player in edit
+  viene modificato da un'altra finestra. I campi del form base NON
+  vengono resettati (l'utente potrebbe starli editando).
+
+#### FIX A3 — H9: Commit Cargo.lock
+- `scripts/generate-cargo-lock.sh` (NEW) — script shell che l'utente
+  esegue localmente per generare `src-tauri/Cargo.lock` la prima volta
+  (l'ambiente M2.2 non ha toolchain Rust). Verifica anche che
+  `.gitignore` NON escluda Cargo.lock e che il lockfile sia sincronizzato
+  con Cargo.toml (`cargo verify-lock`).
+- `.github/workflows/build-msi.yml`: aggiunto step "Verify Cargo.lock"
+  prima del build. Se il file manca o è out-of-sync, il workflow fallisce
+  esplicitamente con un messaggio chiaro. Aggiunto `args: --locked`
+  al `tauri-action` per garantire che la build CI usi ESATTAMENTE
+  le versioni delle dipendenze fissate in Cargo.lock (build riproducibile).
+- NOTA: il file Cargo.lock NON è incluso in questa release perché il
+  sandbox di generazione M2.2 non ha cargo. L'utente deve eseguire
+  `scripts/generate-cargo-lock.sh` sul suo dev machine e committare
+  il file. Vedere la sezione "Stato readiness M3" nel report finale.
+
+#### FIX A4 — E3: Tooltip glossario su badge stato
+- `src/components/PlayerCardPaper.tsx:163-188` — il badge stato
+  (Scoutato/Da fare/Totale + ⇄ toggle, o Archiviato) è ora avvolto da
+  `<GlossaryTooltip term="status">`. Il popover mostra la definizione
+  di "status" (scoutato/da fare/totale + auto-toggle B3). La voce
+  `status` era già presente in `glossary.json:52-56` con title + def
+  + example, niente aggiunta necessaria lì.
+
+### Blocco B — 2 BUG GRAFICI v2.4
+
+#### BUG B1 — Gap trasparente nel resize della finestra
+- Diagnosi (Cap.16 "Texture handling"): il bug era causato da
+  `background-repeat: repeat` su `desk-tile.png` (440x584). Al resize
+  della finestra WM in-app o OS nativa, l'ultima ripetizione veniva
+  tagliata e lasciava un gap di 1-2px trasparente tra le ripetizioni
+  e in fondo.
+- Fix applicato: `background-repeat: round` invece di `repeat`. Il
+  browser scala leggermente la texture per farla combaciare esattamente
+  N volte senza gap. La distorsione è impercettibile sui tile di carta
+  rigata (legal pad). La texture `desk-vintage` è già `no-repeat + 100% 100%`
+  → niente gap di partenza.
+- File modificati:
+  - `src/components/Window.tsx:65-89` — `WM_SHEET_BG[0].repeat: "round"`
+  - `src/components/PlayerOSWindow.tsx:38-52` — stesso
+  - `SheetBgConfig.repeat` type ampliato a `"repeat" | "round" | "no-repeat"`
+- Soluzione alternativa non applicata: `background-size: cover` +
+  `background-attachment: fixed` (l'avrebbe sgranata sui tile 440x584).
+  `background-repeat: round` è la soluzione raccomandata dal Cap.16
+  per texture non seamless-ready.
+
+#### BUG B2 — Finestre native Windows non vanno
+- Diagnosi (Cap.17 "Troubleshooting layer 2", 5 punti):
+  1. **Comando Tauri** (`windows.rs::open_player_window`): era già
+     corretto (`WebviewWindowBuilder::new + .build()`). Aggiunto
+     logging esteso con `log::info!` su ogni step (ingresso, pre-check,
+     conteggio, builder, build, successo/errore) per diagnosticare
+     futuri malfunzionamenti.
+  2. **Routing frontend** (`App.tsx`): era già corretto (branch su
+     `window.location.pathname` per riconoscere `/player/:id`). Fix
+     aggiuntivo: `vite.config.ts` ha ora `appType: "spa"` esplicito
+     per garantire SPA fallback in dev (Vite deve servire index.html
+     per qualunque route, non 404).
+  3. **Capabilities** (`default.json`): aveva già
+     `core:webview:allow-create-webview-window` (essenziale per
+     `open_player_window`). Aggiunti `core:event:allow-emit` +
+     `core:event:allow-listen` per FIX A2.
+  4. **State non condiviso** tra finestre: risolto da FIX A2 (eventi
+     Tauri per sync). `PlayerOSWindow` faceva già fetch del player
+     via `api.getPlayer` al mount; ora refresha anche quando l'evento
+     arriva.
+  5. **Conflict WM in-app**: `WindowManager.tsx` filtra già
+     `detachedToOs` (riga 67-68). Nessun fix necessario.
+- File modificati:
+  - `src-tauri/src/commands/windows.rs` — logging esteso su
+    `open_player_window`, `close_player_window`, `list_os_player_windows`
+  - `vite.config.ts` — `appType: "spa"` esplicito
+
+### Changed
+- Version bump: `package.json` 0.2.3 → 0.2.5, `Cargo.toml` 0.2.3 → 0.2.5,
+  `tauri.conf.json` 0.2.3 → 0.2.5. Titolo finestra main aggiornato a
+  "DossierFanta — Taccuino v2.4 (M2.2)". Splash screen App.tsx aggiornato
+  a "v2.4 · M2.2".
+
+### Removed
+- Pulsante ⧉ in `PlayerCardPaper.tsx` (ridondante ora che la chrome fa
+  detach via doppio-click — FIX A1 complementare)
+
+### Note
+- Schema SQLite `schema_v2.2.sql` NON toccato (byte-identico al baseline,
+  MD5 6ea1a2719009b93f9ee2df3c6af0a656 — vincolo HARD #5 rispettato).
+- `update_player` non emette `player-updated` perché fuori dallo scope
+  del brief M2.2 (che menziona solo save_scouting_note/save_auction_data/
+  set_player_status/assign_player). La main window refresha comunque la
+  lista Rosa dopo `update_player` via `usePlayersStore.updatePlayer`
+  riga 127. Per coerenza totale, si potrebbe aggiungere l'evento anche
+  a `update_player` in un follow-up.
+
+---
+
 ## [Unreleased]
 
 ### Added

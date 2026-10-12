@@ -10,6 +10,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // M2.2 — BUG B2 (Cap.17 "Troubleshooting layer 2", punto 2): Tauri apre
+  // la finestra OS nativa con URL /player/:id. In dev Vite deve servire
+  // index.html per qualunque route (SPA fallback), altrimenti la finestra
+  // OS restituisce 404 e appare bianca. `appType: 'spa'` è il default di
+  // Vite ma lo rendiamo esplicito per difenderci da config che lo
+  // cambierebbero in futuro. In produzione Tauri 2 gestisce già il
+  // fallback a dist/index.html via custom protocol.
+  appType: "spa",
   // Tauri expects a fixed port, fail if it's busy
   clearScreen: false,
   server: {

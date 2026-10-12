@@ -484,6 +484,15 @@ export const mockApi = {
   async listOsPlayerWindows(): Promise<string[]> {
     return [];
   },
+
+  // M2.2 — FIX A2 (F12): in anteprima web il backend mock NON emette
+  // eventi Tauri (non c'è un backend vero). Ritorniamo una UnlistenFn
+  // vuota per rispettare il tipo. Il callback non viene mai chiamato.
+  async onPlayerUpdated(_callback: (id: string) => void): Promise<() => void> {
+    return () => {
+      /* no-op in mock mode */
+    };
+  },
 };
 
 export type MockApi = typeof mockApi;

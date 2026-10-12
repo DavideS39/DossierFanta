@@ -7,6 +7,12 @@
 // file usa SOLO i comandi Rust: zero rischio production.
 
 import { invoke } from "@tauri-apps/api/core";
+// M2.2 — FIX A2 (F12, Cap.17): import `listen` da @tauri-apps/api/event
+// per sottoscrivere l'evento `player-updated` emesso dal backend Rust
+// dopo save_scouting_note / save_auction_data / set_player_status /
+// assign_player. Permette alla finestra OS e alla main window di
+// refreshare la vista senza intervento manuale.
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { mockApi } from "./mock";
 import type {
   ArchivedPlayer,
@@ -198,6 +204,26 @@ export const tauriApi = {
 
   /** Elenca gli id dei giocatori con finestra OS aperta (per UI badge). */
   listOsPlayerWindows: () => invoke<string[]>("list_os_player_windows"),
+
+  // ===== M2.2 — FIX A2 (F12): eventi Tauri per sync tra finestre =====
+
+  /**
+   * Sottoscrive l'evento `player-updated` emesso dal backend Rust dopo
+   * save_scouting_note / save_auction_data / set_player_status /
+   * assign_player. Il payload è `{ id: string }` (player_id aggiornato).
+   *
+   * Ritorna una `UnlistenFn` da chiamare per disiscrivere (cleanup).
+   *
+   * Use case: quando l'utente modifica una scheda nella finestra OS nativa,
+   * la main window (RosaView + usePlayersStore) refresha la lista Rosa;
+   * viceversa, modifiche nella main window refreshano la finestra OS.
+   * Senza questo, l'utente dovrebbe chiudere/riaprire la scheda per vedere
+   * i cambiamenti (TODO esplicito nel report di ispezione M2.1, F12).
+   *
+   * In anteprima web (mock) è no-op: ritorna una funzione vuota.
+   */
+  onPlayerUpdated: (callback: (id: string) => void): Promise<UnlistenFn> =>
+    listen<{ id: string }>("player-updated", (e) => callback(e.payload.id)),
 };
 
 /** True solo dentro il binario Tauri (WebView con internals iniettati). */

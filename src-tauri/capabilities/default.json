@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window of DossierFanta M2.1. Allows the frontend to invoke local Rust commands only — no external network access, no shell, no fs directly. M2.1: covers also the player-* OS-native windows via the glob 'player-*' (Window Manager ibrido Cap.17).",
+  "description": "Capability for the main window + player-* OS-native windows of DossierFanta M2.2. Allows the frontend to invoke local Rust commands only — no external network access, no shell, no fs directly. M2.1: covers also the player-* OS-native windows via the glob 'player-*' (Window Manager ibrido Cap.17). M2.2 — FIX A2 (F12): explicit core:event:allow-emit + allow-listen so the frontend can subscribe to player-updated events emitted by the Rust backend (save_scouting_note, save_auction_data, set_player_status, assign_player). M2.2 — BUG B2 (Cap.17): core:webview:allow-create-webview-window is mandatory for open_player_window to actually create the OS-native window — without it the command is silently rejected.",
   "windows": ["main", "player-*"],
   "permissions": [
     "core:default",
@@ -14,6 +14,8 @@
     "core:window:allow-set-position",
     "core:webview:allow-create-webview-window",
     "core:event:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
     "core:app:default"
   ]
 }

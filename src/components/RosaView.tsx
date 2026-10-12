@@ -244,7 +244,7 @@ export function RosaView() {
           </span>
           <div>
             <h1 className="df-title">
-              DossierFanta <span className="df-ver">v2.3 · M2.1</span>
+              DossierFanta <span className="df-ver">v2.4 · M2.2</span>
             </h1>
             <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido</p>
           </div>
@@ -367,7 +367,7 @@ export function RosaView() {
           <strong>⇄</strong> toggle stato · <strong>T</strong> shortcut
         </span>
         <span className="ml-auto text-ink-soft/60">
-          offline · SQLite locale · WAL mode · M2.1
+          offline · SQLite locale · WAL mode · M2.2
         </span>
       </footer>
 
