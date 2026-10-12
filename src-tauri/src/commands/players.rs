@@ -1197,7 +1197,7 @@ pub fn save_scouting_note(
     // passato da 'da_fare' a 'scoutato' — entrambe le viste devono refreshare).
     let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
 
-    result
+    Ok(result)
 }
 
 /// M2.1 — Helper esposto per listone.rs: collect_player_snapshot (snapshot arricchito).
@@ -1478,7 +1478,7 @@ pub fn save_auction_data(
     // (auction_data è mostrata nella scheda + il form ne fa edit).
     let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
 
-    result
+    Ok(result)
 }
 
 /// Elenca le note scouting di un giocatore (multi-row da `scouting_notes`).
@@ -1572,5 +1572,5 @@ pub fn assign_player(
     // (assegnazione impatta la lista Rosa + StatsBar conteggi).
     let _ = app.emit("player-updated", serde_json::json!({ "id": &player_id }));
 
-    result
+    Ok(result)
 }
