@@ -60,7 +60,12 @@ if [ "${1:-}" = "--check" ]; then
     exit 2
   fi
   echo "OK: Cargo.lock presente ($(wc -c < "${LOCKFILE}") byte)"
-  cd "${REPO_ROOT}/src-tauri" && cargo verify-lock --manifest-path Cargo.toml 2>/dev/null \
+  # M2.2 — bugfix: cargo verify-lock NON esiste come sottocomando cargo
+  # standard. La verifica di coerenza tra Cargo.lock e Cargo.toml si fa
+  # con `cargo check --locked` (o `cargo build --locked`, o `cargo metadata
+  # --locked`): se il lockfile è out-of-sync il comando fallisce con errore
+  # "the lock file needs to be updated but --locked was passed".
+  cd "${REPO_ROOT}/src-tauri" && cargo check --locked --manifest-path Cargo.toml 2>/dev/null \
     && echo "OK: Cargo.lock sincronizzato con Cargo.toml" \
     || { echo "WARN: Cargo.lock out-of-sync con Cargo.toml — rigenera"; exit 3; }
   exit 0

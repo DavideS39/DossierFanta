@@ -715,8 +715,20 @@ pub fn create_player(state: State<'_, DbState>, input: CreatePlayerInput) -> App
 
 /// Aggiorna un giocatore esistente. Full replace di tutti i campi editabili.
 /// `id` è obbligatorio e identifica il record da aggiornare.
+///
+/// M2.2 — bugfix ispezione: aggiunto `app: AppHandle` e emit di
+/// `player-updated` dopo l'UPDATE, per consistenza con le 4 operazioni
+/// specifiche (save_scouting_note, save_auction_data, set_player_status,
+/// assign_player) che già emettono l'evento. Senza questo, le modifiche al
+/// player via PlayerForm embedded (che usa update_player) NON si
+/// propagano live alle altre finestre (OS nativa e main window),
+/// richiedendo refresh manuale. Vedi report ispezione M2.2 §9.3.
 #[tauri::command]
-pub fn update_player(state: State<'_, DbState>, input: UpdatePlayerInput) -> AppResult<Player> {
+pub fn update_player(
+    state: State<'_, DbState>,
+    app: AppHandle,
+    input: UpdatePlayerInput,
+) -> AppResult<Player> {
     let name = input.name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::Validation("name è obbligatorio".to_string()));
@@ -813,7 +825,17 @@ pub fn update_player(state: State<'_, DbState>, input: UpdatePlayerInput) -> App
             .map_err(|e| AppError::Db(e))?;
 
         Ok(player)
-    })
+    })?;
+
+    // M2.2 — bugfix ispezione: notifica tutte le finestre che il player è
+    // cambiato. `let _ = ...` perché emit fallisce silenziosamente se non ci
+    // sono listener registrati (situazione normale). Stesso pattern delle
+    // 4 operazioni specifiche (save_scouting_note, save_auction_data,
+    // set_player_status, assign_player). Vedi players.rs:1072, 1171, 1452,
+    // 1546 per i sibling emit.
+    let _ = app.emit("player-updated", serde_json::json!({ "id": &input.id }));
+
+    Ok(player)
 }
 
 /// Elimina un giocatore. Esplicita: il frontend DEVE chiedere conferma
