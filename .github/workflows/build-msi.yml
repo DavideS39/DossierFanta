@@ -11,10 +11,18 @@
 # controlla che src-tauri/Cargo.lock sia committato e sincronizzato con
 # Cargo.toml. In caso contrario (file mancante o out-of-sync), il workflow
 # fallisce esplicitamente invece di rigenerare il lockfile in modo non
-# deterministico. L'`args: --locked` passa la flag a tauri-action →
-# `cargo build --locked`, che rifiuta di procedere se il lockfile è
-# inconsistente. Questo garantisce che l'.msi prodotto in CI è identico
-# a quello che l'utente ottiene localmente con lo stesso commit.
+# deterministico. Lo step "Verify Cargo.lock" esegue `cargo check --locked`
+# PRIMA del build Tauri: se il lockfile è out-of-sync, fallisce lì con
+# messaggio chiaro. Il build Tauri successivo userà il Cargo.lock esistente
+# (già verificato in sync). Questo garantisce che l'.msi prodotto in CI è
+# identico a quello che l'utente ottiene localmente con lo stesso commit.
+#
+# NOTA M2.2 — bugfix post-ispezione: NON passare `args: --locked` a
+# tauri-action. `--locked` è un flag di cargo, NON di tauri CLI. Tauri 2
+# CLI non lo supporta e lo rifiuta con "error: unexpected argument
+# '--locked' found". `args` qui è per flag di tauri (es. --debug,
+# --target, --bundles). Il controllo --locked è già garantito dallo
+# step "Verify Cargo.lock" sopra.
 #
 # Trigger:
 #   - push di tag v*: builda e crea una Release draft con l'.msi allegato
@@ -89,13 +97,20 @@ jobs:
           releaseName: 'DossierFanta ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          # M2.2 — FIX A3 (H9): `--locked` passa la flag a cargo build.
-          # Garantisce che la build CI usi ESATTAMENTE le versioni delle
-          # dipendenze fissate in Cargo.lock committato, non versioni
-          # nuove potenzialmente non compatibili. Se Cargo.lock è
-          # out-of-sync con Cargo.toml, il build fallisce con un errore
-          # chiaro invece di rigenerare il lockfile.
-          args: --locked
+          # M2.2 — FIX A3 (H9): il controllo "build riproducibile" è già
+          # garantito dallo step "Verify Cargo.lock" sopra, che esegue
+          # `cargo check --locked` PRIMA di questo step. Se il lockfile è
+          # out-of-sync, fallisce lì con un messaggio chiaro, NON qui.
+          #
+          # NON passare `args: --locked` a tauri-action: `--locked` è un
+          # flag di cargo, NON di tauri CLI. Tauri 2 CLI non lo supporta
+          # e lo rifiuta con "error: unexpected argument '--locked' found".
+          # `args` qui è per flag di tauri (es. --debug, --target, --bundles).
+          #
+          # Il build Tauri userà il Cargo.lock esistente (già verificato
+          # in sync dallo step sopra). Tauri-action invoca `cargo build`
+          # internamente: se Cargo.lock è già in sync (verificato), nessun
+          # auto-update del lockfile avviene comunque.
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
