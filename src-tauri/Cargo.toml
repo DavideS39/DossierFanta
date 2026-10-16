@@ -63,6 +63,17 @@ iroh-net = "0.13"
 iroh-gossip = "0.13"
 bytes = "1"
 
+# M3a.2 buildfix #3 — Pin schannel alla 0.1.29 (funzionante in M3a.1).
+# La patch release 0.1.30 di schannel (binding Rust per Schannel, il TLS
+# nativo di Windows) causa un panic runtime durante l'inizializzazione
+# statica di IrohState / YjsState (mutex poisoned) su alcuni sistemi
+# Windows. Sintomi nel binario: "the generated Tauri `Context` panicked
+# during creation" + "IrohState mutex poisoned" + "panic in a function
+# that cannot unwind".
+# Fissiamo esplicitamente alla 0.1.29 (versione usata in M3a.1, funzionante).
+# Il prefisso `=` forza Cargo a usare ESATTAMENTE questa versione anche se
+# altre crate (iroh-net, native-tls) ne richiederebbero una più recente.
+schannel = "=0.1.29"
 
 # B.9 — Fallback WebSocket LAN-only (insurance policy)
 # Attivato solo dietro feature flag `lan-only`. Quando attivo:
