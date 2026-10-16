@@ -1322,6 +1322,7 @@ dependencies = [
 name = "dossierfanta"
 version = "0.3.0"
 dependencies = [
+ "bytes",
  "chrono",
  "dirs 5.0.1",
  "futures-util",

@@ -37,10 +37,10 @@
 //!    frontend).
 //!  - 8: Niente fetch HTTP diretta dal frontend. Iroh è il transport.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 // M3a.2 — Import `Emitter` trait per `app.emit(...)` (come in players.rs:37).
 // Senza questo, i `let _ = app.emit(...)` a riga 434/444/453 (subscribe loop
@@ -793,7 +793,7 @@ pub fn save_scouting_note_from_sync(
     input: ScoutingNoteSyncInput,
 ) -> AppResult<i64> {
     // Recupera il db_id del player (necessario per filtrare)
-    let db_id = state.with_conn("", |conn| {
+    let db_id = state.with_conn("", |_conn| {
         // Empty db_id is wrong here — better: pass db_id via input.
         // For simplicity, we use the active db_id.
         let active = state.active_db_id()?;
