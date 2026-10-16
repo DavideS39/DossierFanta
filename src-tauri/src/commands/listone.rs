@@ -985,11 +985,11 @@ use std::path::PathBuf;
 
 /// Repository GitHub che ospita le release con players.json.
 /// Costante centralizzata — se il repo si sposta, cambiare qui.
-const DATA_REPO_OWNER: &str = "dossierfanta";
-const DATA_REPO_NAME: &str = "dossier-fanta-data";
+const DATA_REPO_OWNER: &str = "DavideS39";
+const DATA_REPO_NAME: &str = "DossierFanta-Data";
 
-/// User-agent obbligatorio per l'API GitHub (richiesta senza UA → 403).
-const HTTP_USER_AGENT: &str = "DossierFanta/0.3.0 (+https://github.com/dossierfanta)";
+const HTTP_USER_AGENT: &str = "DossierFanta/0.3.2 (+https://github.com/DavideS39/DossierFanta)";
+
 
 /// Endpoint API GitHub per l'ultima release pubblica.
 fn latest_release_api_url() -> String {
