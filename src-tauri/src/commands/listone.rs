@@ -102,13 +102,6 @@ pub struct ArchivedPlayer {
 /// Il JSON atteso è un array di oggetti con campi: name (obbligatorio),
 /// team, pos_fanta, fvm. Esempio:
 ///   [{"name":"Marcus Thuram","team":"Inter","pos_fanta":"A","fvm":32}, ...]
-#[tauri::command]
-pub fn import_listone(
-    state: State<'_, DbState>,
-    players_json: String,
-/// Il JSON atteso è un array di oggetti con campi: name (obbligatorio),
-/// team, pos_fanta, fvm. Esempio:
-///   [{"name":"Marcus Thuram","team":"Inter","pos_fanta":"A","fvm":32}, ...]
 ///
 /// M3a (B.7) — Conflict resolution auto-fetch vs sync-live.
 /// Timestamp ISO 8601 UTC del momento in cui il listone è stato
