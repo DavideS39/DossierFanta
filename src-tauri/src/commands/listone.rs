@@ -106,17 +106,25 @@ pub struct ArchivedPlayer {
 pub fn import_listone(
     state: State<'_, DbState>,
     players_json: String,
-    /// M3a (B.7) — Conflict resolution auto-fetch vs sync-live.
-    /// Timestamp ISO 8601 UTC del momento in cui il listone è stato
-    /// scaricato (ListoneData.scraped_at). Se fornito, prima di archiviare
-    /// un player viene verificato che `players.updated_at <= scraped_at`.
-    /// Se `updated_at > scraped_at`, il player NON viene archiviato
-    /// (qualcuno lo sta editando via sync-live o manualmente) e viene
-    /// emesso un warning in `error_messages`.
-    /// Se None, il check viene saltato (comportamento M3 pre-M3a).
+/// Il JSON atteso è un array di oggetti con campi: name (obbligatorio),
+/// team, pos_fanta, fvm. Esempio:
+///   [{"name":"Marcus Thuram","team":"Inter","pos_fanta":"A","fvm":32}, ...]
+///
+/// M3a (B.7) — Conflict resolution auto-fetch vs sync-live.
+/// Timestamp ISO 8601 UTC del momento in cui il listone è stato
+/// scaricato (ListoneData.scraped_at). Se fornito, prima di archiviare
+/// un player viene verificato che `players.updated_at <= scraped_at`.
+/// Se `updated_at > scraped_at`, il player NON viene archiviato
+/// (qualcuno lo sta editando via sync-live o manualmente) e viene
+/// emesso un warning in `error_messages`.
+/// Se None, il check viene saltato (comportamento M3 pre-M3a).
+#[tauri::command]
+pub fn import_listone(
+    state: State<'_, DbState>,
+    players_json: String,
     scraped_at: Option<String>,
 ) -> AppResult<ImportSummary> {
-    let entries: Vec<ListoneEntry> = serde_json::from_str(&players_json).map_err(|e| {
+        let entries: Vec<ListoneEntry> = serde_json::from_str(&players_json).map_err(|e| {
         AppError::Validation(format!(
             "JSON listone non valido: {}. Formato atteso: [{{\"name\":\"...\",\"team\":\"...\",\"pos_fanta\":\"A\",\"fvm\":32}}, ...]",
             e

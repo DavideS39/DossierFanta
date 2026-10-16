@@ -59,6 +59,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 yrs = "0.21"
 iroh = "0.13"
 iroh-base = "0.13"
+iroh-net = "0.13"
 iroh-gossip = "0.13"
 
 # B.9 — Fallback WebSocket LAN-only (insurance policy)
