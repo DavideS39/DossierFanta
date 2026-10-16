@@ -4,6 +4,7 @@ import { PlayerOSWindow } from "@/components/PlayerOSWindow";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { usePlayersStore } from "@/stores/usePlayersStore";
+import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
 import { api } from "@/api/tauri";
 // M2.2 — FIX A2 (F12): hook per sync live tra finestre. Quando il backend
 // emette `player-updated` (dopo save_scouting_note/save_auction_data/
@@ -74,6 +75,16 @@ export function App() {
         if (!osPlayerId) {
           await restoreFromLocalStorage();
           await Promise.all([refreshMeta(), refreshDbs()]);
+
+          // M3 — Auto-fetch listone all'avvio (Cap.7 design doc v2.5).
+          // Vincolo hard #12: NON auto-applicare. Mostra solo un toast se
+          // c'è un nuovo release disponibile. L'utente clicka per aprire la
+          // schermata Aggiornamenti e confermare (archiviazione irreversibile).
+          //
+          // Silent skip su errore di rete: se GitHub è irraggiungibile,
+          // nessun toast di errore — l'utente può forzare via schermata.
+          // Skip anche in finestra OS nativa (non ha senso notificare lì).
+          void checkListoneOnBoot();
         }
         if (!cancelled) setBooting(false);
       } catch (e) {
@@ -86,7 +97,40 @@ export function App() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshMeta, refreshDbs, restoreFromLocalStorage, osPlayerId]);
+
+  /**
+   * M3 — Auto-fetch check all'avvio.
+   *
+   * Passi:
+   *   1. check_latest_listone_version() → ritorna {tag, ...}
+   *   2. get_autofetch_status() → ritorna {last_applied_tag, ...}
+   *   3. Se tag !== last_applied_tag → setNotice("Aggiornamento listone disponibile…")
+   *   4. Se uguali → silent skip
+   *   5. Se rete/parse fallito → silent skip (nessun toast di errore)
+   */
+  async function checkListoneOnBoot() {
+    try {
+      const [latest, status] = await Promise.all([
+        api.checkLatestListoneVersion(),
+        api.getAutofetchStatus(),
+      ]);
+      if (!latest || !latest.tag) return;
+      if (status.last_applied_tag === latest.tag) {
+        // Già aggiornato — silent skip
+        return;
+      }
+      useAutoFetchStore.getState().setNotice(
+        `Aggiornamento listone disponibile: ${latest.tag}. Clicca per aprire la schermata Aggiornamenti.`,
+        latest.tag,
+      );
+    } catch (e) {
+      // Silent skip: l'app continua a funzionare offline.
+      // L'utente può usare la schermata Aggiornamenti per il fallback.
+      console.warn("[M3] checkListoneOnBoot skipped:", e);
+    }
+  }
 
   // M2.1 B5 — Se siamo in finestra OS nativa, renderizza PlayerOSWindow
   // dopo che il DB è inizializzato.
@@ -137,10 +181,10 @@ export function App() {
           }}
         />
         <div className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}>
-          DossierFanta v2.4 · M2.2
+          DossierFanta v2.5 · M3
         </div>
         <div className="text-xs mt-1" style={{ fontFamily: "var(--font-body)", color: "var(--ink-soft)" }}>
-          Inizializzazione DB locale + workspace multi-DB…
+          Inizializzazione DB locale + workspace multi-DB + auto-fetch listone…
         </div>
       </div>
     );

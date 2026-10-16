@@ -40,7 +40,7 @@
  *  - api.updatePlayer(input) per i campi base di players
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AuctionData,
   CreatePlayerInput,
@@ -54,6 +54,16 @@ import type {
 } from "@/types/player";
 import { FASCIA_VALUES, POS_FANTA_VALUES, STATUS_VALUES } from "@/types/player";
 import { api } from "@/api/tauri";
+// M3a.1 (PB4) — Per le mutazioni che devono propagarsi al sync live
+// (save_scouting_note, save_auction_data), usiamo lo store Zustand che
+// cabla il bridge Rust→Yjs DOPO il commit SQLite. Per assign_player e
+// le altre API read/UX usiamo ancora `api.*` direttamente.
+import { usePlayersStore } from "@/stores/usePlayersStore";
+// M3a.1 (Fix aggiuntivo A) — Cursori collaborativi per i textarea principali.
+// L'hook useYjsCursor sottoscrive i cursori remoti e fornisce handler
+// per onSelect/onBlur. LiveCursor renderizza il caret + label del peer.
+import { useYjsCursor } from "@/lib/sync/yjsCursors";
+import { LiveCursor } from "./LiveCursor";
 // M2.2 — FIX A2 (F12): sync live tra finestra OS e WM in-app. Quando il
 // backend emette `player-updated` per il player in edit, refreshiamo
 // auctionData + scoutingNotes + i campi base del form. Questo tiene
@@ -109,6 +119,14 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // M3a.1 (Fix aggiuntivo A) — Refs ai textarea collaborativi per i cursori live.
+  // `quick_note` (asta live) è il campo dove il collaborativo è più utile:
+  // più membri della lega commentano un player durante la chiamata.
+  const quickNoteRef = useRef<HTMLTextAreaElement>(null);
+  const quickNoteFieldId = player ? `players.${player.id}.quick_note` : "";
+  const { remoteCursors: quickNoteCursors, handleSelect: onQuickNoteSelect, handleBlur: onQuickNoteBlur } =
+    useYjsCursor({ field: quickNoteFieldId });
 
   // M2.1.1 — Dati asta e note scouting (fetchati quando player è passato)
   const [auctionData, setAuctionData] = useState<AuctionData | null>(null);
@@ -290,7 +308,10 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
         const inf = astaForm.infortuni || null;
         const fmax = astaForm.fmil_max.trim() ? parseInt(astaForm.fmil_max, 10) : null;
         const qn = astaForm.quick_note.trim() || null;
-        await api.saveAuctionData(player.id, tit, inf, fmax, qn);
+        // M3a.1 (PB4) — Passa per lo store Zustand: dopo il commit SQLite,
+        // viene invocato bridgeAuctionDataUpdate che propaga il dato al Y.Doc
+        // locale + Iroh broadcast ai peer remoti.
+        await usePlayersStore.getState().saveAuctionData(player.id, tit, inf, fmax, qn);
 
         // Se assignForm è compilato e diverso da auctionData.assigned_to, assegna
         if (assignForm.assigned_to.trim() && assignForm.fmil_paid.trim()) {
@@ -329,7 +350,9 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
     if (!player) return;
     if (!newNote.content.trim()) return;
     try {
-      await api.saveScoutingNote({
+      // M3a.1 (PB4) — saveScoutingNote via store Zustand per cablare il
+      // bridge Rust→Yjs (bridgeScoutingNoteAppend) DOPO il commit SQLite.
+      await usePlayersStore.getState().saveScoutingNote({
         player_id: player.id,
         kind: newNote.kind,
         label: newNote.label.trim() || null,
@@ -611,13 +634,28 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
                     <span style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-soft)", fontFamily: "var(--font-display)" }}>
                       nota rapida (asta live)
                     </span>
-                    <textarea
-                      value={astaForm.quick_note}
-                      onChange={(e) => setAstaForm((f) => ({ ...f, quick_note: e.target.value }))}
-                      className="tacc-input"
-                      style={{ fontSize: "0.8rem", minHeight: "3rem", resize: "vertical" }}
-                      placeholder="es. rigorista, brace di Thuram,stop rosa a 60 f₥"
-                    />
+                    {/* M3a.1 (Fix aggiuntivo A) — Wrapper relative per posizionare LiveCursor */}
+                    <div style={{ position: "relative" }}>
+                      <textarea
+                        ref={quickNoteRef}
+                        value={astaForm.quick_note}
+                        onChange={(e) => setAstaForm((f) => ({ ...f, quick_note: e.target.value }))}
+                        onSelect={onQuickNoteSelect}
+                        onBlur={onQuickNoteBlur}
+                        className="tacc-input"
+                        style={{ fontSize: "0.8rem", minHeight: "3rem", resize: "vertical" }}
+                        placeholder="es. rigorista, brace di Thuram,stop rosa a 60 f₥"
+                      />
+                      {/* Cursori collaborativi dei peer remoti attivi sullo stesso field */}
+                      {quickNoteCursors.map((c) => (
+                        <LiveCursor
+                          key={c.userId}
+                          cursor={c}
+                          fieldRef={quickNoteRef}
+                          fieldId={quickNoteFieldId}
+                        />
+                      ))}
+                    </div>
                   </label>
 
                   {/* Assegnazione (se già assegnato, mostra; altrimenti mini-form per assegnare) */}

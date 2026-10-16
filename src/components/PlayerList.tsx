@@ -17,7 +17,7 @@ interface Props {
  * Lista giocatori come griglia di card Taccuino (M2 redesign).
  * Stati gestiti: loading, error, empty, populated.
  *
- * Sostituito l'emoji 📓 M1 con glyph ▤ (righe quaderno).
+ * Sostituito l'emoji M1 con glyph ▤ (righe quaderno).
  *
  * M2: quando `includeArchive === true` nel playersStore, fetcha anche
  * gli archived e li mostra in fondo con badge ARCHIVIATO rosso sbiadito

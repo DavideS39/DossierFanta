@@ -1,11 +1,18 @@
 //! SQLite connection management + schema migration.
 //!
-//! Lo schema è `migrations/schema_v2.2.sql` (copiato pari pari dal file
-//! allegato). La migrazione è idempotente: controlla se la tabella `players`
-//! esiste già e se sì salta l'applicazione dello schema.
+//! Schema versioning:
+//!  - v2.2 (M2): `migrations/schema_v2.2.sql` — schema base.
+//!  - v2.3 (M3a): `migrations/schema_v2.3.sql` — estensione additive per
+//!    sync-live (CRDT). ALTER TABLE additive + nuova tabella `sync_peers`.
 //!
-//! In M2 aggiungiamo `open_db_file` e `clone_conn`: helper per aprire
-//! ulteriori connessioni allo stesso file (multi-DB workspace logico).
+//! M3a (B.1) — Migrazione tracciata via `PRAGMA user_version`:
+//!  - 0 (never migrated) → applica v2.2 + v2.3, set user_version=3
+//!  - <3 (DB pre-v2.3) → applica v2.3 (ALTER additive + sync_peers), set user_version=3
+//!  - >=3 (v2.3 già applicato) → skip
+//!
+//! Lo schema v2.2 è idempotente via check esistenza tabella `players`.
+//! Lo schema v2.3 è idempotente via `PRAGMA table_info` check su ogni ALTER
+//! + `CREATE TABLE IF NOT EXISTS` per `sync_peers`.
 
 use rusqlite::{Connection, Error as SqlError};
 use std::path::{Path, PathBuf};
@@ -13,11 +20,21 @@ use std::path::{Path, PathBuf};
 /// Schema SQL v2.2 embedded nel binario (nessun file esterno a runtime).
 const SCHEMA_V2_2: &str = include_str!("../migrations/schema_v2.2.sql");
 
+/// Schema SQL v2.3 (estensione additive per sync-live M3a).
+/// Contiene SOLO la CREATE TABLE IF NOT EXISTS sync_peers. Gli ALTER
+/// additive sono gestiti in Rust da `migrate_v22_to_v23` per idempotenza.
+const SCHEMA_V2_3: &str = include_str!("../migrations/schema_v2.3.sql");
+
+/// Versione schema target. v3 = v2.3 (estensione sync-live di v2.2).
+const SCHEMA_VERSION_TARGET: i32 = 3;
+
 /// Apre la connessione a `mio.db` (lo crea se non esiste) e applica lo
-/// schema v2.2 se è la prima esecuzione.
+/// schema v2.2 se è la prima esecuzione, poi la migrazione v2.3 se
+/// `PRAGMA user_version` < 3.
 ///
-/// Idempotente: se la tabella `players` esiste già, lo schema non viene
-/// ri-eseguito (evita errori su CREATE TABLE su tabelle già esistenti).
+/// Idempotente: se la tabella `players` esiste già, lo schema v2.2 non
+/// viene ri-eseguito. La migrazione v2.3 è idempotente via check
+/// `PRAGMA table_info` su ogni ALTER.
 pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
     let conn = Connection::open(db_path)?;
 
@@ -41,11 +58,110 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         log::info!("Applying DossierFanta schema v2.2 (first run)...");
         conn.execute_batch(SCHEMA_V2_2)?;
         log::info!("Schema v2.2 applied successfully.");
+        // Su DB nuovo, applica subito anche v2.3 (sync_peers + ALTER additive).
+        log::info!("Applying DossierFanta schema v2.3 (sync-live extension)...");
+        conn.execute_batch(SCHEMA_V2_3)?;
+        migrate_v22_to_v23(&conn)?;
+        set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
+        log::info!("Schema v2.3 applied. user_version={}.", SCHEMA_VERSION_TARGET);
     } else {
-        log::debug!("Schema v2.2 already applied, skipping migration.");
+        let current = get_user_version(&conn);
+        log::debug!(
+            "Schema v2.2 already applied. user_version={} (target={}).",
+            current,
+            SCHEMA_VERSION_TARGET
+        );
+        if current < SCHEMA_VERSION_TARGET {
+            log::info!(
+                "Migrating DB from user_version={} to {} (v2.3 sync-live)...",
+                current,
+                SCHEMA_VERSION_TARGET
+            );
+            // Applica v2.3 (CREATE TABLE IF NOT EXISTS sync_peers + commenti)
+            conn.execute_batch(SCHEMA_V2_3)?;
+            // Applica gli ALTER additive (idempotenti via PRAGMA table_info)
+            migrate_v22_to_v23(&conn)?;
+            set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
+            log::info!("Migration to v2.3 complete. user_version={}.", SCHEMA_VERSION_TARGET);
+        } else {
+            log::debug!("DB already at v2.3, skipping migration.");
+        }
     }
 
     Ok(conn)
+}
+
+/// Restituisce `PRAGMA user_version` (0 se mai settato).
+fn get_user_version(conn: &Connection) -> i32 {
+    conn.query_row("SELECT user_version FROM pragma_user_version", [], |r| {
+        r.get::<_, i32>(0)
+    })
+    .unwrap_or(0)
+}
+
+/// Setta `PRAGMA user_version` (solo verso il basso non consentito da SQLite).
+fn set_user_version(conn: &Connection, version: i32) -> Result<(), SqlError> {
+    conn.pragma_update(None, "user_version", version)
+}
+
+/// Migrazione v2.2 → v2.3: aggiunge colonne sync-live a players,
+/// scouting_notes, auction_data. Idempotente via check su `PRAGMA
+/// table_info(table)` per ogni colonna.
+///
+/// Vincoli HARD: ALTER additive solo (default NULL, no drop, no rename,
+/// no type change). La tabella `players_archive` NON viene estesa.
+fn migrate_v22_to_v23(conn: &Connection) -> Result<(), SqlError> {
+    // Definizione (table, column) da aggiungere se mancante.
+    let alters: &[(&str, &str)] = &[
+        // players: campi sync-live
+        ("players", "last_sync_at"),
+        ("players", "sync_node_id"),
+        // scouting_notes: campi sync-live
+        ("scouting_notes", "last_sync_at"),
+        ("scouting_notes", "sync_node_id"),
+        // auction_data: campi sync-live
+        ("auction_data", "last_sync_at"),
+        ("auction_data", "sync_node_id"),
+    ];
+
+    for (table, column) in alters {
+        if !has_column(conn, table, column)? {
+            let sql = format!(
+                "ALTER TABLE {} ADD COLUMN {} TEXT;",
+                table, column
+            );
+            log::info!("MIGRATE v2.3: ALTER TABLE {} ADD COLUMN {}", table, column);
+            conn.execute(&sql, [])?;
+        } else {
+            log::debug!(
+                "MIGRATE v2.3: skip ALTER {} ADD {} (già presente)",
+                table,
+                column
+            );
+        }
+    }
+    Ok(())
+}
+
+/// True se la colonna `column` esiste già nella tabella `table`.
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, SqlError> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&sql)?;
+    let exists = stmt.exists([&column.to_string()])?;
+    // PRAGMA table_info ritorna righe (cid, name, type, notnull, dflt, pk).
+    // Filtra per name == column.
+    let mut has = false;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+    for row in rows {
+        if let Ok(name) = row {
+            if name == column {
+                has = true;
+                break;
+            }
+        }
+    }
+    let _ = exists; // exists non affidabile per name match, usiamo has
+    Ok(has)
 }
 
 /// Apre una nuova connessione a un file SQLite esistente (M2 helper per

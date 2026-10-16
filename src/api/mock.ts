@@ -15,12 +15,15 @@
 import type {
   ArchivedPlayer,
   AuctionData,
+  AutoFetchStatus,
   CreatePlayerInput,
   DatabaseMeta,
   DbInfo,
   ImportPreview,
   ImportSummary,
   ListFilters,
+  ListoneData,
+  ListoneVersionInfo,
   Player,
   SaveScoutingNoteInput,
   ScoutingNote,
@@ -492,6 +495,183 @@ export const mockApi = {
     return () => {
       /* no-op in mock mode */
     };
+  },
+
+  // ===== M3 — Auto-fetch listone (mock in-memory per anteprima web) =====
+  // Simula le 5 funzioni M3 con dati demo. Niente rete vera in browser:
+  // gli sviluppatori possono provare la UI Aggiornamenti senza build Tauri.
+
+  async checkLatestListoneVersion(): Promise<ListoneVersionInfo> {
+    await delay(200);
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      tag: `data-${today}-mocked1234`,
+      name: `Listone Serie A ${today} (mock)`,
+      published_at: `${today}T01:00:00Z`,
+      asset_url: "https://mock.dossierfanta.invalid/releases/latest/players.json",
+      asset_size_bytes: 524288,
+      has_players_json: true,
+    };
+  },
+
+  async downloadListone(_assetUrl: string, tag: string): Promise<ListoneData> {
+    await delay(400);
+    // Genera 500 giocatori mock da 20 squadre per popolare la UI Aggiornamenti
+    const teams = [
+      "Inter", "Juventus", "Milan", "Napoli", "Roma", "Atalanta", "Bologna",
+      "Lazio", "Fiorentina", "Torino", "Monza", "Udinese", "Genoa", "Sassuolo",
+      "Verona", "Cagliari", "Lecce", "Empoli", "Frosinone", "Hellas Verona",
+    ];
+    const firstNames = [
+      "Marco", "Lorenzo", "Federico", "Alessandro", "Davide", "Giovanni",
+      "Mattia", "Andrea", "Nicolo", "Riccardo", "Tommaso", "Luca", "Edoardo",
+      "Francesco", "Antonio", "Stefano", "Simone", "Paolo", "Domenico", "Pietro",
+    ];
+    const lastNames = [
+      "Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo",
+      "Ricci", "Marino", "Greco", "Bruno", "Gallo", "Conti", "De Luca",
+      "Costa", "Mancini", "Rizzo", "Lombardi", "Moretti", "Barbieri",
+    ];
+    const roles = ["P", "D", "C", "A"] as const;
+    const entries = Array.from({ length: 25 }, (_, i) => {
+      const team = teams[i % teams.length];
+      const firstName = firstNames[i % firstNames.length];
+      const lastName = lastNames[(i * 3) % lastNames.length];
+      const r = roles[i % roles.length];
+      return {
+        name: `${firstName} ${lastName}`,
+        team,
+        pos_fanta: r,
+        fvm: 8 + ((i * 7) % 35),
+      };
+    });
+    return {
+      tag,
+      version: new Date().toISOString().slice(0, 10),
+      scraped_at: new Date().toISOString(),
+      entries,
+      from_fallback: false,
+    };
+  },
+
+  async applyAutoFetch(listoneData: ListoneData): Promise<ImportSummary> {
+    await delay(300);
+    // Mock:Conta entries che matchano giocatori esistenti nel mock DB
+    let created = 0;
+    let updated = 0;
+    for (const e of listoneData.entries) {
+      const existing = players.some((p) => p.name.toLowerCase() === e.name.toLowerCase());
+      if (existing) updated++;
+      else created++;
+    }
+    return {
+      created,
+      updated,
+      archived: 0,
+      restored: 0,
+      errors: 0,
+      total_listone: listoneData.entries.length,
+      active_db_id: activeDbId,
+      active_db_name: databases.find((d) => d.id === activeDbId)!.name,
+      error_messages: [],
+    };
+  },
+
+  async scrapeListoneInline(): Promise<ListoneData> {
+    await delay(1500); // simula i 10-15s dello scraper inline
+    const today = new Date().toISOString().slice(0, 10);
+    // Genera 5 giocatori mock per smoke test (il fallback non dovrebbe mai
+    // essere usato in mock mode perché GitHub è sempre "raggiungibile")
+    return {
+      tag: `fallback-${today}`,
+      version: today,
+      scraped_at: new Date().toISOString(),
+      entries: [
+        { name: "Test Fallback 1", team: "Inter", pos_fanta: "A", fvm: 25 },
+        { name: "Test Fallback 2", team: "Juventus", pos_fanta: "C", fvm: 18 },
+        { name: "Test Fallback 3", team: "Milan", pos_fanta: "D", fvm: 14 },
+      ],
+      from_fallback: true,
+    };
+  },
+
+  async getAutofetchStatus(): Promise<AutoFetchStatus> {
+    await delay(50);
+    return {
+      last_applied_tag: "",
+      cache_path: "/mock/cache/listone.json",
+      update_log: [],
+    };
+  },
+
+  // ===== M3a — Stub mock per i comandi sync live (anteprima web dev-only) =====
+  // M3a.1 (verifica TS) — Aggiunti stub per tutti i comandi M3a (yjs_*, iroh_*,
+  // save_*_from_sync) + M3a.1 (lan_*) così tsc --noEmit è pulito anche in
+  // anteprima web. In produzione Tauri usa tauriApi che ha i comandi reali.
+
+  // B.3 — yrs core
+  async yjsApplyUpdate(_updateBytes: Uint8Array): Promise<boolean> {
+    return true;
+  },
+  async yjsGetStateVector(): Promise<Uint8Array> {
+    return new Uint8Array(0);
+  },
+  async yjsGetDiff(_stateVector: Uint8Array): Promise<Uint8Array> {
+    return new Uint8Array(0);
+  },
+
+  // B.4 — Iroh p2p transport
+  async irohStartNode(): Promise<string> {
+    return "mock-peer-key-1234567890abcdef";
+  },
+  async irohGetPeerKey(): Promise<string> {
+    return "mock-peer-key-1234567890abcdef";
+  },
+  async irohConnectByPeerKey(_peerKey: string): Promise<boolean> {
+    return true;
+  },
+  async irohBroadcastUpdate(_updateBytes: Uint8Array): Promise<void> {
+    // no-op in mock
+  },
+  async irohSubscribeUpdates(): Promise<void> {
+    // no-op in mock — subscribe loop non avviato in anteprima web
+  },
+  async irohGetConnectedPeers(): Promise<string[]> {
+    return [];
+  },
+  async irohDisconnectPeer(_peerKey: string): Promise<void> {
+    // no-op
+  },
+
+  // B.8 — save_*_from_sync (con marker updated_by='sync-live')
+  async savePlayerFromSync(_input: unknown): Promise<void> {
+    // no-op in mock — anteprima web non replica sync
+  },
+  async saveScoutingNoteFromSync(_input: unknown): Promise<number> {
+    return 0;
+  },
+  async saveAuctionDataFromSync(_input: unknown): Promise<void> {
+    // no-op
+  },
+
+  // M3a B.9 — Fallback WebSocket LAN-only (stub, mai attivo in anteprima)
+  async lanStartServer(_addr: string): Promise<string> {
+    return "127.0.0.1:0";
+  },
+  async lanConnect(_addr: string): Promise<boolean> {
+    return false;
+  },
+  async lanBroadcastUpdate(_updateBytes: Uint8Array): Promise<void> {
+    // no-op
+  },
+  async lanGetConnectedPeers(): Promise<string[]> {
+    return [];
+  },
+  async lanDisconnectPeer(_peerKey: string): Promise<void> {
+    // no-op
+  },
+  async lanDiscoverPeers(_timeoutMs?: number): Promise<string[]> {
+    return [];
   },
 };
 

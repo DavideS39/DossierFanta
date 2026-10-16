@@ -1,7 +1,7 @@
 [package]
 name = "dossierfanta"
-version = "0.2.5"
-description = "DossierFanta v2.4 — Taccuino di progettazione fantacalcio (M2.2 sprint zero M3)"
+version = "0.3.0"
+description = "DossierFanta v2.5 — M3 auto-fetch listone Serie A via GitHub Actions + M3a sync live Yjs+Iroh"
 authors = ["DossierFanta"]
 edition = "2021"
 rust-version = "1.77"
@@ -26,6 +26,52 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 log = "0.4"
 dirs = "5"
+# M3 — Auto-fetch listone via GitHub Releases + fallback inline scraper
+# (design doc DossierFanta v2.5, Cap.7).
+# - reqwest: client HTTP per api.github.com/releases/latest + download players.json
+#   (feature "json" per deserializzare JSON response, "stream" per download
+#   progressivo di file fino a 2 MB).
+# - futures-util: StreamExt per consumare il body streaming di reqwest.
+# - scraper: parsing HTML (CSS selector) per il fallback inline che scarica
+#   direttamente fantacalcio.it se GitHub è irraggiungibile. Mantiene gli
+#   stessi selettori del parser Python in dossier-fanta-data/scraper.
+# - tokio: runtime async (richiesto da reqwest streaming + Iroh). Tauri 2 include
+#   già tokio ma lo rendiamo esplicito per chiarezza.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
+futures-util = "0.3"
+scraper = "0.20"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# M3a — Sync live CRDT P2P (design doc Cap.5):
+# - yrs: stato CRDT authoritativo lato Rust. Mirror di Yjs frontend.
+#   Permette validation server-side degli update, merge di updates offline,
+#   snapshot Yjs per sync iniziale veloce.
+# - iroh: P2P transport con NAT traversal automatico + fallback relay.
+#   Gossip protocol per broadcast updates a tutti i peer connessi.
+# - iroh-gossip: subscription + broadcast di messaggi binari su un topic
+#   condiviso. M3a.1 (PB2 fix) — sostituisce i placeholder
+#   `std::future::pending` in `iroh_subscribe_updates` con un subscribe loop
+#   reale. Versione allineata a `iroh` 0.13 (iroh-gossip ha versioning
+#   indipendente: 0.13 → usa `iroh-net` 0.13, che è la sotto-crate di rete
+#   di iroh 0.13). La feature `tokio` di iroh è stata rimossa in 0.13
+#   (tokio è ora l'unico runtime supportato).
+#   (Cargo.lock aggiornato e committato come da vincolo H9 M2.2)
+yrs = "0.21"
+iroh = "0.13"
+iroh-base = "0.13"
+iroh-gossip = "0.13"
+
+# B.9 — Fallback WebSocket LAN-only (insurance policy)
+# Attivato solo dietro feature flag `lan-only`. Quando attivo:
+#  - Iroh non viene inizializzato
+#  - Sync via WebSocket su LAN (ws://192.168.x.x:port)
+#  - Discovery via mDNS (service "_dossierfanta._tcp.local.")
+# Il flag è documentato ma NON attivato di default. Si attiva solo se
+# Iroh presenta bug in production.
+tokio-tungstenite = { version = "0.24", optional = true }
+# M3a.1 (Fix aggiuntivo B) — mDNS discovery per trovare automaticamente
+# i peer DossierFanta sulla stessa LAN quando il flag `lan-only` è attivo.
+mdns-sd = { version = "0.11", optional = true }
 
 [features]
 # By default Tauri runs in production mode (no devtools)
@@ -33,6 +79,13 @@ default = []
 
 # Enable devtools in debug builds via `tauri dev`
 custom-protocol = ["tauri/custom-protocol"]
+
+# B.9 — Fallback WebSocket LAN-only (insurance policy)
+# Attivare con: cargo build --features lan-only
+# Quando attivo: Iroh non viene inizializzato, sync via WebSocket LAN,
+# discovery automatico dei peer via mDNS.
+# Perde p2p a distanza, mantiene sync live in casa.
+lan-only = ["dep:tokio-tungstenite", "dep:mdns-sd"]
 
 [profile.release]
 opt-level = "s"   # Optimize for size for the .msi bundle

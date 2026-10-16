@@ -156,16 +156,16 @@ export function DatabaseManager({ onClose }: Props) {
             i suoi giocatori (operazione irreversibile).
           </p>
 
-          {/* M2.1 B6 — Banner informativo sharing DB = M3a */}
+          {/* M2.1 B6 — Banner informativo sharing DB = M3a (M3a.1: stato attivo) */}
           {!bannerDismissed && (
             <div className="tacc-info-banner" role="status">
               <span aria-hidden style={{ color: "var(--blue)", fontWeight: "bold" }}>ℹ</span>
               <span>
-                <strong>Condivisione live DB in arrivo con M3a.</strong>{" "}
-                La condivisione live dei database tra dispositivi è disponibile nella milestone{" "}
-                <strong>M3a</strong> (sync Iroh p2p + Yjs). In <strong>M2.1</strong> i DB sono
-                locali: puoi crearli, switcharli, eliminarli, ma non sincronizzarli con
-                altri dispositivi. Tutte le modifiche restano sul tuo computer.
+                <strong>Condivisione live DB attiva con M3a.</strong>{" "}
+                Per pairing, apri la schermata <strong>Sync</strong> dal masthead di
+                Rosa, avvia il nodo Iroh e scambia la peer key out-of-band. Il sync
+                live (Yjs + Iroh p2p) propaga le modifiche ai giocatori, alle note di
+                scouting e ai dati d'asta a tutti i peer connessi entro ~200ms.
               </span>
               <button
                 type="button"

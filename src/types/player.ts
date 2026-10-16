@@ -262,3 +262,65 @@ export interface ScoutingNote {
   source: string | null;
   created_at: string | null;
 }
+
+// ----------------------------------------------------------------------
+// M3 — Auto-fetch listone via GitHub Releases (Cap.7 design doc v2.5)
+// ----------------------------------------------------------------------
+
+/**
+ * Metadati dell'ultima release del repo dossier-fanta-data.
+ * Ritornato da `check_latest_listone_version`. NON contiene il file,
+ * solo l'URL da passare a `download_listone`.
+ */
+export interface ListoneVersionInfo {
+  tag: string;
+  name: string;
+  published_at: string;
+  /** URL pubblico per il download diretto del file players.json. */
+  asset_url: string;
+  /** Dimensione in bytes del file (per progress UI). */
+  asset_size_bytes: number;
+  /** True se la release ha un asset "players.json" (sanity check). */
+  has_players_json: boolean;
+}
+
+/**
+ * Rappresentazione del file players.json scaricato dal repo dossier-fanta-data
+ * (o generato dal fallback inline scraper).
+ */
+export interface ListoneData {
+  /** Tag della release da cui deriva questo dato (per cache + skip). */
+  tag: string;
+  /** Versione (YYYY-MM-DD dal JSON source). */
+  version: string;
+  /** Timestamp ISO UTC di scraping. */
+  scraped_at: string;
+  /** Lista giocatori nel formato atteso da import_listone. */
+  entries: ListoneEntry[];
+  /** True se il dato deriva dal fallback inline scraper (per UI badge). */
+  from_fallback: boolean;
+}
+
+/** Voce del log storico aggiornamenti (ultimi 5). */
+export interface UpdateLogEntry {
+  /** Timestamp ISO UTC dell'apply. */
+  applied_at: string;
+  /** Tag della release applicata. */
+  tag: string;
+  /** Sorgente: "github" se dalla release, "fallback" se scraper inline. */
+  source: string;
+  created: number;
+  archived: number;
+  updated: number;
+  restored: number;
+}
+
+/** Stato dell'auto-fetch per la UI Aggiornamenti. */
+export interface AutoFetchStatus {
+  /** Tag dell'ultimo release applicato (vuoto se mai applicato). */
+  last_applied_tag: string;
+  /** Path del file cache locale (per debugging UI). */
+  cache_path: string;
+  /** Ultime 5 entry di aggiornamento. */
+  update_log: UpdateLogEntry[];
+}

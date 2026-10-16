@@ -8,11 +8,14 @@ import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { DatabaseManager } from "@/components/DatabaseManager";
 import { ImportListone } from "@/components/ImportListone";
 import { ArchiveView } from "@/components/ArchiveView";
+import { AggiornamentiView } from "@/components/AggiornamentiView";
+import { SyncView } from "@/components/SyncView";
 import { WindowManager } from "@/components/WindowManager";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
+import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
 import { api, isDesktop } from "@/api/tauri";
 import type { CreatePlayerInput, Player, Status, UpdatePlayerInput } from "@/types/player";
 
@@ -21,7 +24,7 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; player: Player };
 
-type ModalState = "none" | "databases" | "import" | "archive";
+type ModalState = "none" | "databases" | "import" | "archive" | "aggiornamenti" | "sync";
 
 /**
  * Vista principale M2.1: Rosa (multi-DB + archiviazione + design taccuino
@@ -67,6 +70,10 @@ export function RosaView() {
   const [modal, setModal] = useState<ModalState>("none");
   // v2.3.2 — toast cartaceo per messaggi non bloccanti (es. detach OS in web)
   const [toast, setToast] = useState<string | null>(null);
+  // M3 — toast notifica "aggiornamento disponibile" triggerato da App.tsx
+  // all'avvio se checkLatestListoneVersion rileva un tag nuovo.
+  const updateNotice = useAutoFetchStore((s) => s.notice);
+  const clearUpdateNotice = useAutoFetchStore((s) => s.clearNotice);
 
   useEffect(() => {
     if (!toast) return;
@@ -244,9 +251,9 @@ export function RosaView() {
           </span>
           <div>
             <h1 className="df-title">
-              DossierFanta <span className="df-ver">v2.4 · M2.2</span>
+              DossierFanta <span className="df-ver">v2.5 · M3</span>
             </h1>
-            <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido</p>
+            <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido · auto-fetch</p>
           </div>
           {!isDesktop && (
             <span className="df-mockbadge" title="Stai vedendo l'app nel browser con dati dimostrativi in-memory. Nell'app desktop i dati vivono in SQLite locale.">
@@ -275,6 +282,24 @@ export function RosaView() {
             title="Import listone Serie A (anteprima diff + archiviazione automatica)"
           >
             ⚑ Import listone
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setModal("aggiornamenti")}
+            className="df-btn df-btn--accent"
+            title="Aggiornamenti listone auto-fetch via GitHub Releases"
+          >
+            ⟳ Aggiornamenti
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setModal("sync")}
+            className="df-btn"
+            title="Sync live CRDT P2P (Yjs + Iroh) — pairing, stato peer, cursori collaborativi"
+          >
+            ⚯ Sync
           </button>
 
           <button
@@ -367,7 +392,7 @@ export function RosaView() {
           <strong>⇄</strong> toggle stato · <strong>T</strong> shortcut
         </span>
         <span className="ml-auto text-ink-soft/60">
-          offline · SQLite locale · WAL mode · M2.2
+          offline · SQLite locale · WAL mode · M3
         </span>
       </footer>
 
@@ -380,6 +405,32 @@ export function RosaView() {
             onClick={() => setToast(null)}
             style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-soft)", fontFamily: "var(--font-display)" }}
             aria-label="Chiudi messaggio"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* M3 — Toast notifica "aggiornamento disponibile" (auto-fetch all'avvio).
+          L'utente clicka per aprire la schermata Aggiornamenti e confermare.
+          Vincolo hard #12: NON auto-applicare, l'archiviazione è irreversibile. */}
+      {updateNotice && modal !== "aggiornamenti" && (
+        <div
+          className="df-toast df-toast--accent"
+          role="status"
+          style={{ cursor: "pointer", borderColor: "var(--amber)" }}
+          onClick={() => setModal("aggiornamenti")}
+          title="Clicca per aprire la schermata Aggiornamenti"
+        >
+          ⟳ {updateNotice}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              clearUpdateNotice();
+            }}
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-soft)", fontFamily: "var(--font-display)", marginLeft: "0.5rem" }}
+            aria-label="Chiudi notifica aggiornamento"
           >
             ✕
           </button>
@@ -421,6 +472,63 @@ export function RosaView() {
             void refreshMeta();
           }}
         />
+      )}
+      {modal === "aggiornamenti" && (
+        <AggiornamentiView
+          onClose={() => setModal("none")}
+          onApplied={() => {
+            // Dopo l'apply, pulisce il toast notifica (se presente) e refresha
+            // la lista + i meta (conteggi Rosa)
+            clearUpdateNotice();
+            void refresh();
+            void refreshMeta();
+          }}
+        />
+      )}
+      {modal === "sync" && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sync live"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(20, 30, 50, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setModal("none");
+          }}
+        >
+          <div style={{ position: "relative", maxWidth: "90vw" }}>
+            <button
+              type="button"
+              onClick={() => setModal("none")}
+              aria-label="Chiudi"
+              style={{
+                position: "absolute",
+                top: "-12px",
+                right: "-12px",
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                background: "#2C4A6B",
+                color: "#FFFFFF",
+                border: "2px solid #F7F3E8",
+                cursor: "pointer",
+                fontSize: "14px",
+                lineHeight: 1,
+                zIndex: 51,
+              }}
+            >
+              ×
+            </button>
+            <SyncView />
+          </div>
+        </div>
       )}
     </div>
   );

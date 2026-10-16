@@ -17,18 +17,27 @@ import { mockApi } from "./mock";
 import type {
   ArchivedPlayer,
   AuctionData,
+  AutoFetchStatus,
   CreatePlayerInput,
   DatabaseMeta,
   DbInfo,
   ImportPreview,
   ImportSummary,
   ListFilters,
+  ListoneData,
+  ListoneVersionInfo,
   Player,
   SaveScoutingNoteInput,
   ScoutingNote,
   Status,
   UpdatePlayerInput,
 } from "@/types/player";
+// M3a — Tipi sync_* mirror Rust (src-tauri/src/commands/sync.rs)
+import type {
+  AuctionDataSyncInput,
+  PlayerSyncInput,
+  ScoutingNoteSyncInput,
+} from "@/types/sync";
 
 export const tauriApi = {
   // ===== database (M1) =====
@@ -99,10 +108,16 @@ export const tauriApi = {
    * Importa un listone Serie A (JSON string) e applica la logica di
    * archiviazione automatica. Vedi backend commands/listone.rs per il
    * flusso completo (create/update/archive/restore).
+   *
+   * M3a.1 (PB1 fix) — `scrapedAt` opzionale attiva la conflict resolution
+   * auto-fetch vs sync-live (B.7): se un player ha `updated_at > scraped_at`
+   * NON viene archiviato e un warning viene aggiunto a `error_messages`.
+   * Passare `scrapedAt` dal ListoneData.scraped_at quando disponibile.
    */
-  importListone: (playersJson: string) =>
+  importListone: (playersJson: string, scrapedAt?: string) =>
     invoke<ImportSummary>("import_listone", {
       playersJson,
+      scrapedAt: scrapedAt ?? null,
     }),
 
   /** Elenca giocatori archiviati (M2 API tipata). */
@@ -224,6 +239,150 @@ export const tauriApi = {
    */
   onPlayerUpdated: (callback: (id: string) => void): Promise<UnlistenFn> =>
     listen<{ id: string }>("player-updated", (e) => callback(e.payload.id)),
+
+  // ===== M3 — Auto-fetch listone via GitHub Releases + fallback inline (Cap.7) =====
+
+  /**
+   * Interroga GitHub API per i metadati dell'ultima release del repo
+   * dossier-fanta-data. NON scarica il file — ritorna tag/name/url/size.
+   * Da usare all'avvio (App.tsx) + nella schermata Aggiornamenti.
+   * Silenzioso su errore di rete (l'app continua a funzionare offline).
+   */
+  checkLatestListoneVersion: () =>
+    invoke<ListoneVersionInfo>("check_latest_listone_version"),
+
+  /**
+   * Scarica il players.json dall'asset URL di una release GitHub.
+   * Salva in cache locale (app data dir). Ritorna ListoneData già parsato.
+   * Da chiamare dopo checkLatestListoneVersion con asset_url + tag.
+   */
+  downloadListone: (assetUrl: string, tag: string) =>
+    invoke<ListoneData>("download_listone", { assetUrl, tag }),
+
+  /**
+   * Applica un ListoneData al DB attivo. Riusa la logica di import_listone:
+   * Fase 1 match + Fase 2 archive + Fase 3 create + Fase 4 update fvm
+   * con marker updated_by='auto-fetch'. Salva tag in cache/last_applied_tag.txt
+   * + aggiunge entry al log storico (ultimi 5).
+   * Il frontend DEVE aver mostrato anteprima diff (previewImportListone)
+   * prima di chiamare questo comando — l'archiviazione è irreversibile.
+   */
+  applyAutoFetch: (listoneData: ListoneData) =>
+    invoke<ImportSummary>("apply_auto_fetch", { listoneData }),
+
+  /**
+   * FALLBACK se GitHub è irraggiungibile. Scraper Rust embedded che scarica
+   * fantacalcio.it e applica gli stessi selettori del parser Python in
+   * dossier-fanta-data/scraper/scrape_fantacalcio.py. ~10-15 secondi.
+   * Ritorna ListoneData con from_fallback=true.
+   */
+  scrapeListoneInline: () =>
+    invoke<ListoneData>("scrape_listone_inline"),
+
+  /**
+   * Ritorna lo stato corrente dell'auto-fetch: tag applicato (se in cache),
+   * lista degli ultimi 5 aggiornamenti. NON fa chiamate di rete —
+   * è una lettura cache locale. Da usare per popolare la schermata Aggiornamenti.
+   */
+  getAutofetchStatus: () =>
+    invoke<AutoFetchStatus>("get_autofetch_status"),
+
+  // ====================================================================
+  // M3a — Sync live CRDT P2P (Yjs + Iroh). Design doc Cap.5.
+  // Tutti i comandi sync_* esposti da src-tauri/src/commands/sync.rs.
+  // ====================================================================
+
+  // --- B.3 yrs core ---
+
+  /** Applica un update Yjs ricevuto da peer remoto (formato binary v1). */
+  yjsApplyUpdate: (update: Uint8Array) =>
+    invoke<boolean>("yjs_apply_update", {
+      updateBytes: Array.from(update),
+    }),
+
+  /** Ritorna lo state vector del Doc yrs corrente (per sync iniziale). */
+  yjsGetStateVector: () =>
+    invoke<number[]>("yjs_get_state_vector").then((arr) => new Uint8Array(arr)),
+
+  /** Calcola il diff tra lo state vector del chiamante e lo stato corrente. */
+  yjsGetDiff: (stateVector: Uint8Array) =>
+    invoke<number[]>("yjs_get_diff", {
+      stateVector: Array.from(stateVector),
+    }).then((arr) => new Uint8Array(arr)),
+
+  // --- B.4 Iroh p2p transport ---
+
+  /** Avvia il nodo Iroh e ritorna la peer key (NodeId base32). */
+  irohStartNode: () =>
+    invoke<string>("iroh_start_node"),
+
+  /** Ritorna la peer key corrente. Errore se nodo non avviato. */
+  irohGetPeerKey: () =>
+    invoke<string>("iroh_get_peer_key"),
+
+  /** Connette a un peer remoto via peer key. NAT traversal automatico. */
+  irohConnectByPeerKey: (peerKey: string) =>
+    invoke<boolean>("iroh_connect_by_peer_key", { peerKey }),
+
+  /** Broadcast un update Yjs a tutti i peer connessi via gossip. */
+  irohBroadcastUpdate: (update: Uint8Array) =>
+    invoke<void>("iroh_broadcast_update", {
+      updateBytes: Array.from(update),
+    }),
+
+  /** Sottoscrive updates ricevuti da peer remoti (avvia task di background). */
+  irohSubscribeUpdates: () =>
+    invoke<void>("iroh_subscribe_updates"),
+
+  /** Lista dei peer attualmente connessi. */
+  irohGetConnectedPeers: () =>
+    invoke<string[]>("iroh_get_connected_peers"),
+
+  /** Disconnette un peer (rimosso dalla lista connessi). */
+  irohDisconnectPeer: (peerKey: string) =>
+    invoke<void>("iroh_disconnect_peer", { peerKey }),
+
+  // --- B.8 save_*_from_sync (con updated_by='sync-live' lato Rust) ---
+
+  /** Persiste un player ricevuto dal sync CRDT. */
+  savePlayerFromSync: (input: PlayerSyncInput) =>
+    invoke<void>("save_player_from_sync", { input }),
+
+  /** Persiste una scouting note ricevuta dal sync CRDT. */
+  saveScoutingNoteFromSync: (input: ScoutingNoteSyncInput) =>
+    invoke<number>("save_scouting_note_from_sync", { input }),
+
+  /** Persiste auction_data ricevuta dal sync CRDT (UPSERT). */
+  saveAuctionDataFromSync: (input: AuctionDataSyncInput) =>
+    invoke<void>("save_auction_data_from_sync", { input }),
+
+  // ===== M3a B.9 — Fallback WebSocket LAN-only (solo feature flag `lan-only`) =====
+  // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,
+  // lan_discover_peers è nuovo (mDNS discovery automatico).
+
+  /** Avvia un server WebSocket LAN. Ritorna l'addr effettivo. */
+  lanStartServer: (addr: string) =>
+    invoke<string>("lan_start_server", { addr }),
+
+  /** Connette a un server WebSocket LAN. */
+  lanConnect: (addr: string) =>
+    invoke<boolean>("lan_connect", { addr }),
+
+  /** Broadcast update Yjs a tutti i peer connessi via WebSocket LAN. */
+  lanBroadcastUpdate: (updateBytes: Uint8Array) =>
+    invoke<void>("lan_broadcast_update", { updateBytes: Array.from(updateBytes) }),
+
+  /** Lista peer connessi (IP:port). */
+  lanGetConnectedPeers: () =>
+    invoke<string[]>("lan_get_connected_peers"),
+
+  /** Disconnette un peer. */
+  lanDisconnectPeer: (peerKey: string) =>
+    invoke<void>("lan_disconnect_peer", { peerKey }),
+
+  /** M3a.1 — Cerca peer DossierFanta sulla LAN via mDNS. */
+  lanDiscoverPeers: (timeoutMs?: number) =>
+    invoke<string[]>("lan_discover_peers", { timeoutMs: timeoutMs ?? null }),
 };
 
 /** True solo dentro il binario Tauri (WebView con internals iniettati). */

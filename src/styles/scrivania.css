@@ -439,6 +439,23 @@
   color: var(--ink);
 }
 
+/* M3 — pulsante "Aggiornamenti" (variant accent: azzurro tenue,
+   distinto dal warn ambra e dal primary carta). */
+.df-btn--accent {
+  border-color: rgba(45, 90, 145, 0.85);
+  color: #6ea8d6;
+}
+
+.df-btn--accent:hover {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+/* M3 — toast "aggiornamento disponibile": bordo ambra più marcato. */
+.df-toast--accent {
+  border-width: 2px;
+}
+
 .df-clean-toggle {
   display: inline-flex;
   align-items: center;

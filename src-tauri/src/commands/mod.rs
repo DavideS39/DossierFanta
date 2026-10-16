@@ -6,7 +6,15 @@
 pub mod database;
 pub mod listone;
 pub mod players;
+pub mod sync;
 pub mod windows;
+
+// M3a — B.9: modulo sync_lan solo se feature `lan-only` attiva.
+// Quando `lan-only` è attivo, Iroh non viene inizializzato e il sync avviene
+// via WebSocket su LAN. Modulo dietro feature flag per evitare dipendenze
+// extra quando non richiesto.
+#[cfg(feature = "lan-only")]
+pub mod sync_lan;
 
 use serde::Serialize;
 

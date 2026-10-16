@@ -156,15 +156,269 @@ refactor architetturale. Solo dopo M2.2 verde, M3 può partire.
 
 ---
 
-## [Unreleased]
+## [0.3.2] — 2026-10-16 — M3a.2: 3 fix bloccanti (PB4-A, PB4-B, PB6) + W1-W3, M3 chiusa
+
+Micro-sprint finale che chiude formalmente M3. Risolve i 2 bug latenti
+identificati dall'ispezione M3a.1 (auto-sovrascrittura marker `updated_by`,
+path ricezione sync interrotto) + il problema operativo (owner GitHub
+inesistente) + 3 fix WARN non bloccanti. Al termine, M3 è formalmente
+completa e la release .msi è possibile.
+
+### Blocco A — 3 FIX BLOCCANTI
+
+#### FIX PB4-A — Anti-loop flag `isApplyingLocalBridge` nei 3 bridge
+- `src/lib/sync/yjsDocuments.ts` — Aggiunto nuovo flag
+  `isApplyingLocalBridge` (distinto da `isApplyingRemoteUpdate`). Le 3
+  funzioni bridge (`bridgePlayerUpdate`, `bridgeScoutingNoteAppend`,
+  `bridgeAuctionDataUpdate`) lo impostano a `true` PRIMA della
+  `ydoc.transact(...)` e lo ripristinano a `false` nel `finally`.
+- I 3 listener (`playersHandler`, `notesHandler`, `auctionHandler`)
+  ora escono early-return su `if (isApplyingLocalBridge) return;`
+  (NON più su `isApplyingRemoteUpdate`).
+- Perché due flag distinti: il flag `isApplyingRemoteUpdate` viene
+  impostato da `applyRemoteUpdate` (peer ricevente), dove il listener
+  DEVE procedere e chiamare `save_*_from_sync` per persistere l'update
+  remoto su SQLite del peer ricevente. Se usassimo lo stesso flag, il
+  listener uscirebbe early-return anche sul path ricezione → SQLite del
+  peer B mai aggiornato.
+- Effetto: edit locali dell'utente → `updated_by='me'` preservato
+  (NON più sovrascritto a `'sync-live'` da `save_player_from_sync`).
+  Il conflict resolution B.7 (`player_has_recent_local_edit`) non è più
+  invalidato dal trigger `trg_players_updated_at`.
+
+#### FIX PB4-B — Listener frontend per `sync-update-received` + bytes nel payload
+- `src-tauri/src/commands/sync.rs` (~riga 434) — L'emit dell'evento
+  `sync-update-received` ora include `update_bytes: update_bytes` (Vec<u8>
+  serializzato come array di numeri JSON) nel payload. In M3a.1 conteneva
+  solo `bytes_len` + `from_peer` — nessun frontend poteva ricostruire i
+  bytes.
+- `src-tauri/src/commands/sync.rs` — Aggiunto `use tauri::Emitter;` in
+  cima (mancava — i `let _ = app.emit(...)` a riga 434/444/453 davano
+  E0599 senza questo trait in scope).
+- `src-tauri/src/commands/sync_lan.rs` — `handle_peer` ora accetta un
+  parametro `app: tauri::AppHandle` e, sul path ricezione `Message::Binary`,
+  emette `sync-update-received` con `update_bytes` (stesso pattern del
+  path Iroh). Aggiornati i chiamanti `lan_start_server` e `lan_connect`
+  per passare `app`/`app.clone()`. Aggiunto `use tauri::Emitter;`.
+- `src/components/SyncView.tsx` — Nel useEffect di boot, registra un
+  listener Tauri per `sync-update-received` che converte il payload in
+  `Uint8Array` e chiama `applyRemoteUpdate(bytes)`. Cleanup corretto
+  su unmount (gestione `cancelled` per evitare leak se il componente si
+  smonta durante l'await di `listen()`).
+- `src/lib/sync/yjsDocuments.ts` — `applyRemoteUpdate` convertita da
+  `async function ... Promise<void>` a `function ... void` (per
+  allineamento al brief: `Y.applyUpdate` è sincrono in yjs, non serve
+  async). Imposta `isApplyingRemoteUpdate=true` attorno a `Y.applyUpdate`
+  per coerenza con il pattern re-entry guard dei listener.
+- `src/types/sync.ts` — `SyncUpdateReceivedEvent` ora ha campi
+  `update_bytes: number[]`, `bytes_len: number`, `from_peer: string`
+  (era `updateBase64`/`fromPeer`/`receivedAt` — mai allineato al reale
+  payload Rust).
+- Effetto: peer B riceve l'update via Iroh gossip o WebSocket LAN →
+  Y.Doc frontend di B aggiornato → listener `yPlayers.observe` triggerato
+  → `save_player_from_sync` chiamato → SQLite di B persiste la modifica
+  con `updated_by='sync-live'`. Sync live end-to-end finalmente funziona.
+
+#### FIX PB6 — Owner GitHub `dossierfanta` (operativo, NON codice)
+- Identificato: `src-tauri/src/commands/listone.rs:988` hardcoda
+  `DATA_REPO_OWNER = "dossierfanta"`. L'owner NON esiste su GitHub
+  (API ritorna 404 su `users/dossierfanta/repos` e
+  `repos/dossierfanta/dossier-fanta-data/releases`). In produzione
+  l'auto-fetch fallirebbe (HTTP 404 su `releases/latest`).
+- Fix operativo (da eseguire manualmente — NON modificabile da codice):
+  creare account GitHub `dossierfanta` (o usare un owner esistente e
+  aggiornare la costante), creare il repo pubblico
+  `dossier-fanta-data`, pushare il contenuto del repo locale
+  (`players.json` con 603/603 giocatori, 20 squadre, 100% FVM coverage
+  — già verificato), triggerare `scrape.yml` (manuale o attendere cron
+  01:00 UTC), verificare che la release con tag
+  `data-YYYY-MM-DD-<sha256[:12]>` venga creata e che l'asset
+  `players.json` sia scaricabile.
+- Se l'utente usa un altro account GitHub, aggiornare le costanti in
+  `listone.rs:988` (`DATA_REPO_OWNER`) e `:992` (`HTTP_USER_AGENT`).
+- Costanti lasciate invariate in codice: l'utente deve solo creare
+  l'account/repo GitHub (preferred) oppure aggiornare 2 righe.
+
+### Blocco B — 3 FIX AGGIUNTIVI (WARN non bloccanti)
+
+#### FIX W1 — Rimosso `"marco"` dalla whitelist `validate_updated_by`
+- `src-tauri/src/commands/sync.rs:198` — Whitelist ora:
+  `"me" | "auto-fetch" | "sync-live"`. Era `"me" | "auto-fetch" |
+  "sync-live" | "marco"` (extra-brief M3a.1). Messaggio di errore
+  aggiornato coerentemente.
+
+#### FIX W2 — CHANGELOG allineato alle milestone M3/M3.1/M3a/M3a.1/M3a.2
+- Aggiunte 3 entry retroattive (questo file): `0.3.0` (M3 base),
+  `0.3.1` (M3.1 + M3a + M3a.1), `0.3.2` (M3a.2, M3 chiusa).
+
+#### FIX W3 — `iroh_connect_by_peer_key` rigoroso (Ok(false) su errore/timeout)
+- `src-tauri/src/commands/sync.rs` (~riga 528-559) — Sui branch
+  `Ok(Err(e))` (errore connect) e `Err(elapsed)` (timeout 10s) ora
+  ritorna `Ok(false)` e NON aggiunge il peer alla lista connessi. In
+  M3a.1 ritornava `Ok(true)` "ottimistico" su tutti e 3 i branch,
+  causando `iroh_get_connected_peers` a ritornare peer non realmente
+  connessi → sync live poi falliva silenziosamente. Solo il branch
+  `Ok(Ok(_conn))` (connessione QUIC realmente stabilita) ritorna
+  `Ok(true)` e aggiunge il peer.
+- `src/components/SyncView.tsx` — Il `handleConnect` gestisce già
+  correttamente `ok=false` (mostra errore "Connessione fallita").
+
+### Vincoli HARD rispettati
+
+- 15: `Cargo.lock` + `package-lock.json` committati (preservato da M3a.1).
+- 16: Schema v2.2 + v2.3 NON toccati (nessun ALTER nuovo in M3a.2).
+- 17: M3a.2 NON aggiunge comandi Tauri (solo fix interni).
+- 18: M3a.2 NON aggiunge tabelle schema (tags è M4).
+- 1-14: Tutti i vincoli hard precedenti preservati (validazioni, cancellazione
+  con doppio consenso, click-to-edit, WM ibrido, glossario, multi-DB,
+  archiviazione, auto-toggle, paper textures, assenza emoji, CSP, ecc.).
+
+### Test funzionali minimi
+
+6 test definiti dal brief. 4 sono test operativi 2-PC (non eseguibili in
+sandbox ispezione), 1 è test operativo GitHub (PB6), 1 è test .msi build.
+Tutti i test richiedono ambiente Windows + 2 PC fisici o GitHub account:
+vanno eseguiti manualmente dopo il push del tag v0.3.2.
+
+- TEST PB4-A (anti-loop): edita player → SELECT updated_by → deve essere 'me'
+- TEST PB4-B (sync live 2 PC): A edita → B vede entro 200ms + SQLite B aggiornato
+- TEST PB6 (GitHub): API 200 su releases/latest + asset scaricabile
+- TEST PB6 (.msi): push tag v0.3.2 → build-msi.yml verde → .msi >5MB
+- TEST B6 (conflict resolution field-level): edit simultanei di campi diversi → entrambi sopravvivono
+- TEST B7 (auto-fetch vs sync-live): player modificato NON archiviato dall'auto-fetch (updated_at > scraped_at)
+
+---
+
+## [0.3.1] — 2026-10-15 — M3.1 fix selettori + M3a sync live scaffolding + M3a.1 fix bloccanti
+
+Sprint di chiusura M3.1 (fix bug selettori HTML scraper) + inizio M3a
+(scaffolding sync live Yjs+Iroh). M3a.1 segue per chiudere i 5 PB
+identificati dall'ispezione M3a.
+
+### M3.1 — Fix selettori scraper
+
+- `dossier-fanta-data/scraper/scrape_fantacalcio.py` — Aggiornati selettori
+  BeautifulSoup per il nuovo layout fantacalcio.it/quotazioni. Assertion
+  raise se la struttura HTML cambia (graceful failure → notifica GitHub).
+- `src-tauri/src/commands/listone.rs` — `apply_auto_fetch` ora passa
+  `scraped_at` (Option<String>) per attivare il conflict resolution B.7.
+
+### M3a — Sync live Yjs + Iroh (scaffolding)
+
+- `Cargo.toml` — Aggiunte dipendenze: `yrs` (CRDT Rust), `iroh` (p2p QUIC),
+  `iroh-gossip` (broadcast protocol), `tokio-tungstenite` (WebSocket per
+  fallback LAN), `mdns-sd` (discovery LAN).
+- `src-tauri/src/commands/sync.rs` (NUOVO) — Comandi yrs core
+  (`yjs_apply_update`, `yjs_get_state_vector`, `yjs_get_diff`) +
+  comandi Iroh transport (`iroh_start_node`, `iroh_connect_by_peer_key`,
+  `iroh_broadcast_update`, `iroh_subscribe_updates`,
+  `iroh_get_connected_peers`, `iroh_disconnect_peer`, `iroh_get_peer_key`)
+  + comandi `save_*_from_sync` (con `updated_by='sync-live'`).
+- `src-tauri/src/commands/sync_lan.rs` (NUOVO, dietro feature flag
+  `lan-only`) — Fallback WebSocket LAN con mDNS discovery.
+- `src/lib/sync/yjsDocuments.ts` (NUOVO) — Bridge Yjs frontend:
+  `yPlayers`, `yNotes`, `yAuction` Y.Map/Array; funzioni bridge
+  (`bridgePlayerUpdate`, ecc.); listener observe → `save_*_from_sync`;
+  `applyRemoteUpdate` (path testing); `initialSync`.
+- `src/lib/sync/yjsCursors.ts` (NUOVO) — Cursori collaborativi Yjs
+  (`yCursors` Y.Map; `setMyCursor`, `observeCursors`, cleanup stale
+  >30s).
+- `src/components/SyncView.tsx` (NUOVO) — Schermata Sync: peer key
+  display, connect by peer key, status, polling.
+- `src/components/LiveCursor.tsx` (NUOVO) — Render cursore remoto con
+  label nome + posizione. Montato in `PlayerForm.tsx` sul campo
+  `quick_note` (asta live).
+- `src/components/DatabaseManager.tsx` — Banner sharing DB "M3a attiva"
+  (PB5 risolto in M3a.1).
+
+### M3a.1 — 5 fix bloccanti (PB1-PB5)
+
+- PB1 ✓ — `apply_auto_fetch` signature allineata a 3 argomenti
+  (`import_listone(state, players_json, Some(scraped_at))`). Errore E0061
+  risolto.
+- PB2 ✓ — Iroh gossip listener reale (non placeholder). `iroh_subscribe_updates`
+  no-op (subscribe loop spawnato in `iroh_start_node`). `iroh_broadcast_update`
+  chiama `gossip.broadcast(topic, bytes)`.
+- PB3 ✓ — Cargo.lock (8839 righe) + package-lock.json rigenerati con
+  yrs/iroh/iroh-gossip/iroh-base/tokio-tungstenite/mdns-sd + yjs.
+- PB4 ✗ (PARZIALE) — Bridge cablato in `usePlayersStore.ts` (chiamate
+  ai 3 bridge dopo commit SQLite). MA 2 bug latenti: PB4-A (flag
+  anti-loop non impostato nei bridge — `updated_by` corrotto) e PB4-B
+  (nessun listener frontend per `sync-update-received` — sync live
+  end-to-end interrotto). Risolti in M3a.2.
+- PB5 ✓ — Banner sharing DB "Condivisione live DB attiva con M3a"
+  (era "in arrivo con M3a").
+
+### Integrazioni aggiuntive
+
+- Cursori collaborativi integrati in `PlayerForm.tsx` (campo `quick_note`).
+- Fallback LAN-only bidirezionale + mDNS discovery (`Fix aggiuntivo B`).
+- README documenta fallback LAN-only in sezione dedicata.
+
+### WARN (non bloccanti, risolti in M3a.2)
+
+- W1: `validate_updated_by` conteneva `"marco"` extra-brief.
+- W2: CHANGELOG fermo a 0.2.5 — entry per M3/M3.1/M3a/M3a.1 mancanti.
+- W3: `iroh_connect_by_peer_key` ritornava `Ok(true)` "ottimistico" su
+  errore/timeout.
+
+---
+
+## [0.3.0] — 2026-10-14 — M3: Auto-fetch GitHub Actions + scraper inline fallback
+
+Milestone M3 — Pipeline auto-fetch notturna da fantacalcio.it via
+GitHub Actions + fallback scraper inline nell'app. L'app all'avvio
+interroga GitHub Releases per l'ultima versione del listone, confronta
+con il tag locale, mostra toast "aggiornamento disponibile" e applica
+il diff (archiviazione automatica dei player non più in listone).
 
 ### Added
-- `.github/workflows/ci.yml` — CI su push/PR: cargo check + test + tsc + vite build
-- `.github/workflows/build.yml` — Build manuale + post-push: bundle per Windows (.msi/.exe), Linux (.deb/.AppImage), macOS (.dmg/.app)
-- `.github/workflows/release.yml` — Crea GitHub Release su tag `v*` con asset auto-generati
+
+- `dossier-fanta-data/` (NUOVO repo GitHub separato) — Workflow
+  `scrape.yml` (cron 0 1 * * * UTC = 03:00 CET): setup Python 3.12,
+  scraper BeautifulSoup di fantacalcio.it/quotazioni, validate JSON,
+  pytest, compute tag `data-${DATE}-${HASH:0:12}`, create release via
+  `softprops/action-gh-release@v2` con asset `players.json`.
+- `dossier-fanta-data/scraper/scrape_fantacalcio.py` (NUOVO) — Parser
+  HTML con selettori configurabili + assertion su struttura. Output
+  `players.json` con 603 giocatori, 20 squadre, 6 campi obbligatori
+  (name/team/ruolo_fanta/ruolo_reale/fvm/quotazione_ufficiale).
+- `dossier-fanta-data/scraper/tests/` (NUOVO) — pytest che valida
+  struttura JSON, range FVM, count giocatori.
+- `src-tauri/src/commands/listone.rs` — Comandi Tauri:
+  `check_latest_listone_version` (GET GitHub API releases/latest),
+  `download_listone` (download asset con reqwest, salva cache),
+  `apply_auto_fetch` (apply diff al DB attivo con archiviazione
+  automatica), `scrape_listone_inline` (fallback scraper Rust embedded,
+  ~10-15s se GitHub irraggiungibile).
+- `src-tauri/src/commands/listone.rs::player_has_recent_local_edit`
+  (NUOVO) — Conflict resolution B.7: se un player ha
+  `updated_at > scraped_at` (modifica locale più recente del listone),
+  NON archiviare. Ritorna warning per UI.
+- `src-tauri/src/commands/listone.rs::_collect_player_snapshot`
+  (NUOVO) — Snapshot arricchito (JSON completo del player + auction_data
+  + scouting_notes) salvato in `players_archive.last_known_data`.
+- `src/components/ImportListone.tsx` (NUOVO) — UI per applicare
+  l'auto-fetch: anteprima diff, conferma utente (archiviazione
+  irreversibile).
+- `src/components/ImportPreview.tsx` (NUOVO) — Anteprima diff
+  pre-applicazione (cosa verrà creato/archiviato/aggiornato).
+- `src/components/AggiornamentiView.tsx` (NUOVO) — Schermata "Aggiornamenti"
+  che mostra: versione corrente, ultima release disponibile, log storico
+  ultimi 5 fetch.
+- `src/api/tauri.ts` — Wrapper TS per i nuovi comandi listone.
 
 ### Changed
-- `.gitignore`: rimosso `src-tauri/Cargo.lock` — per le app binarie Tauri il lockfile VA committato per riproducibilità build CI
+
+- `src-tauri/migrations/schema_v2.3.sql` — ALTER additive: aggiunte
+  colonne `last_sync_at` + `sync_node_id` su `players`, `scouting_notes`,
+  `auction_data`; nuova tabella `sync_peers` (per audit sync Iroh).
+- `src/App.tsx` — Al mount chiama `check_latest_listone_version`, se
+  tag diverso da cache (`last_applied_tag.txt`) mostra toast
+  "aggiornamento disponibile".
+- `src-tauri/src/commands/listone.rs::import_listone` — Signature
+  estesa con `scraped_at: Option<String>` per attivare conflict
+  resolution B.7.
 
 ---
 

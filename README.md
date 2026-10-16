@@ -325,6 +325,56 @@ Output atteso: `1 passed; 0 failed`.
 
 ---
 
+## Fallback WebSocket LAN-only (M3a B.9 + M3a.1 fix aggiuntivo B)
+
+Il modulo `sync_lan.rs` è un'insurance policy: se Iroh presenta bug in
+production, puoi attivare un fallback che usa WebSocket su LAN + discovery
+mDNS automatico. Il flag è **off di default** — non viene compilato nel
+binario standard.
+
+### Attivazione
+
+```bash
+cd src-tauri
+cargo build --features lan-only
+```
+
+### Cosa fa
+
+- Sync via WebSocket su LAN (`ws://192.168.x.x:port`)
+- Discovery automatico dei peer DossierFanta via mDNS
+  (service `_dossierfanta._tcp.local.`)
+- Broadcast **bidirezionale** (M3a.1 fix): ogni peer connesso ha un
+  canale mpsc dedicato, `lan_broadcast_update` invia effettivamente
+  bytes a tutti i peer
+- Perde p2p a distanza, mantiene sync live in casa
+
+### Quando usarlo
+
+- Iroh presenta bug in production su una versione specifica
+- Hai necessità di debug del sync senza esporre traffico su internet
+- Sei in una LAN aziendale con firewall bloccante QUIC
+
+### Limitazioni
+
+- Solo LAN (niente NAT traversal, niente relay)
+- mDNS richiede UDP multicast abilitato sulla rete
+- Per usare sync live LAN devi aggiornare il CSP in `tauri.conf.json`
+  aggiungendo `ws://*:* wss://*:*` a `connect-src`
+
+### API
+
+| Comando Rust            | Wrapper TS                | Descrizione                            |
+| ----------------------- | ------------------------- | -------------------------------------- |
+| `lan_start_server`      | `api.lanStartServer`      | Avvia server WS LAN + registra mDNS   |
+| `lan_connect`           | `api.lanConnect`          | Connette a server WS LAN               |
+| `lan_broadcast_update`  | `api.lanBroadcastUpdate`  | Broadcast update Yjs a tutti i peer    |
+| `lan_get_connected_peers` | `api.lanGetConnectedPeers` | Lista peer connessi (IP:port)        |
+| `lan_disconnect_peer`   | `api.lanDisconnectPeer`   | Disconnette un peer                    |
+| `lan_discover_peers`    | `api.lanDiscoverPeers`    | mDNS browse per trovare peer automaticamente |
+
+---
+
 ## Troubleshooting
 
 ### Linux: `error: linking with cc failed: unable to find library -lgdk-3`

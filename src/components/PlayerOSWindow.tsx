@@ -34,6 +34,10 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "@/api/tauri";
 // M2.2 — FIX A2 (F12): hook per sync live con la main window.
 import { usePlayerSync } from "@/lib/usePlayerSync";
+// M3a.1 (PB4) — Usa lo store Zustand per updatePlayer: lo store cabla
+// automaticamente il bridge Rust→Yjs (bridgePlayerUpdate) DOPO il commit
+// SQLite, propagando l'update ai peer remoti via Iroh gossip.
+import { usePlayersStore } from "@/stores/usePlayersStore";
 import type { CreatePlayerInput, Player, UpdatePlayerInput } from "@/types/player";
 import { PlayerForm } from "./PlayerForm";
 import { hashString } from "@/assets/paper";
@@ -130,7 +134,10 @@ export function PlayerOSWindow({ playerId }: Props) {
 
   const handleSubmit = async (input: CreatePlayerInput | UpdatePlayerInput) => {
     if (!player) return;
-    await api.updatePlayer(input as UpdatePlayerInput);
+    // M3a.1 (PB4) — Passa per lo store Zustand invece di api diretta:
+    // lo store, dopo il commit SQLite, invoca bridgePlayerUpdate per
+    // propagare l'update al Y.Doc locale + Iroh broadcast ai peer.
+    await usePlayersStore.getState().updatePlayer(input as UpdatePlayerInput);
     // Re-fetch per mostrare i dati aggiornati (l'evento player-updated
     // non viene emesso da update_player — vedi M2.2 FIX A2 scope).
     const updated = await api.getPlayer(playerId);

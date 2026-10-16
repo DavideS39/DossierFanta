@@ -112,7 +112,28 @@ export function ImportListone({ onClose, onImported }: Props) {
     setImportError(null);
     setSummary(null);
     try {
-      const s = await api.importListone(rawJson);
+      // M3a.1 (PB1 fix) — Estrai scraped_at se il JSON è un oggetto wrapper
+      // del tipo {"scraped_at":"...","players":[...]}. Se l'utente ha incollato
+      // un array plain [{...}], scrapedAt resta undefined e il check B.7
+      // (conflict resolution auto-fetch vs sync-live) è disattivato.
+      let playersJson = rawJson;
+      let scrapedAt: string | undefined;
+      try {
+        const parsed = JSON.parse(rawJson);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          if (typeof parsed.scraped_at === "string") {
+            scrapedAt = parsed.scraped_at;
+          }
+          if (Array.isArray(parsed.players)) {
+            playersJson = JSON.stringify(parsed.players);
+          } else if (Array.isArray(parsed.entries)) {
+            playersJson = JSON.stringify(parsed.entries);
+          }
+        }
+      } catch {
+        // JSON non valido qui — verrà segnalato dal backend con un errore più chiaro
+      }
+      const s = await api.importListone(playersJson, scrapedAt);
       setSummary(s);
       setPreview(null);
       onImported?.();

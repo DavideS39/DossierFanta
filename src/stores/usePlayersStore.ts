@@ -5,6 +5,17 @@
 //   null/undefined → "active" (default: usa active_db_id dal backend)
 //   "all"          → tutti i DB
 //   "<uuid>"       → un DB specifico
+//
+// M3a.1 (PB4 fix) — Cablaggio del bridge Rust→Yjs.
+// Le mutazioni `updatePlayer` / `saveScoutingNote` / `saveAuctionData`
+// DOPO il commit SQLite invocano anche le funzioni bridge di yjsDocuments
+// per applicare l'update al Y.Doc locale e propagarlo ai peer via Iroh.
+// Questo attiva il path end-to-end del sync live:
+//   UI → api.updatePlayer → SQLite commit → bridgePlayerUpdate →
+//   yPlayers.update → iroh_broadcast_update → gossip → Peer B
+// L'anti-loop è garantito dal flag `isApplyingRemoteUpdate` in yjsDocuments:
+// il path `save_*_from_sync` NON invoca bridge*, quindi peer B che riceve
+// un update non lo re-invia ad A.
 
 import { create } from "zustand";
 import { api } from "@/api/tauri";
@@ -13,8 +24,19 @@ import type {
   ListFilters,
   Player,
   PosFanta,
+  SaveScoutingNoteInput,
   UpdatePlayerInput,
 } from "@/types/player";
+import type {
+  AuctionDataSyncInput,
+  PlayerSyncInput,
+  ScoutingNoteSyncInput,
+} from "@/types/sync";
+import {
+  bridgeAuctionDataUpdate,
+  bridgePlayerUpdate,
+  bridgeScoutingNoteAppend,
+} from "@/lib/sync/yjsDocuments";
 
 interface PlayersState {
   // Stato dati
@@ -41,6 +63,38 @@ interface PlayersState {
   createPlayer: (input: CreatePlayerInput) => Promise<Player>;
   updatePlayer: (input: UpdatePlayerInput) => Promise<Player>;
   deletePlayer: (id: string) => Promise<boolean>;
+  saveScoutingNote: (input: SaveScoutingNoteInput) => Promise<boolean>;
+  saveAuctionData: (
+    playerId: string,
+    titolarita: number | null,
+    infortuni: string | null,
+    fmilMax: number | null,
+    quickNote: string | null,
+  ) => Promise<boolean>;
+}
+
+/**
+ * Helper M3a.1 (PB4) — converte un Player (ritornato dal backend) in
+ * PlayerSyncInput per il bridge Yjs. I campi nullable vengono preservati.
+ */
+function playerToSyncInput(player: Player): PlayerSyncInput {
+  return {
+    id: player.id,
+    dbId: player.db_id,
+    name: player.name,
+    team: player.team,
+    posFanta: player.pos_fanta,
+    posReal: player.pos_real,
+    status: player.status,
+    fascia: player.fascia,
+    priority: player.priority,
+    fmilSpesi: player.fmil_spesi,
+    med: player.med,
+    medv: player.medv,
+    fvm: player.fvm,
+    customData: null, // Player non ha custom_data nel tipo attuale (lo aggiorna solo il backend)
+    syncNodeId: null,
+  };
 }
 
 function buildFilters(
@@ -118,12 +172,28 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
 
   createPlayer: async (input) => {
     const player = await api.createPlayer(input);
+    // M3a.1 (PB4) — Propaga al Y.Doc + Iroh per i peer remoti.
+    try {
+      await bridgePlayerUpdate(playerToSyncInput(player));
+    } catch (err) {
+      console.warn("[sync] bridgePlayerUpdate (create) skip:", err);
+    }
     await get().refresh();
     return player;
   },
 
   updatePlayer: async (input) => {
     const player = await api.updatePlayer(input);
+    // M3a.1 (PB4) — DOPO il commit SQLite, applica l'update al Y.Doc locale
+    // e broadcast ai peer via Iroh. Se 0 peer connessi, è no-op silente.
+    // L'anti-loop è garantito lato peer ricevente: il suo listener
+    // `yPlayers.observe` chiama `save_player_from_sync` (NO bridge), quindi
+    // l'update NON viene ri-broadcastato indietro ad A.
+    try {
+      await bridgePlayerUpdate(playerToSyncInput(player));
+    } catch (err) {
+      console.warn("[sync] bridgePlayerUpdate (update) skip:", err);
+    }
     await get().refresh();
     return player;
   },
@@ -131,6 +201,71 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
   deletePlayer: async (id) => {
     const ok = await api.deletePlayer(id);
     if (get().selectedId === id) set({ selectedId: null });
+    // M3a.1 — Non propaghiamo il delete via Yjs: il player viene rimosso
+    // localmente ma non abbiamo un'operazione Yjs "delete player" (Yjs è
+    // CRDT add-only per Y.Map; la cancellazione è locale esplicita con
+    // doppio consenso — Vincolo HARD #1). I peer remoti continueranno a
+    // vedere il player finché non lo cancelleranno a loro volta.
+    await get().refresh();
+    return ok;
+  },
+
+  saveScoutingNote: async (input) => {
+    const ok = await api.saveScoutingNote(input);
+    if (ok) {
+      // M3a.1 (PB4) — Append sul Y.Array yNotes + broadcast.
+      // Costruisce lo ScoutingNoteSyncInput dal payload salvato.
+      const syncInput: ScoutingNoteSyncInput = {
+        playerId: input.player_id,
+        kind: input.kind,
+        label: input.label ?? null,
+        content: input.content ?? null,
+        source: input.source ?? null,
+        syncNodeId: null,
+      };
+      try {
+        await bridgeScoutingNoteAppend(syncInput);
+      } catch (err) {
+        console.warn("[sync] bridgeScoutingNoteAppend skip:", err);
+      }
+    }
+    await get().refresh();
+    return ok;
+  },
+
+  saveAuctionData: async (
+    playerId,
+    titolarita,
+    infortuni,
+    fmilMax,
+    quickNote,
+  ) => {
+    const ok = await api.saveAuctionData(
+      playerId,
+      titolarita,
+      infortuni,
+      fmilMax,
+      quickNote,
+    );
+    if (ok) {
+      // M3a.1 (PB4) — Update della Y.Map yAuction per questo playerId.
+      const syncInput: AuctionDataSyncInput = {
+        playerId,
+        titolarita: titolarita ?? null,
+        infortuni: (infortuni as AuctionDataSyncInput["infortuni"]) ?? null,
+        quickNote: quickNote ?? null,
+        fmilMax: fmilMax ?? null,
+        assignedTo: null, // saveAuctionData NON tocca assigned_to; lo fa assign_player
+        fmilPaid: null,
+        assignedAt: null,
+        syncNodeId: null,
+      };
+      try {
+        await bridgeAuctionDataUpdate(syncInput);
+      } catch (err) {
+        console.warn("[sync] bridgeAuctionDataUpdate skip:", err);
+      }
+    }
     await get().refresh();
     return ok;
   },

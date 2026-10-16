@@ -243,6 +243,41 @@ pub fn run() {
             commands::windows::open_player_window,
             commands::windows::close_player_window,
             commands::windows::list_os_player_windows,
+            // listone.rs (M3 — auto-fetch listone via GitHub Releases + fallback inline)
+            commands::listone::check_latest_listone_version,
+            commands::listone::download_listone,
+            commands::listone::apply_auto_fetch,
+            commands::listone::scrape_listone_inline,
+            commands::listone::get_autofetch_status,
+            // sync.rs (M3a — B.3 yrs core + B.4 Iroh + B.8 sync-live markers)
+            commands::sync::yjs_apply_update,
+            commands::sync::yjs_get_state_vector,
+            commands::sync::yjs_get_diff,
+            commands::sync::iroh_start_node,
+            commands::sync::iroh_get_peer_key,
+            commands::sync::iroh_connect_by_peer_key,
+            commands::sync::iroh_broadcast_update,
+            commands::sync::iroh_subscribe_updates,
+            commands::sync::iroh_get_connected_peers,
+            commands::sync::iroh_disconnect_peer,
+            commands::sync::save_player_from_sync,
+            commands::sync::save_scouting_note_from_sync,
+            commands::sync::save_auction_data_from_sync,
+            // sync_lan.rs (M3a B.9) — solo con feature `lan-only`
+            // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,
+            // lan_discover_peers nuovo per mDNS discovery automatico.
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_start_server,
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_connect,
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_broadcast_update,
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_get_connected_peers,
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_disconnect_peer,
+            #[cfg(feature = "lan-only")]
+            commands::sync_lan::lan_discover_peers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DossierFanta application");

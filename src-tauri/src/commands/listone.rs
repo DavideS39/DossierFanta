@@ -106,6 +106,15 @@ pub struct ArchivedPlayer {
 pub fn import_listone(
     state: State<'_, DbState>,
     players_json: String,
+    /// M3a (B.7) — Conflict resolution auto-fetch vs sync-live.
+    /// Timestamp ISO 8601 UTC del momento in cui il listone è stato
+    /// scaricato (ListoneData.scraped_at). Se fornito, prima di archiviare
+    /// un player viene verificato che `players.updated_at <= scraped_at`.
+    /// Se `updated_at > scraped_at`, il player NON viene archiviato
+    /// (qualcuno lo sta editando via sync-live o manualmente) e viene
+    /// emesso un warning in `error_messages`.
+    /// Se None, il check viene saltato (comportamento M3 pre-M3a).
+    scraped_at: Option<String>,
 ) -> AppResult<ImportSummary> {
     let entries: Vec<ListoneEntry> = serde_json::from_str(&players_json).map_err(|e| {
         AppError::Validation(format!(
@@ -329,7 +338,36 @@ pub fn import_listone(
     for (pid, pname) in &player_ids_names {
         if !listone_names.contains(&pname.to_lowercase()) {
             // Archive this player (reason: non_in_listone)
+            // M3a.1 — La closure ritorna (archived: bool, warning: Option<String>):
+            //   (true, None)            → archived OK
+            //   (false, None)           → già in archive, skip silente
+            //   (false, Some(msg))      → skip B.7 per edit recente, warning user-facing
             let r = state.with_conn(&active_id, |conn| {
+                // ---------------------------------------------------
+                // M3a (B.7) — Conflict resolution auto-fetch vs sync-live
+                // ---------------------------------------------------
+                // Prima di archiviare, verifica se il player ha subito
+                // modifiche locali più recenti del listone (sync-live attivo
+                // o edit manuale). Se sì, NON archiviare: l'utente lo sta
+                // scoutando. Logga warning + skip + segnala alla UI.
+                if let Some(ref scraped) = scraped_at {
+                    if let Ok(true) = crate::commands::sync::player_has_recent_local_edit(
+                        conn, pid, scraped,
+                    ) {
+                        log::warn!(
+                            "[M3a B.7] skip archiviazione {}: updated_at > scraped_at ({}). \
+                             Player modificato di recente — verifica manuale.",
+                            pname,
+                            scraped
+                        );
+                        let warning = format!(
+                            "{}: giocatore non più nel listone ma modificato di recente — verifica manuale",
+                            pname
+                        );
+                        return Ok((false, Some(warning))); // skip, non archiviare
+                    }
+                }
+
                 // FIX A2 (B5) — Snapshot arricchito via shared helper.
                 // Invece di leggere solo la riga di players (M2 base),
                 // raccogliamo anche scouting_notes, auction_data,
@@ -357,7 +395,7 @@ pub fn import_listone(
                     )
                     .unwrap_or(false);
                 if already {
-                    return Ok(false); // skip, non duplicare
+                    return Ok((false, None)); // skip, non duplicare
                 }
 
                 // Insert into archive + delete from players (atomic via tx).
@@ -383,16 +421,28 @@ pub fn import_listone(
                 )?;
                 tx.execute("DELETE FROM players WHERE id = ?1", params![pid])?;
                 tx.commit()?;
-                Ok(true)
+                Ok((true, None))
             });
-            if let Ok(true) = r {
-                archived += 1;
-            } else if let Err(e) = r {
-                error_messages.push(format!(
-                    "archiviazione {}: {}",
-                    pname, e
-                ));
-                errors += 1;
+            match r {
+                Ok((true, _)) => {
+                    archived += 1;
+                }
+                Ok((false, Some(warning))) => {
+                    // B.7 skip per edit recente — non è errore, ma va segnalato alla UI
+                    log::debug!("[M3a] skip archiviazione {} (B.7 edit recente)", pname);
+                    error_messages.push(warning);
+                }
+                Ok((false, None)) => {
+                    // skip silente: già in archive
+                    log::debug!("[M3a] skip archiviazione {} (già in archive)", pname);
+                }
+                Err(e) => {
+                    error_messages.push(format!(
+                        "archiviazione {}: {}",
+                        pname, e
+                    ));
+                    errors += 1;
+                }
             }
         }
     }
@@ -892,4 +942,771 @@ pub fn preview_import_listone(
         active_db_id: active_id,
         active_db_name,
     })
+}
+
+// ----------------------------------------------------------------------
+// M3 — Auto-fetch listone via GitHub Releases (Cap.7 design doc v2.5)
+// ----------------------------------------------------------------------
+//
+// Quattro comandi Tauri per implementare l'auto-fetch del listone:
+//
+//   1. check_latest_listone_version() -> ListoneVersionInfo
+//      GET https://api.github.com/repos/{owner}/dossier-fanta-data/releases/latest
+//      NON scarica il file, solo metadata. Usa reqwest con user-agent
+//      "DossierFanta/0.3.0" (GitHub API richiede user-agent obbligatorio).
+//
+//   2. download_listone(asset_url) -> ListoneData
+//      Streaming download del players.json, salvato in cache locale
+//      (app_data_dir/cache/listone.json). Authorization: Bearer ${GITHUB_TOKEN}
+//      opzionale per rate limit più alto (60 req/h senza, 5000 con token).
+//
+//   3. apply_auto_fetch(listone_data) -> ImportSummary
+//      Riusa la logica di import_listone: Fase 1 match, Fase 2 archive,
+//      Fase 3 create, Fase 4 update fvm con marker updated_by='auto-fetch'.
+//      Salva il tag applicato in cache/last_applied_tag.txt.
+//
+//   4. scrape_listone_inline() -> ListoneData
+//      FALLBACK se GitHub irraggiungibile. Scraper Rust embedded che
+//      scarica fantacalcio.it e applica gli stessi selettori del parser
+//      Python in dossier-fanta-data/scraper/scrape_fantacalcio.py.
+//      ~10-15 secondi. Logging esteso per diagnostica.
+//
+// Cache locale:
+//   - app_data_dir/cache/listone.json      (ultimo release scaricato)
+//   - app_data_dir/cache/last_applied_tag.txt (tag applicato, per skip al boot)
+//   - app_data_dir/cache/update_log.json   (log ultimi 5 aggiornamenti)
+//
+// L'auto-fetch NON si triggera in modo invisibile all'avvio: il frontend
+// (App.tsx) chiama check_latest_listone_version al mount, confronta con
+// last_applied_tag.txt, se diverso mostra toast "aggiornamento disponibile"
+// e l'utente DEVE clickare per applicare (archiviazione irreversibile).
+
+use std::path::PathBuf;
+
+/// Repository GitHub che ospita le release con players.json.
+/// Costante centralizzata — se il repo si sposta, cambiare qui.
+const DATA_REPO_OWNER: &str = "dossierfanta";
+const DATA_REPO_NAME: &str = "dossier-fanta-data";
+
+/// User-agent obbligatorio per l'API GitHub (richiesta senza UA → 403).
+const HTTP_USER_AGENT: &str = "DossierFanta/0.3.0 (+https://github.com/dossierfanta)";
+
+/// Endpoint API GitHub per l'ultima release pubblica.
+fn latest_release_api_url() -> String {
+    format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        DATA_REPO_OWNER, DATA_REPO_NAME
+    )
+}
+
+/// Metadati dell'ultima release disponibile (NON scarica il file).
+/// Risposta tipica:
+///   {
+///     "tag_name": "data-2026-10-13-abc123def456",
+///     "name": "Listone Serie A 2026-10-13",
+///     "published_at": "2026-10-13T01:05:12Z",
+///     "assets": [
+///       { "name": "players.json", "url": "...", "browser_download_url": "...",
+///         "size": 524288, "api_url": "..." }
+///     ]
+///   }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListoneVersionInfo {
+    pub tag: String,
+    pub name: String,
+    pub published_at: String,
+    /// URL pubblico per il download diretto del file players.json.
+    pub asset_url: String,
+    /// Dimensione in bytes del file players.json (per progress UI).
+    pub asset_size_bytes: u64,
+    /// True se la release ha un asset "players.json" (sanity check).
+    pub has_players_json: bool,
+}
+
+/// Rappresentazione del file players.json scaricato dal repo dossier-fanta-data.
+/// `entries` è la lista di giocatori nel formato atteso da import_listone.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListoneData {
+    /// Tag della release da cui deriva questo dato (per cache + skip).
+    pub tag: String,
+    /// Versione del dato (YYYY-MM-DD dal JSON source).
+    pub version: String,
+    /// Timestamp ISO UTC di scraping (dal JSON source).
+    pub scraped_at: String,
+    /// Lista giocatori nel formato atteso da import_listone.
+    pub entries: Vec<ListoneEntry>,
+    /// True se il dato deriva dal fallback inline scraper (per UI).
+    pub from_fallback: bool,
+}
+
+/// Voce del log storico aggiornamenti (ultimi 5).
+/// Salvato in cache/update_log.json.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateLogEntry {
+    /// Timestamp ISO UTC dell'apply.
+    pub applied_at: String,
+    /// Tag della release applicata.
+    pub tag: String,
+    /// Sorgente: "github" se dalla release, "fallback" se scraper inline.
+    pub source: String,
+    /// Riassunto operazioni DB.
+    pub created: i64,
+    pub archived: i64,
+    pub updated: i64,
+    pub restored: i64,
+}
+
+/// Risolve il path della directory cache locale dell'app.
+/// - Windows: %APPDATA%/com.dossierfanta.app/cache/
+/// - macOS:   ~/Library/Application Support/com.dossierfanta.app/cache/
+/// - Linux:   ~/.local/share/com.dossierfanta.app/cache/
+///
+/// Usa la crate `dirs` (già in Cargo.toml) coerente con
+/// `resolve_app_data_dir_early()` in lib.rs.
+fn cache_dir() -> PathBuf {
+    let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    base.join("com.dossierfanta.app").join("cache")
+}
+
+/// Path del file JSON cached (ultimo release scaricato).
+fn cache_listone_path() -> PathBuf {
+    cache_dir().join("listone.json")
+}
+
+/// Path del file che contiene il tag dell'ultimo release applicato.
+fn cache_last_applied_tag_path() -> PathBuf {
+    cache_dir().join("last_applied_tag.txt")
+}
+
+/// Path del file log storico aggiornamenti.
+fn cache_update_log_path() -> PathBuf {
+    cache_dir().join("update_log.json")
+}
+
+/// Legge il tag dell'ultimo release applicato (se esiste).
+fn read_last_applied_tag() -> Option<String> {
+    let p = cache_last_applied_tag_path();
+    match std::fs::read_to_string(&p) {
+        Ok(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        _ => None,
+    }
+}
+
+/// Scrive il tag dell'ultimo release applicato.
+fn write_last_applied_tag(tag: &str) -> std::io::Result<()> {
+    let p = cache_last_applied_tag_path();
+    std::fs::create_dir_all(p.parent().unwrap_or(&p))?;
+    std::fs::write(&p, tag)
+}
+
+/// Legge il log storico (ultimi 5). Se il file non esiste, ritorna vuoto.
+fn read_update_log() -> Vec<UpdateLogEntry> {
+    let p = cache_update_log_path();
+    match std::fs::read_to_string(&p) {
+        Ok(s) if !s.trim().is_empty() => {
+            serde_json::from_str(&s).unwrap_or_default()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Aggiunge una entry al log, mantenendo solo gli ultimi 5.
+fn append_update_log(entry: UpdateLogEntry) {
+    let mut log = read_update_log();
+    log.insert(0, entry);
+    log.truncate(5);
+    let p = cache_update_log_path();
+    if let Err(e) = std::fs::create_dir_all(p.parent().unwrap_or(&p)) {
+        eprintln!("[M3] WARN: cannot create cache dir: {}", e);
+        return;
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&log) {
+        if let Err(e) = std::fs::write(&p, json) {
+            eprintln!("[M3] WARN: cannot write update log: {}", e);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------
+// Comando 1: check_latest_listone_version
+// ----------------------------------------------------------------------
+
+/// Interroga GitHub API per i metadati dell'ultima release del repo
+/// dossier-fanta-data. NON scarica il file.
+///
+/// Rate limit: 60 req/h senza token, 5000 con token. L'app fa una sola
+/// chiamata all'avvio, quindi 60 req/h sono ampiamente sufficienti.
+///
+/// Errors:
+///   - NetworkError: GitHub irraggiungibile o risposta non 200.
+///   - ParseError: JSON risposta non valido o senza asset players.json.
+#[tauri::command]
+pub async fn check_latest_listone_version() -> AppResult<ListoneVersionInfo> {
+    let client = reqwest::Client::builder()
+        .user_agent(HTTP_USER_AGENT)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| AppError::Generic(format!("reqwest client build: {}", e)))?;
+
+    let mut req = client.get(latest_release_api_url());
+    // Authorization opzionale: se GITHUB_TOKEN env var è presente, la usiamo
+    // per rate limit 5000/h invece di 60/h. L'endpoint pubblico funziona
+    // anche senza token, quindi è opzionale.
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        req = req.bearer_auth(&token);
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("GitHub API unreachable: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "GitHub API non-200: {} {}",
+            resp.status().as_u16(),
+            resp.status().canonical_reason().unwrap_or("")
+        )));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Generic(format!("GitHub API JSON parse: {}", e)))?;
+
+    let tag = json
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::Generic("release: manca tag_name".into()))?
+        .to_string();
+    let name = json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let published_at = json
+        .get("published_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Cerca l'asset players.json
+    let assets = json.get("assets").and_then(|v| v.as_array());
+    let (asset_url, asset_size_bytes, has_players_json) = match assets {
+        Some(arr) => {
+            let mut url = String::new();
+            let mut size = 0u64;
+            let mut found = false;
+            for a in arr {
+                let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                if name == "players.json" {
+                    url = a
+                        .get("browser_download_url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    size = a.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                    found = true;
+                    break;
+                }
+            }
+            (url, size, found)
+        }
+        None => (String::new(), 0, false),
+    };
+
+    if !has_players_json {
+        return Err(AppError::Generic(
+            "Release senza asset players.json — workflow scrape.yml incompleto?".into(),
+        ));
+    }
+
+    Ok(ListoneVersionInfo {
+        tag,
+        name,
+        published_at,
+        asset_url,
+        asset_size_bytes,
+        has_players_json,
+    })
+}
+
+// ----------------------------------------------------------------------
+// Comando 2: download_listone
+// ----------------------------------------------------------------------
+
+/// Scarica il players.json dal URL dell'asset GitHub Release.
+/// Streaming response (file può essere 500KB-2MB). Salva in cache locale.
+///
+/// Rate limit note: il download dell'asset NON conta come API call GitHub
+/// (è un redirect a S3/githubusercontent.com), quindi è illimitato.
+///
+/// Errors:
+///   - NetworkError: download fallito.
+///   - ParseError: JSON scaricato non valido.
+#[tauri::command]
+pub async fn download_listone(
+    asset_url: String,
+    tag: String,
+) -> AppResult<ListoneData> {
+    let client = reqwest::Client::builder()
+        .user_agent(HTTP_USER_AGENT)
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| AppError::Generic(format!("reqwest client build: {}", e)))?;
+
+    eprintln!("[M3] download_listone: GET {}", asset_url);
+    let resp = client
+        .get(&asset_url)
+        .header("Accept", "application/octet-stream")
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("download fallito: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "download non-200: {}",
+            resp.status()
+        )));
+    }
+
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|e| AppError::Generic(format!("download body: {}", e)))?;
+
+    eprintln!(
+        "[M3] download_listone: {} bytes ricevuti",
+        body.len()
+    );
+
+    // Salva in cache locale per evitare re-download
+    let cache_path = cache_listone_path();
+    if let Err(e) = std::fs::create_dir_all(cache_path.parent().unwrap_or(&cache_path)) {
+        eprintln!("[M3] WARN: cannot create cache dir: {}", e);
+    } else if let Err(e) = std::fs::write(&cache_path, &body) {
+        eprintln!("[M3] WARN: cannot write cache file: {}", e);
+    } else {
+        eprintln!("[M3] cache salvata: {}", cache_path.display());
+    }
+
+    parse_listone_json(&body, &tag, false)
+}
+
+/// Parse JSON in formato players.json (dal repo dossier-fanta-data o dal
+/// fallback inline scraper). Converte nel formato atteso da import_listone.
+fn parse_listone_json(
+    body: &[u8],
+    tag: &str,
+    from_fallback: bool,
+) -> AppResult<ListoneData> {
+    let raw: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
+        AppError::Generic(format!(
+            "players.json non valido: {}. Formato atteso: {{version, source, scraped_at, players: [...]}}",
+            e
+        ))
+    })?;
+
+    let version = raw
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let scraped_at = raw
+        .get("scraped_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let players = raw
+        .get("players")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| AppError::Generic("players.json: manca chiave 'players'".into()))?;
+
+    let mut entries: Vec<ListoneEntry> = Vec::with_capacity(players.len());
+    let mut errors = 0usize;
+    for (i, p) in players.iter().enumerate() {
+        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if name.is_empty() {
+            eprintln!("[M3] WARN: riga {} senza name, saltata", i);
+            errors += 1;
+            continue;
+        }
+        let team = p.get("team").and_then(|v| v.as_str()).map(|s| s.to_string());
+        // Il JSON del repo usa "ruolo_fanta", ma import_listone si aspetta "pos_fanta".
+        // Accettiamo entrambi per robustezza.
+        let pos_fanta = p
+            .get("ruolo_fanta")
+            .or_else(|| p.get("pos_fanta"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let fvm = p.get("fvm").and_then(|v| v.as_i64());
+
+        entries.push(ListoneEntry {
+            name: name.to_string(),
+            team,
+            pos_fanta,
+            fvm,
+        });
+    }
+
+    if entries.is_empty() {
+        return Err(AppError::Generic(
+            "players.json: nessuna entry valida dopo parsing".into(),
+        ));
+    }
+
+    eprintln!(
+        "[M3] parse_listone_json: {} entries ({} scartate)",
+        entries.len(),
+        errors
+    );
+
+    Ok(ListoneData {
+        tag: tag.to_string(),
+        version,
+        scraped_at,
+        entries,
+        from_fallback,
+    })
+}
+
+// ----------------------------------------------------------------------
+// Comando 3: apply_auto_fetch
+// ----------------------------------------------------------------------
+
+/// Applica un ListoneData scaricato al DB attivo. Riusa la logica di
+/// import_listone (Fase 1 match + Fase 2 archive + Fase 3 create +
+/// Fase 4 update fvm con marker updated_by='auto-fetch').
+///
+/// Salva il tag in cache/last_applied_tag.txt e aggiunge una entry al
+/// log storico (ultimi 5).
+///
+/// Il frontend DEVE aver mostrato anteprima diff prima di chiamare questo
+/// comando — l'archiviazione è irreversibile senza restore esplicito.
+#[tauri::command]
+pub fn apply_auto_fetch(
+    state: State<'_, DbState>,
+    listone_data: ListoneData,
+) -> AppResult<ImportSummary> {
+    eprintln!(
+        "[M3] apply_auto_fetch: tag={}, {} entries, from_fallback={}",
+        listone_data.tag,
+        listone_data.entries.len(),
+        listone_data.from_fallback
+    );
+
+    // Serializza le entries nel formato JSON atteso da import_listone
+    // (array di {name, team, pos_fanta, fvm}).
+    let players_json = serde_json::to_string(&listone_data.entries).map_err(|e| {
+        AppError::Generic(format!("serialize entries: {}", e))
+    })?;
+
+    // Delega alla logica esistente di import_listone (Fase 1-4 + archive).
+    // M3a.1 (PB1 fix) — Passa scraped_at per attivare la conflict resolution
+    // auto-fetch vs sync-live (B.7). In precedenza il 3° argomento era omesso,
+    // lasciando il check `player_has_recent_local_edit` come dead code.
+    let summary = import_listone(
+        state,
+        players_json,
+        Some(listone_data.scraped_at.clone()),
+    )?;
+
+    // Salva il tag applicato + log
+    if let Err(e) = write_last_applied_tag(&listone_data.tag) {
+        eprintln!("[M3] WARN: cannot write last_applied_tag: {}", e);
+    }
+    let log_entry = UpdateLogEntry {
+        applied_at: chrono::Utc::now().to_rfc3339(),
+        tag: listone_data.tag.clone(),
+        source: if listone_data.from_fallback {
+            "fallback".to_string()
+        } else {
+            "github".to_string()
+        },
+        created: summary.created,
+        archived: summary.archived,
+        updated: summary.updated,
+        restored: summary.restored,
+    };
+    append_update_log(log_entry);
+
+    Ok(summary)
+}
+
+// ----------------------------------------------------------------------
+// Comando 4: scrape_listone_inline (FALLBACK)
+// ----------------------------------------------------------------------
+
+/// Fallback se GitHub irraggiungibile. Scraper Rust embedded che scarica
+/// fantacalcio.it e applica gli stessi selettori del parser Python.
+///
+/// ~10-15 secondi. Genera ListoneData con from_fallback=true, così la UI
+/// può mostrare un badge distintivo nel log.
+///
+/// Non viene usato per default — solo quando l'utente clicca "Fallback:
+/// scarica da fantacalcio.it" nella schermata Aggiornamenti.
+#[tauri::command]
+pub async fn scrape_listone_inline() -> AppResult<ListoneData> {
+    use scraper::{Html, Selector};
+
+    const URL: &str = "https://www.fantacalcio.it/quotazioni-fantacalcio";
+    eprintln!("[M3] scrape_listone_inline: GET {}", URL);
+
+    let client = reqwest::Client::builder()
+        .user_agent(HTTP_USER_AGENT)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| AppError::Generic(format!("reqwest build: {}", e)))?;
+
+    let resp = client
+        .get(URL)
+        .send()
+        .await
+        .map_err(|e| AppError::Generic(format!("fetch fantacalcio.it: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AppError::Generic(format!(
+            "fantacalcio.it non-200: {}",
+            resp.status()
+        )));
+    }
+
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|e| AppError::Generic(format!("body: {}", e)))?;
+
+    let html = String::from_utf8_lossy(&body);
+    let document = Html::parse_document(&html);
+
+    // Selettori coerenti con scraper/scrape_fantacalcio.py
+    // M3.1 (FIX A2 — bug B1 ispezione M3): aggiornati al HTML reale di
+    // fantacalcio.it (ottobre 2026):
+    //   <tr class="player-row" data-filter-role-classic="a" ...>
+    //     <th class="player-role player-role-classic"><span class="role" data-value="a"></span></th>
+    //     <th class="player-role player-role-mantra"><span class="role role-mantra" data-value="pc" title="Punta"></span></th>
+    //     <th class="player-name">...<span>Martinez L.</span></th>
+    //     <td class="player-team">INT</td>
+    //     <td class="player-classic-current-price">36</td>
+    //     <td class="player-classic-fvm">410</td>
+    //     <td class="player-mantra-fvm">410</td>
+    //   </tr>
+    let row_sel = Selector::parse(
+        "tr.player-row, \
+         table.quotazioni tbody tr, \
+         div.player-list tr.player-row, \
+         table tbody tr[data-player]",
+    )
+    .map_err(|e| AppError::Generic(format!("selector row: {}", e)))?;
+    // name: aggiunto th.player-name per HTML reale fantacalcio.it
+    let name_sel = Selector::parse("td.name, th.player-name, .player-name")
+        .map_err(|e| AppError::Generic(format!("selector name: {}", e)))?;
+    // team: inalterato
+    let team_sel = Selector::parse("td.team, .player-team")
+        .map_err(|e| AppError::Generic(format!("selector team: {}", e)))?;
+    // ruolo_reale: title del nested span.role dentro .player-role-mantra
+    let role_real_sel = Selector::parse(".player-role-mantra .role[title]")
+        .map_err(|e| AppError::Generic(format!("selector role_real: {}", e)))?;
+    // fvm: privilegia player-classic-fvm, fallback player-mantra-fvm
+    let fvm_sel = Selector::parse(
+        "td.player-classic-fvm, td.player-mantra-fvm, td.fvm, .player-fvm",
+    )
+    .map_err(|e| AppError::Generic(format!("selector fvm: {}", e)))?;
+    // quotazione: privilegia player-classic-current-price (QA).
+    // Nota: il parser Rust inline (fallback) NON estrae quotazione perché la
+    // struct `ListoneEntry` ha solo {name, team, pos_fanta, fvm} — sufficienti
+    // per import_listone. Il parser Python nel workflow GitHub estrae anche
+    // quotazione_ufficiale nel players.json del release.
+    // Il selettore è comunque definito qui per coerenza con il parser Python
+    // e per facilitare l'estensione futura.
+    let _quot_sel = Selector::parse(
+        "td.player-classic-current-price, \
+         td.player-mantra-current-price, \
+         td.quotation, .player-quotation",
+    )
+    .map_err(|e| AppError::Generic(format!("selector quot: {}", e)))?;
+    // ruolo_fanta: attr data-filter-role-classic sul <tr> + fallback nested span[data-value]
+    let role_value_sel = Selector::parse("[data-value]")
+        .map_err(|e| AppError::Generic(format!("selector role_value: {}", e)))?;
+
+    // Fallback adattivo: se il selettore primario matcha poche righe
+    let row_count = document.select(&row_sel).count();
+    eprintln!("[M3] fallback: {} righe matchate dal selettore primario", row_count);
+
+    let entries_iter: Vec<ListoneEntry> = document
+        .select(&row_sel)
+        .filter_map(|row| {
+            let name_el = row.select(&name_sel).next();
+            let name = match name_el {
+                Some(el) => el.text().collect::<String>(),
+                None => {
+                    // fallback via data-player attribute
+                    row.value().attr("data-player").map(|s| s.to_string())?
+                }
+            };
+            let name = normalize_string(&name);
+            if name.is_empty() {
+                return None;
+            }
+            let team = row
+                .select(&team_sel)
+                .next()
+                .map(|el| normalize_string(&el.text().collect::<String>()))
+                .filter(|s| !s.is_empty());
+
+            // --- ruolo_fanta: attr data-filter-role-classic sul <tr>,
+            // fallback data-value sul nested span.role
+            let pos_fanta: Option<String> = row
+                .value()
+                .attr("data-filter-role-classic")
+                .map(|s| s.trim().to_uppercase())
+                .or_else(|| {
+                    row.select(&role_value_sel)
+                        .next()
+                        .and_then(|el| el.value().attr("data-value"))
+                        .map(|s| s.trim().to_uppercase())
+                })
+                .filter(|s| !s.is_empty())
+                .and_then(|s| match s.as_str() {
+                    "P" | "D" | "C" | "A" => Some(s),
+                    other => other
+                        .chars()
+                        .next()
+                        .filter(|c| matches!(c, 'P' | 'D' | 'C' | 'A'))
+                        .map(|c| c.to_string()),
+                });
+
+            // --- ruolo_reale: attr title del nested span dentro .player-role-mantra
+            let _pos_real: Option<String> = row
+                .select(&role_real_sel)
+                .next()
+                .and_then(|el| el.value().attr("title"))
+                .map(|s| s.trim().to_string());
+
+            let fvm = row
+                .select(&fvm_sel)
+                .next()
+                .and_then(|el| parse_first_int(&el.text().collect::<String>()));
+
+            // --- sanity check locale (mirror FIX A3 Python): se il 90%+ delle
+            // righe non ha fvm, i selettori sono rotti
+            // (controllo globale lasciato ad assert_valid lato Python nel workflow
+            // GitHub Actions; qui logghiamo solo le righe senza fvm)
+
+            Some(ListoneEntry {
+                name,
+                team,
+                pos_fanta,
+                fvm,
+            })
+        })
+        .collect();
+
+    if entries_iter.is_empty() {
+        return Err(AppError::Generic(
+            "Scraper inline: nessun giocatore estratto. Il sito fantacalcio.it ha probabilmente \
+             cambiato layout — aggiornare i selettori in commands/listone.rs (funzione \
+             scrape_listone_inline) e in scraper/scrape_fantacalcio.py del repo dossier-fanta-data."
+                .into(),
+        ));
+    }
+
+    // FIX A3 (mirror Rust): se <90% delle entries ha fvm Some, i selettori
+    // sono probabilmente rotti. Solleva errore esplicito.
+    let fvm_count = entries_iter.iter().filter(|e| e.fvm.is_some()).count();
+    if fvm_count < entries_iter.len() * 9 / 10 {
+        return Err(AppError::Generic(format!(
+            "Scraper inline: solo {}/{} giocatori con FVM non-None. \
+             Selettori HTML probabilmente rotti — aggiornare i selettori in \
+             commands/listone.rs (funzione scrape_listone_inline).",
+            fvm_count,
+            entries_iter.len()
+        )));
+    }
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let scraped_at = chrono::Utc::now().to_rfc3339();
+
+    eprintln!(
+        "[M3] scrape_listone_inline: {} giocatori estratti (fallback)",
+        entries_iter.len()
+    );
+
+    Ok(ListoneData {
+        tag: format!("fallback-{}", today),
+        version: today,
+        scraped_at,
+        entries: entries_iter,
+        from_fallback: true,
+    })
+}
+
+/// Normalizza una stringa: trim + collapse spazi multipli + capitalize prima lettera.
+fn normalize_string(s: &str) -> String {
+    let cleaned: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() {
+        return String::new();
+    }
+    let mut chars = cleaned.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Estrae il primo intero da una stringa tipo "38 f₥" o "38" → Some(38).
+fn parse_first_int(s: &str) -> Option<i64> {
+    let cleaned = s.replace('\u{20a5}', "").replace(',', "");
+    let mut buf = String::new();
+    let mut started = false;
+    let mut neg = false;
+    for ch in cleaned.chars() {
+        if ch == '-' && !started {
+            neg = true;
+            continue;
+        }
+        if ch.is_ascii_digit() {
+            buf.push(ch);
+            started = true;
+        } else if started {
+            break;
+        }
+    }
+    if buf.is_empty() {
+        return None;
+    }
+    let mut n: i64 = buf.parse().ok()?;
+    if neg {
+        n = -n;
+    }
+    Some(n)
+}
+
+// ----------------------------------------------------------------------
+// Comandi ausiliari per la UI Aggiornamenti
+// ----------------------------------------------------------------------
+
+/// Ritorna lo stato corrente dell'auto-fetch: tag applicato (se in cache),
+/// lista degli ultimi 5 aggiornamenti (dal log).
+/// NON fa chiamate di rete — è una lettura cache locale.
+#[tauri::command]
+pub fn get_autofetch_status() -> AppResult<AutoFetchStatus> {
+    let last_applied_tag = read_last_applied_tag().unwrap_or_default();
+    let update_log = read_update_log();
+    Ok(AutoFetchStatus {
+        last_applied_tag,
+        cache_path: cache_listone_path().to_string_lossy().to_string(),
+        update_log,
+    })
+}
+
+/// Stato dell'auto-fetch per la UI Aggiornamenti.
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoFetchStatus {
+    /// Tag dell'ultimo release applicato (vuoto se mai applicato).
+    pub last_applied_tag: String,
+    /// Path del file cache locale (per debugging UI).
+    pub cache_path: String,
+    /// Ultime 5 entry di aggiornamento.
+    pub update_log: Vec<UpdateLogEntry>,
 }
