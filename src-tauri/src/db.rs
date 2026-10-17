@@ -144,24 +144,31 @@ fn migrate_v22_to_v23(conn: &Connection) -> Result<(), SqlError> {
 }
 
 /// True se la colonna `column` esiste già nella tabella `table`.
+///
+/// Implementazione: scorre le righe di `PRAGMA table_info(<table>)` e
+/// confronta il campo `name` (colonna 1) con `column`. `PRAGMA` non accetta
+/// parametri bindabili, quindi NON possiamo usare `stmt.exists([param])` con
+/// un parametro — rusqlite restituirebbe `InvalidParameterCount(1, 0)` e
+/// `migrate_v22_to_v23` fallirebbe, causando `std::process::exit(1)` in
+/// `lib.rs::run()` PRIMA che Tauri apra la finestra. Sintomo esterno:
+/// l'app .msi installata "non si apre proprio" al primo avvio su DB nuovo.
 fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, SqlError> {
+    // Note: `table` è una stringa costante interna (vedi `migrate_v22_to_v23`),
+    // non input utente, quindi interpolazione nel SQL è sicura.
     let sql = format!("PRAGMA table_info({})", table);
     let mut stmt = conn.prepare(&sql)?;
-    let exists = stmt.exists([&column.to_string()])?;
     // PRAGMA table_info ritorna righe (cid, name, type, notnull, dflt, pk).
-    // Filtra per name == column.
-    let mut has = false;
+    // Filtra per name == column. 0 params passati a query_map: la query
+    // non ha placeholder (`?N`), quindi passiamo `[]` (nessun parametro).
     let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
     for row in rows {
         if let Ok(name) = row {
             if name == column {
-                has = true;
-                break;
+                return Ok(true);
             }
         }
     }
-    let _ = exists; // exists non affidabile per name match, usiamo has
-    Ok(has)
+    Ok(false)
 }
 
 /// Apre una nuova connessione a un file SQLite esistente (M2 helper per

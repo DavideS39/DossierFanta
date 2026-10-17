@@ -6,6 +6,121 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased] — 2026-10-17 — HOTFIX critico: l'app .msi non si avviava proprio
+
+Hotfix chirurgico che risolve un bug critico segnalato dall'utente: dopo aver
+installato l'.msi generato da `build-msi.yml`, l'app **non si apriva proprio**.
+Nessuna finestra, nessun messaggio di errore visibile. Sintomo identico su
+qualsiasi macchina Windows su cui l'app veniva installata da zero (file
+`mio.db` non preesistente).
+
+### Causa radice
+
+`src-tauri/src/db.rs::has_column` chiamava `stmt.exists([&column.to_string()])`
+passando 1 parametro bind a una query `PRAGMA table_info(<table>)` che ha 0
+placeholder. rusqlite 0.32 ritorna `Err(InvalidParameterCount(1, 0))`.
+
+Catena di propagazione dell'errore:
+
+1. `has_column` ritorna `Err(InvalidParameterCount(1, 0))` per ogni chiamata.
+2. `migrate_v22_to_v23` propaga l'errore via `?` (è chiamata 6 volte, una per
+   colonna sync-live di v2.3: `players.last_sync_at`, `players.sync_node_id`,
+   `scouting_notes.last_sync_at`, `scouting_notes.sync_node_id`,
+   `auction_data.last_sync_at`, `auction_data.sync_node_id`).
+3. `open_and_migrate` propaga l'errore via `?`.
+4. `lib.rs::run()` ha un `match` arm `Err(e) => { eprintln!(...); std::process::exit(1); }`.
+
+Su Windows in release (`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`
+in `main.rs`), `eprintln!` non ha output visibile (nessuna console). L'app
+chiama `std::process::exit(1)` PRIMA che `tauri::Builder::default().run(...)`
+venga raggiunto, quindi nessuna finestra viene mai creata.
+
+Il bug si manifesta solo su DB nuovo (file `mio.db` non esistente), perché
+`migrate_v22_to_v23` viene chiamato solo nel branch `!schema_already_applied`
+di `open_and_migrate`. In dev (su DB già esistente da sessioni precedenti)
+il bug era latente.
+
+### Fix
+
+#### FIX A — `has_column` non passa parametri bind a `PRAGMA`
+- `src-tauri/src/db.rs::has_column` — Rimossa la chiamata
+  `stmt.exists([&column.to_string()])?` (che dava `InvalidParameterCount`).
+  Il valore `exists` era già scartato con `let _ = exists;` e la logica reale
+  era nello scroll di `query_map([], ...)`. La funzione ora scorre le righe
+  di `PRAGMA table_info(<table>)` e ritorna `true` alla prima corrispondenza
+  di `name == column`. Nessun parametro bind passato a PRAGMA.
+- Commento doc aggiornato con la spiegazione del bug + sintomo esterno, così
+  eventuali future modifiche sanno perché NON usare `stmt.exists([param])`
+  su query PRAGMA.
+
+#### FIX B — `lib.rs::run()` logga su file `boot.log` non solo su stderr
+- `src-tauri/src/lib.rs` — Aggiunta funzione `boot_log(line: &str)` che
+  scrive in append su `<app_data_dir>/boot.log` oltre che su `eprintln!`.
+  Tutti i `eprintln!("FATAL: ...")` prima di `std::process::exit(1)` ora
+  passano per `boot_log`, quindi eventuali futuri crash di init sono
+  diagnosticabili dall'utente (su Windows: `%APPDATA%/com.dossierfanta.app/boot.log`).
+- `eprintln!` viene preservato per dev (visibile in console) e per
+  `tauri-plugin-log` dopo l'init.
+
+#### FIX C — Rimossa chiamata inutile `db::clone_conn` per `default-personal`
+- `src-tauri/src/lib.rs` — Nel loop che apre una `Connection` per ogni DB
+  logico, il branch `default-personal` chiamava `db::clone_conn(&main_conn, &db_path)`
+  che internamente fa `open_db_file(path).expect("cannot open clone connection to mio.db")`.
+  La connessione clonata veniva poi subito sovrascritta da
+  `connections.insert("default-personal".to_string(), main_conn)` dopo il loop
+  (operazione inutile). Con `panic = "abort"` nel profile.release, un qualsiasi
+  errore di `open_db_file` (es. WAL lock temporaneo) avrebbe abortito l'app
+  silenziosamente. Il branch `default-personal` ora fa `continue` e lascia
+  che la insert di `main_conn` dopo il loop sia l'unica sorgente di verità.
+
+### Test di regressione
+
+- `src-tauri/tests/m3a_has_column_regression_test.rs` (NEW) — 3 test:
+  1. `open_and_migrate_on_fresh_db_succeeds`: riproduce il flusso esatto su
+     DB nuovo, verifica che non ritorni errore, verifica che le 6 colonne
+     sync-live siano presenti dopo la migrazione.
+  2. `open_and_migrate_is_idempotent_on_existing_db`: seconda chiamata
+     sullo stesso file deve essere idempotente (le colonne esistono già,
+     `has_column` ritorna true, gli ALTER vengono saltati).
+  3. `pragma_table_info_does_not_accept_bind_params`: test proxy che
+     verifica il pattern buggy (`stmt.exists([param])` su PRAGMA) ritorna
+     errore. Se rusqlite in futuro cambia behavior, questo test fallisce e
+     ci avvisa di rivedere `has_column`.
+
+### Files modificati
+
+- `src-tauri/src/db.rs` — `has_column` riscritta senza `stmt.exists([param])`
+- `src-tauri/src/lib.rs` — `boot_log()` helper + rimozione `clone_conn` per
+  `default-personal` + tutti i `eprintln!` FATAL passano per `boot_log`
+- `src-tauri/tests/m3a_has_column_regression_test.rs` (NEW) — 3 test di
+  regressione
+
+### Verifica manuale (post-fix)
+
+1. `cargo test --test m1_smoke_test -- --nocapture` — passa
+2. `cargo test --test m3a_has_column_regression_test -- --nocapture` — passa
+3. Push di tag `v0.3.3` (o successivo) → `build-msi.yml` verde → installare
+   l'.msi su macchina Windows pulita (nessun file `%APPDATA%/com.dossierfanta.app/`
+   preesistente) → l'app si avvia correttamente, mostra splash screen
+   "DossierFanta v2.5 · M3" → passa a `RosaView` vuota con messaggio
+   "Nessun giocatore" (aspettato su DB nuovo).
+4. In caso di futuro problema di init, ispezionare
+   `%APPDATA%/com.dossierfanta.app/boot.log` per il messaggio FATAL.
+
+### Note
+
+- Lo schema SQLite (`migrations/schema_v2.2.sql` e `schema_v2.3.sql`) NON è
+  stato toccato. Il bug era nel codice Rust che interrogava lo schema, non
+  nello schema stesso.
+- Il `Cargo.lock` NON è stato rigenerato: nessuna dipendenza aggiunta o
+  rimossa, solo codice Rust modificato in 2 file.
+- `tauri.conf.json` e `capabilities/default.json` NON sono stati toccati.
+- Il profile.release (`panic = "abort"`, `opt-level = "s"`, `lto = true`)
+  NON è stato toccato. Il fix funziona sia con `panic = "abort"` che con
+  `panic = "unwind"`.
+
+---
+
 ## [0.2.5] — 2026-10-12 — M2.2 sprint zero M3: 4 fix ispettore + 2 bug grafici
 
 Sprint zero chirurgico che chiude i 4 fix bloccanti dell'ispezione M2.1

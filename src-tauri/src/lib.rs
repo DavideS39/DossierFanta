@@ -99,6 +99,28 @@ fn resolve_app_data_dir_early() -> std::path::PathBuf {
     base.join("com.dossierfanta.app")
 }
 
+/// Scrive una riga di log di bootstrap su `app_data_dir/boot.log` in aggiunta
+/// a `eprintln!`. Su Windows in release (`#![cfg_attr(not(debug_assertions),
+/// windows_subsystem = "windows")]`) la console è nascosta: senza un file di
+/// log, eventuali `std::process::exit(1)` nella init del DB sono invisibili
+/// all'utente (sintomo: "l'app .msi non si apre proprio"). Il file è in
+/// append (rotazione manuale o automatica futura), una riga per entry.
+fn boot_log(line: &str) {
+    use std::io::Write;
+    let dir = resolve_app_data_dir_early();
+    let log_path = dir.join("boot.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+    // Mantiene il comportamento storico: anche su stderr (visibile in dev
+    // e nei log di tauri-plugin-log dopo l'init).
+    eprintln!("{}", line);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // === Inizializzazione DB PRIMA di Tauri ===
@@ -106,22 +128,31 @@ pub fn run() {
     // e che lo schema v2.2 sia applicato anche se Tauri non riesce ad avviare la UI.
     let app_data_dir = resolve_app_data_dir_early();
     if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
-        eprintln!("FATAL: cannot create app_data_dir {}: {}", app_data_dir.display(), e);
+        let msg = format!(
+            "FATAL: cannot create app_data_dir {}: {}",
+            app_data_dir.display(),
+            e
+        );
+        boot_log(&msg);
         std::process::exit(1);
     }
     let db_path = app_data_dir.join("mio.db");
 
-    eprintln!("[DossierFanta] app_data_dir = {}", app_data_dir.display());
-    eprintln!("[DossierFanta] DB path = {}", db_path.display());
+    boot_log(&format!(
+        "[DossierFanta] boot — app_data_dir = {}",
+        app_data_dir.display()
+    ));
+    boot_log(&format!("[DossierFanta] boot — DB path = {}", db_path.display()));
 
     // Apri la connessione principale e applica lo schema v2.2 se primo avvio.
     let main_conn = match db::open_and_migrate(&db_path) {
         Ok(c) => {
-            eprintln!("[DossierFanta] DB init OK, schema v2.2 applied");
+            boot_log("[DossierFanta] DB init OK, schema v2.2 + v2.3 applied");
             c
         }
         Err(e) => {
-            eprintln!("FATAL: DB init failed: {}", e);
+            let msg = format!("FATAL: DB init failed: {}", e);
+            boot_log(&msg);
             std::process::exit(1);
         }
     };
@@ -135,7 +166,8 @@ pub fn run() {
         let mut stmt = match main_conn.prepare("SELECT id FROM databases ORDER BY created_at ASC") {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("FATAL: cannot read databases table: {}", e);
+                let msg = format!("FATAL: cannot read databases table: {}", e);
+                boot_log(&msg);
                 std::process::exit(1);
             }
         };
@@ -147,7 +179,7 @@ pub fn run() {
 
         if ids.is_empty() {
             // Should not happen — schema inserts 'default-personal'. Fallback.
-            eprintln!("[DossierFanta] WARN: no databases rows found, using default-personal");
+            boot_log("[DossierFanta] WARN: no databases rows found, using default-personal");
             "default-personal".to_string()
         } else {
             ids[0].clone()
@@ -155,12 +187,22 @@ pub fn run() {
     };
 
     // Apri una connessione per ogni DB logico (tutte sullo stesso file mio.db).
-    // La prima (default-personal) è già `main_conn`; le altre vengono aperte qui.
+    // La prima (default-personal) è già `main_conn` e la saltiamo qui: viene
+    // inserita in mappa dopo il loop (move di main_conn).
+    //
+    // NOTA: in precedenza il branch `default-personal` chiamava
+    // `db::clone_conn(&main_conn, &db_path)` (che usa `expect` internamente)
+    // SOLO per essere poi sovrascritto dalla insert di main_conn dopo il loop.
+    // Era un'operazione inutile + un potenziale panic silenzioso: se
+    // `open_db_file` falliva (es. WAL lock), `expect` panicava e, con
+    // `panic = "abort"` nel profile.release, l'app abortiva senza mostrare
+    // la finestra. Sintomo esterno: "l'app .msi non si apre proprio".
     {
         let mut stmt = match main_conn.prepare("SELECT id FROM databases") {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("FATAL: cannot enumerate databases: {}", e);
+                let msg = format!("FATAL: cannot enumerate databases: {}", e);
+                boot_log(&msg);
                 std::process::exit(1);
             }
         };
@@ -172,32 +214,31 @@ pub fn run() {
 
         for id in &ids {
             if id == "default-personal" {
-                connections.insert(id.clone(), db::clone_conn(&main_conn, &db_path));
-            } else {
-                match db::open_db_file(&db_path) {
-                    Ok(c) => {
-                        connections.insert(id.clone(), c);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "[DossierFanta] WARN: cannot open conn for db_id={}: {}",
-                            id, e
-                        );
-                    }
+                // Skip — main_conn viene inserita in mappa dopo il loop.
+                continue;
+            }
+            match db::open_db_file(&db_path) {
+                Ok(c) => {
+                    connections.insert(id.clone(), c);
+                }
+                Err(e) => {
+                    boot_log(&format!(
+                        "[DossierFanta] WARN: cannot open conn for db_id={}: {}",
+                        id, e
+                    ));
                 }
             }
         }
     }
-    // Move main_conn into the map for default-personal (replaces the clone above
-    // — the clone is just to keep main_conn alive during the loop). We end up
-    // with one Connection per db_id; default-personal uses the original main_conn.
+    // Move main_conn into the map for default-personal.
+    // È l'unica connessione effettivamente usata per default-personal.
     connections.insert("default-personal".to_string(), main_conn);
 
-    eprintln!(
+    boot_log(&format!(
         "[DossierFanta] workspace: {} DB caricati, active={}",
         connections.len(),
         active_db_id
-    );
+    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
