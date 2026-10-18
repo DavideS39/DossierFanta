@@ -763,23 +763,27 @@ fn load_or_create_secret(conn: &Connection) -> AppResult<iroh_base::key::SecretK
         .ok();
 
     if let Some((bytes, pk_cached)) = loaded {
-        // Ricostruisci SecretKey dai 32 byte. iroh_base::key::SecretKey::from_bytes
-        // ritorna Result<&SecretKey, Error>; cloniamo per ritornare owned.
-        match iroh_base::key::SecretKey::from_bytes(&bytes) {
-            Ok(sk) => {
-                log::info!(
-                    "[M3a.3] SecretKey caricata da sync_identity. peer_key={}...",
-                    &pk_cached.get(..16).unwrap_or(&pk_cached)
-                );
-                return Ok(sk.clone());
-            }
-            Err(e) => {
-                // Bytes corrotti — genera nuova key, sovrascrivi la riga.
-                log::warn!(
-                    "[M3a.3] SecretKey::from_bytes fallito ({}). Rigenero + overwrite.",
-                    e
-                );
-            }
+        // Ricostruisci SecretKey dai 32 byte. `SecretKey::from_bytes` prende
+        // `&[u8; 32]` (array fisso di 32 byte, NON slice) e ritorna `Self`
+        // direttamente (NON Result — qualsiasi 32 byte è una SecretKey ed25519
+        // valida). Verifichiamo la lunghezza prima della conversione: se i byte
+        // sono corrotti (len != 32), rigeneriamo una nuova key.
+        if bytes.len() == 32 {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            let sk = iroh_base::key::SecretKey::from_bytes(&arr);
+            log::info!(
+                "[M3a.3] SecretKey caricata da sync_identity. peer_key={}...",
+                &pk_cached.get(..16).unwrap_or(&pk_cached)
+            );
+            // sk è SecretKey (owned, Copy/Clone) — lo ritorniamo direttamente.
+            return Ok(sk);
+        } else {
+            // Bytes corrotti — genera nuova key, sovrascrivi la riga.
+            log::warn!(
+                "[M3a.3] SecretKey bytes len {} != 32 — rigenero + overwrite.",
+                bytes.len()
+            );
         }
     }
 
