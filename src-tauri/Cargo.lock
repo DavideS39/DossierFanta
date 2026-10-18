@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "dossierfanta"
-version = "0.3.0"
+version = "0.3.3"
 dependencies = [
  "bytes",
  "chrono",
