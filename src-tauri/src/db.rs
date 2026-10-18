@@ -4,11 +4,14 @@
 //!  - v2.2 (M2): `migrations/schema_v2.2.sql` — schema base.
 //!  - v2.3 (M3a): `migrations/schema_v2.3.sql` — estensione additive per
 //!    sync-live (CRDT). ALTER TABLE additive + nuova tabella `sync_peers`.
+//!  - v2.4 (M3a.3): `migrations/schema_v2.4.sql` — estensione additive per
+//!    `sync_identity` (peer key Iroh persistente, singleton table).
 //!
 //! M3a (B.1) — Migrazione tracciata via `PRAGMA user_version`:
-//!  - 0 (never migrated) → applica v2.2 + v2.3, set user_version=3
-//!  - <3 (DB pre-v2.3) → applica v2.3 (ALTER additive + sync_peers), set user_version=3
-//!  - >=3 (v2.3 già applicato) → skip
+//!  - 0 (never migrated) → applica v2.2 + v2.3 + v2.4, set user_version=4
+//!  - <3 (DB pre-v2.3) → applica v2.3 + v2.4, set user_version=4
+//!  - ==3 (v2.3 applicato, pre-v2.4) → applica v2.4, set user_version=4
+//!  - >=4 (v2.4 già applicato) → skip
 //!
 //! Lo schema v2.2 è idempotente via check esistenza tabella `players`.
 //! Lo schema v2.3 è idempotente via `PRAGMA table_info` check su ogni ALTER
@@ -25,8 +28,13 @@ const SCHEMA_V2_2: &str = include_str!("../migrations/schema_v2.2.sql");
 /// additive sono gestiti in Rust da `migrate_v22_to_v23` per idempotenza.
 const SCHEMA_V2_3: &str = include_str!("../migrations/schema_v2.3.sql");
 
-/// Versione schema target. v3 = v2.3 (estensione sync-live di v2.2).
-const SCHEMA_VERSION_TARGET: i32 = 3;
+/// Schema SQL v2.4 (estensione additive M3a.3 — peer key persistente).
+/// Contiene SOLO la CREATE TABLE IF NOT EXISTS sync_identity (singleton
+/// table). Nessun ALTER — puramente additive.
+const SCHEMA_V2_4: &str = include_str!("../migrations/schema_v2.4.sql");
+
+/// Versione schema target. v4 = v2.4 (sync_identity per peer key persistente).
+const SCHEMA_VERSION_TARGET: i32 = 4;
 
 /// Apre la connessione a `mio.db` (lo crea se non esiste) e applica lo
 /// schema v2.2 se è la prima esecuzione, poi la migrazione v2.3 se
@@ -62,8 +70,14 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         log::info!("Applying DossierFanta schema v2.3 (sync-live extension)...");
         conn.execute_batch(SCHEMA_V2_3)?;
         migrate_v22_to_v23(&conn)?;
+        // Su DB nuovo, applica subito anche v2.4 (sync_identity singleton).
+        log::info!("Applying DossierFanta schema v2.4 (sync_identity extension)...");
+        conn.execute_batch(SCHEMA_V2_4)?;
         set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
-        log::info!("Schema v2.3 applied. user_version={}.", SCHEMA_VERSION_TARGET);
+        log::info!(
+            "Schema v2.4 applied. user_version={}.",
+            SCHEMA_VERSION_TARGET
+        );
     } else {
         let current = get_user_version(&conn);
         log::debug!(
@@ -73,18 +87,28 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         );
         if current < SCHEMA_VERSION_TARGET {
             log::info!(
-                "Migrating DB from user_version={} to {} (v2.3 sync-live)...",
+                "Migrating DB from user_version={} to {} (v2.3+v2.4 sync extensions)...",
                 current,
                 SCHEMA_VERSION_TARGET
             );
-            // Applica v2.3 (CREATE TABLE IF NOT EXISTS sync_peers + commenti)
-            conn.execute_batch(SCHEMA_V2_3)?;
-            // Applica gli ALTER additive (idempotenti via PRAGMA table_info)
-            migrate_v22_to_v23(&conn)?;
+            // Applica v2.3 se non ancora applicato (current < 3)
+            if current < 3 {
+                conn.execute_batch(SCHEMA_V2_3)?;
+                migrate_v22_to_v23(&conn)?;
+                log::info!("Migration to v2.3 complete.");
+            }
+            // Applica v2.4 (sync_identity) se non ancora applicato (current < 4)
+            if current < 4 {
+                conn.execute_batch(SCHEMA_V2_4)?;
+                log::info!("Migration to v2.4 complete (sync_identity table).");
+            }
             set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
-            log::info!("Migration to v2.3 complete. user_version={}.", SCHEMA_VERSION_TARGET);
+            log::info!(
+                "Migration complete. user_version={}.",
+                SCHEMA_VERSION_TARGET
+            );
         } else {
-            log::debug!("DB already at v2.3, skipping migration.");
+            log::debug!("DB already at v2.4, skipping migration.");
         }
     }
 

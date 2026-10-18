@@ -37,6 +37,11 @@ import type {
   AuctionDataSyncInput,
   PlayerSyncInput,
   ScoutingNoteSyncInput,
+  // M3a.3 — nuovi tipi per sync_identity + trusted peers
+  SyncIdentity,
+  TrustedPeer,
+  // M3a.3 — tipo evento sync-update-received
+  SyncUpdateReceivedEvent,
 } from "@/types/sync";
 
 export const tauriApi = {
@@ -342,6 +347,36 @@ export const tauriApi = {
   irohDisconnectPeer: (peerKey: string) =>
     invoke<void>("iroh_disconnect_peer", { peerKey }),
 
+  // --- M3a.3 — Peer key persistente + trusted peers ---
+
+  /** Ferma il nodo Iroh corrente (rilascia risorse QUIC). SecretKey resta salvata. */
+  irohStopNode: () =>
+    invoke<void>("iroh_stop_node"),
+
+  /**
+   * Versione 2 di irohConnectByPeerKey che accetta DbState e salva il peer
+   * come trusted in `sync_peers` dopo una connessione QUIC riuscita. Usa questo
+   * al posto di `irohConnectByPeerKey` per abilitare l'auto-connect al boot.
+   */
+  irohConnectByPeerKeyV2: (peerKey: string) =>
+    invoke<boolean>("iroh_connect_by_peer_key_v2", { peerKey }),
+
+  /** Ritorna l'identità sync persistita (peer_key + display_name), o null se non ancora creata. */
+  getSyncIdentity: () =>
+    invoke<SyncIdentity | null>("get_sync_identity"),
+
+  /** Imposta il display_name dell'identità sync corrente. */
+  setSyncDisplayName: (name: string) =>
+    invoke<void>("set_sync_display_name", { name }),
+
+  /** Lista peer fidati salvati (auto-connect al boot). */
+  listTrustedPeers: () =>
+    invoke<TrustedPeer[]>("list_trusted_peers"),
+
+  /** Rimuove un peer dalla lista trusted (NON lo delete, imposta trusted=0). */
+  removeTrustedPeer: (peerKey: string) =>
+    invoke<void>("remove_trusted_peer", { peerKey: peerKey }),
+
   // --- B.8 save_*_from_sync (con updated_by='sync-live' lato Rust) ---
 
   /** Persiste un player ricevuto dal sync CRDT. */
@@ -383,6 +418,40 @@ export const tauriApi = {
   /** M3a.1 — Cerca peer DossierFanta sulla LAN via mDNS. */
   lanDiscoverPeers: (timeoutMs?: number) =>
     invoke<string[]>("lan_discover_peers", { timeoutMs: timeoutMs ?? null }),
+
+  // ===== M3a.3 — Listener eventi Tauri (pattern listen congelato) =====
+  //
+  // Wrapper per `listen<T>("event-name", callback)`. Ritornano una `UnlistenFn`
+  // che il caller deve chiamare su cleanup. Incapsulano qui così i nomi degli
+  // eventi stanno in un solo file (evita typo in giro per il codebase).
+
+  /**
+   * Listener per `sync-update-received` (emesso dal subscribe loop Iroh o
+   * dal peer handler LAN quando arriva un update Yjs binario da un peer).
+   * Il caller deve chiamare l'unlisten ritornato su cleanup.
+   */
+  onSyncUpdateReceived: (
+    cb: (event: SyncUpdateReceivedEvent) => void
+  ): Promise<UnlistenFn> =>
+    listen<SyncUpdateReceivedEvent>("sync-update-received", (e) => {
+      try {
+        cb(e.payload);
+      } catch (err) {
+        console.error("[api.onSyncUpdateReceived] handler fallito:", err);
+      }
+    }),
+
+  /** Listener per `sync-peer-connected` (NeighborUp nel gossip swarm). */
+  onSyncPeerConnected: (
+    cb: (event: { peerKey: string }) => void
+  ): Promise<UnlistenFn> =>
+    listen<{ peerKey: string }>("sync-peer-connected", (e) => cb(e.payload)),
+
+  /** Listener per `sync-peer-disconnected` (NeighborDown nel gossip swarm). */
+  onSyncPeerDisconnected: (
+    cb: (event: { peerKey: string }) => void
+  ): Promise<UnlistenFn> =>
+    listen<{ peerKey: string }>("sync-peer-disconnected", (e) => cb(e.payload)),
 };
 
 /** True solo dentro il binario Tauri (WebView con internals iniettati). */

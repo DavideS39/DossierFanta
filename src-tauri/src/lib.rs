@@ -297,6 +297,15 @@ pub fn run() {
             commands::sync::iroh_start_node,
             commands::sync::iroh_get_peer_key,
             commands::sync::iroh_connect_by_peer_key,
+            // M3a.3 — nuova versione che accetta DbState e salva il peer
+            // come trusted in `sync_peers` dopo una connessione riuscita.
+            commands::sync::iroh_connect_by_peer_key_v2,
+            // M3a.3 — comandi per sync_identity (peer key persistente)
+            commands::sync::iroh_stop_node,
+            commands::sync::get_sync_identity,
+            commands::sync::set_sync_display_name,
+            commands::sync::list_trusted_peers,
+            commands::sync::remove_trusted_peer,
             commands::sync::iroh_broadcast_update,
             commands::sync::iroh_subscribe_updates,
             commands::sync::iroh_get_connected_peers,

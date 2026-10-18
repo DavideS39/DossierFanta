@@ -1,9 +1,9 @@
 {
   "name": "dossierfanta-m2",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.3",
   "type": "module",
-  "description": "DossierFanta v2.5 — Milestone M3.1 (scraper selectors fix + assertion FVM coverage + real fixture) + avvio M3a (sync live Yjs+Iroh). Tauri 2.0 desktop app: auto-fetch listone Serie A via GitHub Actions, fallback inline scraper, multi-DB workspace, archiviazione automatica, design taccuino scout 80s.",
+  "description": "DossierFanta v2.5 — M3a.3 (sync multi-canale Supabase + Iroh, peer key persistente, listone come DB, SyncView redesign). Tauri 2.0 desktop app: auto-fetch listone Serie A via GitHub Actions, fallback inline scraper, multi-DB workspace, archiviazione automatica, design taccuino scout 80s.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,6 +13,7 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "@tauri-apps/api": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

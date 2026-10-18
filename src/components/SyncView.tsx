@@ -1,63 +1,75 @@
-// src/components/SyncView.tsx — Schermata Sync live (M3a — B.5).
+// src/components/SyncView.tsx — Schermata Sync live (M3a.3 — Deliverable 6 redesign).
 //
-// Layout (mockup brief B.5):
-//   ┌─ SYNC LIVE ──────────────────────────────────────┐
-//   │ Il tuo peer key:                                  │
-//   │ ┌────────────────────────────────────────────┐    │
-//   │ │ abc23-def45-ghi78-jkl90-mno12-pqr34        │    │
-//   │ │ [copia]                                     │    │
-//   │ └────────────────────────────────────────────┘    │
-//   │ Peer connessi: 1                                  │
-//   │ ● marco (connesso · ●live)                        │
-//   │ Connetti nuovo peer:                              │
-//   │ ┌────────────────────────────────────────────┐    │
-//   │ │ inserisci peer key...                      │    │
-//   │ └────────────────────────────────────────────┘    │
-//   │ [connetti]                                        │
-//   │ Stato sync:                                       │
-//   │ ● Live (modifiche propagate in tempo reale)       │
-//   │ ○ Offline (modifiche bufferizzate)                 │
-//   └───────────────────────────────────────────────────┘
+// DUE PROVIDER attivi contemporaneamente (vedi brief M3a.3):
+//   1. SupabaseYjsProvider (primary, sempre attivo, relay + offline storage)
+//   2. IrohYjsProvider (secondary, p2p diretto low-latency)
 //
-// Pairing flow (brief B.5):
-//  1. Utente A apre Sync → vede il proprio peer key
-//  2. Utente A condivide peer key a Utente B (out-of-band)
-//  3. Utente B apre Sync → inserisce peer key di A → click "connetti"
-//  4. Iroh stabilisce connessione (NAT traversal automatico, ~2-5 sec)
-//  5. Sync iniziale: scambio state vector + diff Yjs
-//  6. Stato "●Live" verde. Da qui, modifiche propagate in ~30-80ms (QUIC)
-//     o ~150-300ms (con relay).
+// Il SyncManager è istanziato da App.tsx al boot (vedi App.tsx::bootSync()).
+// SyncView NON avvia/disattiva il sync — legge lo stato corrente e offre:
+//   1. Visualizzazione identità (peer_key + display_name + [salva])
+//   2. Stato connessione dual-provider (● Supabase + ●/○ Iroh)
+//   3. Lista peer conosciuti (sync_peers trusted) con [connetti]/[rimuovi]
+//   4. Aggiungi nuovo peer (input + [connetti e salva])
+//   5. Box info (Supabase sempre attivo, Iroh opzionale)
+//
+// Boot sequence (App.tsx):
+//   1. initYjsBridge() → listener yPlayers.observe etc.
+//   2. SyncManager + addProvider(Supabase) [sempre]
+//   3. Se sync_identity esiste → addProvider(Iroh) + auto-connect trusted peers
+//   4. connectAll()
 //
 // Vincolo HARD #14: Pairing esplicito (peer key scambiata out-of-band).
-// Niente auto-discovery su internet.
+// Vincolo HARD #21: Iroh opzionale — se non disponibile, Supabase basta.
 
-import { useEffect, useState, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api, isDesktop } from "@/api/tauri";
-import {
-  applyRemoteUpdate,
-  initYjsBridge,
-  initialSync,
-} from "@/lib/sync/yjsDocuments";
-import {
-  setMyIdentity,
-  startCursorsCleanup,
-  stopCursorsCleanup,
-} from "@/lib/sync/yjsCursors";
-import type { SyncStatus, PeerKey, SyncUpdateReceivedEvent } from "@/types/sync";
+import { getSyncManager } from "@/lib/sync/SyncManager";
+import { setMyIdentity } from "@/lib/sync/yjsCursors";
+import { ydoc } from "@/lib/sync/yjsDocuments";
+import { IrohYjsProvider } from "@/lib/sync/IrohYjsProvider";
+import type { SyncIdentity, TrustedPeer } from "@/types/sync";
 
 // ----------------------------------------------------------------------
-// Stato locale UI (mock per anteprima web se non in Tauri)
+// Stati locali UI
 // ----------------------------------------------------------------------
 
-const initialStatus: SyncStatus = {
-  started: false,
+interface ConnectionState {
+  /** True se SupabaseYjsProvider è connesso (sempre true salvo errori rete). */
+  supabaseConnected: boolean;
+  /** True se IrohYjsProvider è connesso (false se peer_key non ancora creata). */
+  irohConnected: boolean;
+  /** Peer key Iroh corrente (NodeId base32). Null se non ancora avviato. */
+  peerKey: string | null;
+  /** Identità sync persistita (letta da sync_identity table). */
+  identity: SyncIdentity | null;
+  /** Lista peer fidati salvati (sync_peers trusted=1). */
+  trustedPeers: TrustedPeer[];
+  /** Peer attualmente connessi via Iroh (subset dei trusted, live state). */
+  connectedPeers: string[];
+  /** Nome display (input locale, sync con backend su [salva]). */
+  displayNameInput: string;
+  /** True se è in corso un'operazione (avvio Iroh, connect, save name). */
+  busy: boolean;
+  /** Messaggio di errore (stringa), null se tutto OK. */
+  error: string | null;
+  /** True se il nome è stato appena salvato (per feedback UX "salvato!"). */
+  nameSaved: boolean;
+  /** True se la peer_key è stata appena copiata (per feedback "copiato!"). */
+  copied: boolean;
+}
+
+const initialState: ConnectionState = {
+  supabaseConnected: false,
+  irohConnected: false,
   peerKey: null,
+  identity: null,
+  trustedPeers: [],
   connectedPeers: [],
-  status: "offline",
-  lastUpdateAt: null,
-  updatesReceived: 0,
-  updatesSent: 0,
+  displayNameInput: "",
+  busy: false,
+  error: null,
+  nameSaved: false,
+  copied: false,
 };
 
 // ----------------------------------------------------------------------
@@ -65,546 +77,745 @@ const initialStatus: SyncStatus = {
 // ----------------------------------------------------------------------
 
 export function SyncView(): React.ReactElement {
-  const [status, setStatus] = useState<SyncStatus>(initialStatus);
-  const [newPeerKey, setNewPeerKey] = useState("");
-  const [isStarting, setIsStarting] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<ConnectionState>(initialState);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ---- Boot: inizializza Yjs bridge + cursori cleanup + listener sync-update-received ----
-  //
-  // M3a.2 (PB4-B fix) — Registra il listener per l'evento Tauri
-  // `sync-update-received`. Questo evento è emesso:
-  //  - Dal subscribe loop di `iroh_start_node` (sync.rs) quando arriva un
-  //    update via Iroh gossip (path p2p a distanza).
-  //  - Da `handle_peer` (sync_lan.rs) quando arriva un `Message::Binary`
-  //    via WebSocket LAN (path fallback LAN-only).
-  //
-  // Il payload contiene `update_bytes` (array di u8 0-255). Lo converto in
-  // `Uint8Array` e chiamo `applyRemoteUpdate(bytes)` → `Y.applyUpdate(ydoc, bytes)`
-  // → triggera i listener `yPlayers.observe` / `yNotes.observe` /
-  // `yAuction.observe` → chiamano `save_*_from_sync` → SQLite del peer
-  // ricevente aggiornato con `updated_by='sync-live'`.
-  //
-  // In M3a.1 NESSUN frontend registrava questo listener → Y.Doc frontend del
-  // peer ricevente restava vuoto → NESSUN listener observe triggerato →
-  // SQLite del peer ricevente MAI aggiornato (bug PB4-B bloccante).
-  useEffect(() => {
-    const cleanupYjs = initYjsBridge();
-    startCursorsCleanup();
-
-    // Listener per sync-update-received (path Iroh + path LAN-only).
-    // In anteprima web (mock) non registra: non c'è Tauri runtime.
-    let unlistenFn: (() => void) | null = null;
-    let cancelled = false;
-    if (isDesktop) {
-      listen<SyncUpdateReceivedEvent>("sync-update-received", (event) => {
-        const { update_bytes, from_peer, bytes_len } = event.payload;
-        if (!update_bytes || update_bytes.length === 0) {
-          console.warn(
-            "[SyncView] sync-update-received con payload vuoto (bytes_len=",
-            bytes_len,
-            "from_peer=",
-            from_peer,
-            ") — update non applicato"
-          );
-          return;
-        }
-        try {
-          const bytes = new Uint8Array(update_bytes);
-          applyRemoteUpdate(bytes);
-          if (import.meta.env?.DEV) {
-            console.debug(
-              `[SyncView] sync-update-received: ${bytes_len} bytes da ${from_peer.slice(0, 16)}...`
-            );
-          }
-        } catch (err) {
-          console.error(
-            "[SyncView] applyRemoteUpdate fallito (bytes_len=",
-            bytes_len,
-            "from_peer=",
-            from_peer,
-            "):",
-            err
-          );
-        }
-      })
-        .then((un) => {
-          if (cancelled) {
-            // Il componente si è smontato durante l'await di listen()
-            un();
-            return;
-          }
-          unlistenFn = un;
-        })
-        .catch((err) => {
-          console.error("[SyncView] listen('sync-update-received') fallito:", err);
-        });
-    }
-
-    return () => {
-      cleanupYjs();
-      stopCursorsCleanup();
-      cancelled = true;
-      if (unlistenFn) {
-        unlistenFn();
-        unlistenFn = null;
-      }
-    };
-  }, []);
-
-  // ---- Polling stato peer connessi (ogni 2s) ----
-  useEffect(() => {
-    if (!status.started) return;
-    const interval = setInterval(async () => {
-      try {
-        const peers = isDesktop ? await api.irohGetConnectedPeers() : [];
-        setStatus((s) => ({
-          ...s,
-          connectedPeers: peers,
-          status: peers.length > 0 ? "live" : "offline",
-        }));
-      } catch (err) {
-        console.debug("[SyncView] poll peers skip:", err);
-      }
-    }, 2_000);
-    return () => clearInterval(interval);
-  }, [status.started]);
-
-  // ---- Azione: avvia nodo Iroh (lazy, solo su click) ----
-  const handleStartNode = useCallback(async () => {
-    setIsStarting(true);
-    setError(null);
+  // --- Funzione di refresh unico stato da SyncManager + API ---
+  const refresh = useCallback(async () => {
+    if (!isDesktop) return;
     try {
-      const peerKey = isDesktop ? await api.irohStartNode() : "mock-peer-key-abc123";
-      // Imposta identità locale per cursori
-      setMyIdentity(peerKey, undefined);
-      // Avvia listener per updates remoti (task di background Rust)
-      if (isDesktop) {
-        await api.irohSubscribeUpdates();
-      }
-      setStatus((s) => ({
+      const syncManager = getSyncManager();
+      const connectedProviders = syncManager.getConnectedProviders();
+      const supabaseConnected = connectedProviders.includes("supabase");
+      const irohConnected = connectedProviders.includes("iroh");
+
+      const [identity, trustedPeers, connectedPeers] = await Promise.all([
+        api.getSyncIdentity(),
+        api.listTrustedPeers(),
+        api.irohGetConnectedPeers().catch(() => [] as string[]),
+      ]);
+
+      setState((s) => ({
         ...s,
-        started: true,
-        peerKey,
-        status: "offline", // offline finché non si connette un peer
+        supabaseConnected,
+        irohConnected,
+        peerKey: identity?.peerKey ?? null,
+        identity,
+        trustedPeers,
+        connectedPeers,
+        // Non sovrascrivere displayNameInput se l'utente sta editando
+        displayNameInput:
+          s.displayNameInput || identity?.displayName || "",
       }));
     } catch (err) {
-      setError(`Errore avvio nodo Iroh: ${err}`);
-    } finally {
-      setIsStarting(false);
+      console.warn("[SyncView] refresh fallito:", err);
     }
   }, []);
 
-  // ---- Azione: connetti a peer remoto ----
-  const handleConnect = useCallback(async () => {
-    if (!newPeerKey.trim()) return;
-    setIsConnecting(true);
-    setError(null);
-    try {
-      const ok = isDesktop
-        ? await api.irohConnectByPeerKey(newPeerKey.trim())
-        : true;
-      if (ok) {
-        // Sync iniziale
-        await initialSync();
-        setStatus((s) => ({
-          ...s,
-          connectedPeers: [...s.connectedPeers, newPeerKey.trim()],
-          status: "live",
-          lastUpdateAt: new Date().toISOString(),
-        }));
-        setNewPeerKey("");
-      } else {
-        setError("Connessione fallita — peer key non valida o peer irraggiungibile.");
-      }
-    } catch (err) {
-      setError(`Errore connessione: ${err}`);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [newPeerKey]);
+  // --- Boot effect: refresh + polling 2s per status realtime ---
+  useEffect(() => {
+    void refresh();
+    pollTimer.current = setInterval(() => {
+      void refresh();
+    }, 2000);
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+  }, [refresh]);
 
-  // ---- Azione: disconnetti peer ----
-  const handleDisconnect = useCallback(
-    async (peerKey: PeerKey) => {
+  // --- Avvia Iroh manualmente (se peer_key non ancora creata) ---
+  const handleStartIroh = useCallback(async () => {
+    setState((s) => ({ ...s, busy: true, error: null }));
+    try {
+      // irohStartNode genera la SecretKey (se non esiste) e la salva in
+      // sync_identity, poi avvia il nodo Iroh. Il provider IrohYjsProvider
+      // deve essere registrato qui (App.tsx non l'ha fatto al boot perché
+      // non c'era ancora sync_identity).
+      const peerKey = await api.irohStartNode();
+      setMyIdentity(peerKey, undefined);
+      // Registra dinamicamente IrohYjsProvider nel SyncManager.
+      const syncManager = getSyncManager();
+      // Se non è già registrato, lo istanziamo ora.
+      if (!syncManager.getProvider("iroh")) {
+        const provider = new IrohYjsProvider(ydoc);
+        syncManager.addProvider(provider);
+        await provider.connect();
+      }
+      // Auto-connect trusted peers salvati.
+      const trusted = await api.listTrustedPeers();
+      if (trusted.length > 0) {
+        const irohProvider = syncManager.getProvider<IrohYjsProvider>("iroh");
+        if (irohProvider) {
+          void irohProvider.connectToSavedPeers(trusted.map((p) => p.peerId));
+        }
+      }
+      await refresh();
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        error: `Avvio Iroh fallito: ${err instanceof Error ? err.message : String(err)}`,
+      }));
+    } finally {
+      setState((s) => ({ ...s, busy: false }));
+    }
+  }, [refresh]);
+
+  // --- Salva display_name ---
+  const handleSaveName = useCallback(async () => {
+    const name = state.displayNameInput.trim();
+    if (!name) return;
+    setState((s) => ({ ...s, busy: true, error: null, nameSaved: false }));
+    try {
+      await api.setSyncDisplayName(name);
+      setMyIdentity(state.peerKey ?? "unknown", name);
+      setState((s) => ({ ...s, busy: false, nameSaved: true }));
+      // Reset "salvato!" dopo 2s
+      setTimeout(() => {
+        setState((s) => ({ ...s, nameSaved: false }));
+      }, 2000);
+      await refresh();
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        busy: false,
+        error: `Salvataggio nome fallito: ${err instanceof Error ? err.message : String(err)}`,
+      }));
+    }
+  }, [state.displayNameInput, state.peerKey, refresh]);
+
+  // --- Copia peer_key negli appunti ---
+  const handleCopy = useCallback(async () => {
+    if (!state.peerKey) return;
+    try {
+      await navigator.clipboard.writeText(state.peerKey);
+      setState((s) => ({ ...s, copied: true }));
+      setTimeout(() => setState((s) => ({ ...s, copied: false })), 2000);
+    } catch {
+      // Fallback: prompt manuale
+      window.prompt("Copia la peer key:", state.peerKey);
+    }
+  }, [state.peerKey]);
+
+  // --- Connetti nuovo peer ---
+  const [newPeerKey, setNewPeerKey] = useState("");
+  const handleConnectNew = useCallback(async () => {
+    const pk = newPeerKey.trim();
+    if (!pk) return;
+    setState((s) => ({ ...s, busy: true, error: null }));
+    try {
+      // Prima avvia Iroh se non ancora attivo
+      if (!state.peerKey) {
+        await api.irohStartNode();
+        const syncManager = getSyncManager();
+        if (!syncManager.getProvider("iroh")) {
+          syncManager.addProvider(new IrohYjsProvider(ydoc));
+        }
+      }
+      const connected = await api.irohConnectByPeerKeyV2(pk);
+      if (!connected) {
+        setState((s) => ({
+          ...s,
+          busy: false,
+          error: `Connessione a ${pk.slice(0, 16)}... fallita. Peer dietro NAT senza relay? Riprova tra 30s.`,
+        }));
+        return;
+      }
+      setNewPeerKey("");
+      await refresh();
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        busy: false,
+        error: `Connessione fallita: ${err instanceof Error ? err.message : String(err)}`,
+      }));
+    }
+  }, [newPeerKey, state.peerKey, refresh]);
+
+  // --- Disconnetti un peer ---
+  const handleDisconnectPeer = useCallback(
+    async (peerKey: string) => {
       try {
-        if (isDesktop) await api.irohDisconnectPeer(peerKey);
-        setStatus((s) => {
-          const remaining = s.connectedPeers.filter((p) => p !== peerKey);
-          return {
-            ...s,
-            connectedPeers: remaining,
-            status: remaining.length > 0 ? "live" : "offline",
-          };
-        });
+        await api.irohDisconnectPeer(peerKey);
+        await refresh();
       } catch (err) {
-        setError(`Errore disconnessione: ${err}`);
+        setState((s) => ({
+          ...s,
+          error: `Disconnessione fallita: ${err instanceof Error ? err.message : String(err)}`,
+        }));
       }
     },
-    []
+    [refresh]
   );
 
-  // ---- Azione: copia peer key ----
-  const handleCopy = useCallback(() => {
-    if (!status.peerKey) return;
-    navigator.clipboard
-      .writeText(status.peerKey)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2_000);
-      })
-      .catch(() => setError("Copia fallita — clipboard non disponibile."));
-  }, [status.peerKey]);
+  // --- Rimuovi un peer dai trusted ---
+  const handleRemovePeer = useCallback(
+    async (peerKey: string) => {
+      if (
+        !window.confirm(
+          `Rimuovere ${peerKey.slice(0, 16)}... dai peer fidati? Potrai ri-aggiungerlo incollando la peer key.`
+        )
+      )
+        return;
+      try {
+        await api.removeTrustedPeer(peerKey);
+        await api.irohDisconnectPeer(peerKey);
+        await refresh();
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          error: `Rimozione peer fallita: ${err instanceof Error ? err.message : String(err)}`,
+        }));
+      }
+    },
+    [refresh]
+  );
 
   // ----------------------------------------------------------------------
   // Render
   // ----------------------------------------------------------------------
 
+  // Anteprima web (mock): messaggio informativo
+  if (!isDesktop) {
+    return (
+      <section
+        style={{
+          width: "560px",
+          maxWidth: "90vw",
+          background: "var(--paper)",
+          border: "2px solid var(--ink)",
+          padding: "24px",
+          boxShadow: "0 12px 24px rgba(43,27,18,0.08), 0 4px 8px rgba(43,27,18,0.12)",
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "18px",
+            color: "var(--ink)",
+            marginBottom: "12px",
+          }}
+        >
+          Sync Live
+        </h2>
+        <p
+          style={{
+            fontFamily: "var(--font-body)",
+            fontSize: "13px",
+            color: "var(--ink-soft)",
+            lineHeight: 1.5,
+          }}
+        >
+          Anteprima web — sync live disponibile solo nel binario Tauri. Avvia
+          l'app con `npm run tauri:dev` per testare Supabase + Iroh.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section
-      className="sync-view"
       style={{
-        maxWidth: "640px",
-        margin: "0 auto",
+        width: "640px",
+        maxWidth: "90vw",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        background: "var(--paper)",
+        border: "2px solid var(--ink)",
         padding: "24px",
-        background: "#F7F3E8",
-        borderRadius: "12px",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-        fontFamily: "Inter, system-ui, sans-serif",
-        color: "#2C4A6B",
+        boxShadow:
+          "0 12px 24px rgba(43,27,18,0.08), 0 4px 8px rgba(43,27,18,0.12), 0 1px 2px rgba(43,27,18,0.20)",
+        fontFamily: "var(--font-body)",
+        color: "var(--ink)",
       }}
     >
       <h2
         style={{
+          fontFamily: "var(--font-display)",
           fontSize: "20px",
-          fontWeight: 700,
-          margin: "0 0 16px 0",
-          letterSpacing: "-0.01em",
+          color: "var(--ink)",
+          marginBottom: "20px",
+          borderBottom: "2px solid var(--ink-soft)",
+          paddingBottom: "8px",
         }}
       >
         Sync Live
       </h2>
 
-      {!isDesktop && (
+      {/* --- IDENTITÀ --- */}
+      <div style={{ marginBottom: "20px" }}>
         <div
           style={{
-            padding: "8px 12px",
-            marginBottom: "16px",
-            background: "#FFF4D6",
-            border: "1px solid #E0C971",
-            borderRadius: "6px",
-            fontSize: "12px",
-            color: "#7A5C00",
+            fontFamily: "var(--font-display)",
+            fontSize: "13px",
+            color: "var(--ink-soft)",
+            marginBottom: "8px",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
           }}
         >
-          Anteprima web — Iroh disattivato. Avvia l'app Tauri per il sync reale.
+          La tua identità
         </div>
-      )}
-
-      {/* --- Il tuo peer key --- */}
-      <div style={{ marginBottom: "20px" }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#5A6B7E",
-            marginBottom: "6px",
-          }}
-        >
-          Il tuo peer key
-        </label>
-        {status.peerKey ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "#FFFFFF",
-              border: "1px solid #D6CFC0",
-              borderRadius: "6px",
-              padding: "8px 10px",
-            }}
-          >
-            <code
+        {state.identity ? (
+          <>
+            <div
               style={{
-                flex: 1,
-                fontSize: "12px",
-                fontFamily: "Sarasa Mono SC, monospace",
-                color: "#2C4A6B",
-                overflowWrap: "break-word",
-                wordBreak: "break-all",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "8px 12px",
+                background: "var(--paper-dim)",
+                border: "1px solid rgba(43,27,18,0.2)",
+                marginBottom: "8px",
+                flexWrap: "wrap",
               }}
             >
-              {status.peerKey}
-            </code>
-            <button
-              type="button"
-              onClick={handleCopy}
-              style={{
-                background: copied ? "#5A9E6B" : "#2C4A6B",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "4px",
-                padding: "6px 10px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {copied ? "copiato!" : "copia"}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={handleStartNode}
-            disabled={isStarting}
-            style={{
-              background: "#2C4A6B",
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: "6px",
-              padding: "10px 16px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: isStarting ? "wait" : "pointer",
-              opacity: isStarting ? 0.6 : 1,
-            }}
-          >
-            {isStarting ? "avvio in corso..." : "Avvia nodo Iroh"}
-          </button>
-        )}
-      </div>
-
-      {/* --- Peer connessi --- */}
-      <div style={{ marginBottom: "20px" }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#5A6B7E",
-            marginBottom: "6px",
-          }}
-        >
-          Peer connessi: {status.connectedPeers.length}
-        </label>
-        {status.connectedPeers.length === 0 ? (
-          <div
-            style={{
-              padding: "10px",
-              background: "#FFFFFF",
-              border: "1px dashed #D6CFC0",
-              borderRadius: "6px",
-              fontSize: "12px",
-              color: "#9A8F7E",
-              fontStyle: "italic",
-            }}
-          >
-            Nessun peer connesso. Condividi la tua peer key o inseriscine una
-            remota qui sotto.
-          </div>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {status.connectedPeers.map((peer, idx) => (
-              <li
-                key={peer}
+              <span style={{ color: "var(--green)", fontSize: "16px" }}>●</span>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: "14px" }}>
+                {state.identity.displayName || "anonimo"}
+              </span>
+              <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 10px",
-                  background: "#FFFFFF",
-                  border: "1px solid #D6CFC0",
-                  borderRadius: "6px",
-                  marginBottom: "4px",
-                  fontSize: "13px",
+                  fontFamily: "var(--font-mono, var(--font-body))",
+                  fontSize: "11px",
+                  color: "var(--ink-soft)",
+                  wordBreak: "break-all",
                 }}
               >
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: "#5A9E6B",
-                    marginRight: "4px",
-                  }}
-                  aria-hidden="true"
-                />
-                <code
-                  style={{
-                    flex: 1,
-                    fontFamily: "Sarasa Mono SC, monospace",
-                    fontSize: "12px",
-                    color: "#2C4A6B",
-                    overflowWrap: "break-word",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  peer {idx + 1} · {peer.slice(0, 16)}...
-                </code>
-                <button
-                  type="button"
-                  onClick={() => handleDisconnect(peer)}
-                  style={{
-                    background: "transparent",
-                    color: "#A04040",
-                    border: "1px solid #D6C0C0",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                  }}
-                >
-                  disconnetti
-                </button>
-              </li>
-            ))}
-          </ul>
+                peer key: {state.peerKey?.slice(0, 32)}…
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: "11px",
+                  padding: "4px 10px",
+                  background: state.copied ? "var(--green)" : "var(--ink)",
+                  color: "var(--paper)",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {state.copied ? "copiato!" : "copia"}
+              </button>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                color: "var(--ink-soft)",
+                marginBottom: "12px",
+              }}
+            >
+              <span style={{ color: "var(--green)" }}>✓</span>
+              <span>salvata permanentemente (stabile cross-boot)</span>
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <label
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: "12px",
+                  color: "var(--ink-soft)",
+                }}
+              >
+                nome:
+              </label>
+              <input
+                type="text"
+                value={state.displayNameInput}
+                onChange={(e) =>
+                  setState((s) => ({ ...s, displayNameInput: e.target.value }))
+                }
+                placeholder="es. marco"
+                maxLength={64}
+                style={{
+                  flex: 1,
+                  fontFamily: "var(--font-body)",
+                  fontSize: "13px",
+                  padding: "6px 10px",
+                  background: "var(--paper)",
+                  border: "1px solid var(--ink-soft)",
+                  color: "var(--ink)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSaveName}
+                disabled={state.busy || !state.displayNameInput.trim()}
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: "12px",
+                  padding: "6px 14px",
+                  background: state.nameSaved ? "var(--green)" : "var(--ink)",
+                  color: "var(--paper)",
+                  border: "none",
+                  cursor: state.busy ? "wait" : "pointer",
+                }}
+              >
+                {state.nameSaved ? "salvato!" : "salva"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div
+            style={{
+              padding: "12px",
+              background: "var(--paper-dim)",
+              border: "1px dashed var(--ink-soft)",
+            }}
+          >
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--ink-soft)",
+                marginBottom: "8px",
+                lineHeight: 1.5,
+              }}
+            >
+              Nessuna identità sync ancora creata. Avvia Iroh per generare una
+              peer_key stabile (salvata su SQLite, cross-boot). La potrai
+              condividere out-of-band con il tuo amico per il pairing.
+            </p>
+            <button
+              type="button"
+              onClick={handleStartIroh}
+              disabled={state.busy}
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "13px",
+                padding: "8px 16px",
+                background: "var(--blue, #2C4A6B)",
+                color: "var(--paper)",
+                border: "none",
+                cursor: state.busy ? "wait" : "pointer",
+              }}
+            >
+              {state.busy ? "avvio in corso…" : "Avvia Iroh"}
+            </button>
+          </div>
         )}
       </div>
 
-      {/* --- Connetti nuovo peer --- */}
-      <div style={{ marginBottom: "20px" }}>
-        <label
+      {/* --- STATO CONNESSIONE --- */}
+      <div
+        style={{
+          marginBottom: "20px",
+          padding: "12px",
+          background: "var(--paper-dim)",
+          border: "1px solid rgba(43,27,18,0.15)",
+        }}
+      >
+        <div
           style={{
-            display: "block",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#5A6B7E",
-            marginBottom: "6px",
+            fontFamily: "var(--font-display)",
+            fontSize: "12px",
+            color: "var(--ink-soft)",
+            marginBottom: "8px",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
           }}
         >
-          Connetti nuovo peer
-        </label>
+          Stato connessione
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            fontFamily: "var(--font-body)",
+            fontSize: "13px",
+          }}
+        >
+          <div>
+            <span
+              style={{
+                color: state.supabaseConnected ? "var(--green)" : "var(--red)",
+              }}
+            >
+              {state.supabaseConnected ? "●" : "○"}
+            </span>{" "}
+            <strong>Supabase:</strong>{" "}
+            {state.supabaseConnected
+              ? "connesso (relay + offline storage)"
+              : "non connesso (verifica URL/key in syncConfig.ts)"}
+          </div>
+          <div>
+            <span
+              style={{
+                color: state.irohConnected ? "var(--green)" : "var(--amber, #B8860B)",
+              }}
+            >
+              {state.irohConnected ? "●" : "○"}
+            </span>{" "}
+            <strong>Iroh diretto:</strong>{" "}
+            {state.irohConnected
+              ? `${state.connectedPeers.length} peer attivo (${state.connectedPeers.length > 0 ? "~50ms" : "in attesa"})`
+              : state.identity
+              ? "nessun peer connesso (solo relay Supabase)"
+              : "non avviato — genera una peer_key per attivare"}
+          </div>
+        </div>
+      </div>
+
+      {/* --- PEER CONOSCIUTI --- */}
+      <div style={{ marginBottom: "20px" }}>
+        <div
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "12px",
+            color: "var(--ink-soft)",
+            marginBottom: "8px",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          Peer conosciuti (Iroh) — {state.trustedPeers.length} salvati
+        </div>
+        {state.trustedPeers.length === 0 ? (
+          <div
+            style={{
+              padding: "12px",
+              background: "var(--paper-dim)",
+              border: "1px dashed var(--ink-soft)",
+              fontSize: "12px",
+              color: "var(--ink-soft)",
+            }}
+          >
+            Nessun peer conosciuto. Aggiungi un amico incollando la sua peer_key
+            qui sotto.
+          </div>
+        ) : (
+          <div
+            style={{
+              border: "1px solid rgba(43,27,18,0.2)",
+              background: "var(--paper-dim)",
+            }}
+          >
+            {state.trustedPeers.map((peer, idx) => {
+              const isOnline = state.connectedPeers.includes(peer.peerId);
+              return (
+                <div
+                  key={peer.peerId}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                    padding: "10px 12px",
+                    borderBottom:
+                      idx < state.trustedPeers.length - 1
+                        ? "1px solid rgba(43,27,18,0.15)"
+                        : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: isOnline ? "var(--green)" : "var(--ink-soft)",
+                      }}
+                    >
+                      {isOnline ? "●" : "○"}
+                    </span>
+                    <strong style={{ fontSize: "13px" }}>
+                      {peer.displayName || peer.peerId.slice(0, 16) + "…"}
+                    </strong>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono, var(--font-body))",
+                        fontSize: "10px",
+                        color: "var(--ink-soft)",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      ({peer.peerId.slice(0, 24)}…)
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "11px",
+                      color: "var(--ink-soft)",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>
+                      stato:{" "}
+                      {isOnline ? (
+                        <>
+                          <strong style={{ color: "var(--green)" }}>online</strong>{" "}
+                          · ●live (latenza ~50ms via QUIC diretto)
+                        </>
+                      ) : (
+                        <>
+                          <strong>offline</strong> · modifiche via Supabase
+                          (recuperate al suo prossimo avvio)
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                    {isOnline ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectPeer(peer.peerId)}
+                        style={btnSecondaryStyle}
+                      >
+                        disconnetti
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setState((s) => ({ ...s, busy: true, error: null }));
+                          try {
+                            const ok = await api.irohConnectByPeerKeyV2(
+                              peer.peerId
+                            );
+                            if (!ok) {
+                              setState((s) => ({
+                                ...s,
+                                error: `Riconnessione a ${peer.peerId.slice(0, 16)}… fallita (timeout 10s).`,
+                              }));
+                            }
+                          } finally {
+                            setState((s) => ({ ...s, busy: false }));
+                            void refresh();
+                          }
+                        }}
+                        disabled={state.busy}
+                        style={btnSecondaryStyle}
+                      >
+                        connetti
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePeer(peer.peerId)}
+                      style={{
+                        ...btnSecondaryStyle,
+                        color: "var(--red)",
+                        borderColor: "var(--red)",
+                      }}
+                    >
+                      rimuovi
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* --- AGGIUNGI NUOVO PEER --- */}
+      <div style={{ marginBottom: "20px" }}>
+        <div
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "12px",
+            color: "var(--ink-soft)",
+            marginBottom: "8px",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          Aggiungi nuovo peer (Iroh)
+        </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <input
             type="text"
             value={newPeerKey}
             onChange={(e) => setNewPeerKey(e.target.value)}
-            placeholder="inserisci peer key..."
-            disabled={!status.started || isConnecting}
+            placeholder="incolla peer key (NodeId base32)..."
             style={{
               flex: 1,
-              padding: "8px 10px",
-              border: "1px solid #D6CFC0",
-              borderRadius: "6px",
+              fontFamily: "var(--font-mono, var(--font-body))",
               fontSize: "12px",
-              fontFamily: "Sarasa Mono SC, monospace",
-              background: "#FFFFFF",
-              color: "#2C4A6B",
-              outline: "none",
+              padding: "6px 10px",
+              background: "var(--paper)",
+              border: "1px solid var(--ink-soft)",
+              color: "var(--ink)",
             }}
           />
           <button
             type="button"
-            onClick={handleConnect}
-            disabled={!status.started || isConnecting || !newPeerKey.trim()}
+            onClick={handleConnectNew}
+            disabled={state.busy || !newPeerKey.trim()}
             style={{
-              background:
-                !status.started || isConnecting || !newPeerKey.trim()
-                  ? "#9A8F7E"
-                  : "#2C4A6B",
-              color: "#FFFFFF",
+              fontFamily: "var(--font-display)",
+              fontSize: "12px",
+              padding: "6px 14px",
+              background: "var(--blue, #2C4A6B)",
+              color: "var(--paper)",
               border: "none",
-              borderRadius: "6px",
-              padding: "8px 14px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: isConnecting ? "wait" : "pointer",
-              opacity: isConnecting ? 0.6 : 1,
+              cursor: state.busy ? "wait" : "pointer",
             }}
           >
-            {isConnecting ? "connessione..." : "connetti"}
+            {state.busy ? "…" : "connetti e salva"}
           </button>
         </div>
       </div>
 
-      {/* --- Stato sync --- */}
-      <div>
-        <label
-          style={{
-            display: "block",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#5A6B7E",
-            marginBottom: "6px",
-          }}
-        >
-          Stato sync
-        </label>
-        <div
-          style={{
-            padding: "10px 12px",
-            background: "#FFFFFF",
-            border: "1px solid #D6CFC0",
-            borderRadius: "6px",
-            fontSize: "13px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <span
-            style={{
-              display: "inline-block",
-              width: "10px",
-              height: "10px",
-              borderRadius: "50%",
-              background:
-                status.status === "live"
-                  ? "#5A9E6B"
-                  : status.status === "connecting"
-                  ? "#E0C971"
-                  : "#9A8F7E",
-            }}
-            aria-hidden="true"
-          />
-          {status.status === "live" && (
-            <span>
-              <strong>Live</strong> — modifiche propagate in tempo reale
-              {status.lastUpdateAt && (
-                <span style={{ color: "#9A8F7E", marginLeft: "6px" }}>
-                  (ultimo update: {new Date(status.lastUpdateAt).toLocaleTimeString()})
-                </span>
-              )}
-            </span>
-          )}
-          {status.status === "offline" && (
-            <span>
-              <strong>Offline</strong> — modifiche bufferizzate, propagate al
-              rientro di un peer
-            </span>
-          )}
-          {status.status === "connecting" && (
-            <span>
-              <strong>Connessione in corso...</strong>
-            </span>
-          )}
-        </div>
+      {/* --- INFO --- */}
+      <div
+        style={{
+          padding: "12px",
+          background: "var(--paper-dim)",
+          border: "1px dashed rgba(43,27,18,0.3)",
+          fontSize: "11px",
+          color: "var(--ink-soft)",
+          lineHeight: 1.6,
+        }}
+      >
+        <strong style={{ fontFamily: "var(--font-display)" }}>Supabase:</strong>{" "}
+        sempre attivo, garantisce sync anche offline. Modifiche bufferizzate e
+        propagate al rientro. Latenza ~100ms (WebSocket relay).
+        <br />
+        <strong style={{ fontFamily: "var(--font-display)" }}>Iroh:</strong>{" "}
+        connessione diretta p2p via QUIC, latenza minore (~50ms) quando entrambi
+        online. Opzionale — se non disponibile, Supabase basta.
       </div>
 
-      {/* --- Errore --- */}
-      {error && (
+      {/* --- ERROR --- */}
+      {state.error && (
         <div
           style={{
             marginTop: "16px",
             padding: "10px 12px",
-            background: "#F4DCDC",
-            border: "1px solid #D6A0A0",
-            borderRadius: "6px",
+            background: "rgba(139,46,31,0.08)",
+            border: "1px solid var(--red)",
+            color: "var(--red)",
+            fontFamily: "var(--font-body)",
             fontSize: "12px",
-            color: "#A04040",
           }}
         >
-          {error}
+          {state.error}
         </div>
       )}
     </section>
   );
 }
+
+// ----------------------------------------------------------------------
+// Style helpers
+// ----------------------------------------------------------------------
+
+const btnSecondaryStyle: React.CSSProperties = {
+  fontFamily: "var(--font-display)",
+  fontSize: "11px",
+  padding: "4px 10px",
+  background: "transparent",
+  color: "var(--ink)",
+  border: "1px solid var(--ink-soft)",
+  cursor: "pointer",
+};

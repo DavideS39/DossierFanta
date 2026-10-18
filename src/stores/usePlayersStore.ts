@@ -11,7 +11,7 @@
 // DOPO il commit SQLite invocano anche le funzioni bridge di yjsDocuments
 // per applicare l'update al Y.Doc locale e propagarlo ai peer via Iroh.
 // Questo attiva il path end-to-end del sync live:
-//   UI → api.updatePlayer → SQLite commit → bridgePlayerUpdate →
+//   UI → api.updatePlayer → SQLite commit → updateYDocPlayer →
 //   yPlayers.update → iroh_broadcast_update → gossip → Peer B
 // L'anti-loop è garantito dal flag `isApplyingRemoteUpdate` in yjsDocuments:
 // il path `save_*_from_sync` NON invoca bridge*, quindi peer B che riceve
@@ -33,9 +33,9 @@ import type {
   ScoutingNoteSyncInput,
 } from "@/types/sync";
 import {
-  bridgeAuctionDataUpdate,
-  bridgePlayerUpdate,
-  bridgeScoutingNoteAppend,
+  updateYDocAuctionData,
+  updateYDocPlayer,
+  appendYDocScoutingNote,
 } from "@/lib/sync/yjsDocuments";
 
 interface PlayersState {
@@ -174,9 +174,9 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
     const player = await api.createPlayer(input);
     // M3a.1 (PB4) — Propaga al Y.Doc + Iroh per i peer remoti.
     try {
-      await bridgePlayerUpdate(playerToSyncInput(player));
+      await updateYDocPlayer(playerToSyncInput(player));
     } catch (err) {
-      console.warn("[sync] bridgePlayerUpdate (create) skip:", err);
+      console.warn("[sync] updateYDocPlayer (create) skip:", err);
     }
     await get().refresh();
     return player;
@@ -190,9 +190,9 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
     // `yPlayers.observe` chiama `save_player_from_sync` (NO bridge), quindi
     // l'update NON viene ri-broadcastato indietro ad A.
     try {
-      await bridgePlayerUpdate(playerToSyncInput(player));
+      await updateYDocPlayer(playerToSyncInput(player));
     } catch (err) {
-      console.warn("[sync] bridgePlayerUpdate (update) skip:", err);
+      console.warn("[sync] updateYDocPlayer (update) skip:", err);
     }
     await get().refresh();
     return player;
@@ -224,9 +224,9 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
         syncNodeId: null,
       };
       try {
-        await bridgeScoutingNoteAppend(syncInput);
+        await appendYDocScoutingNote(syncInput);
       } catch (err) {
-        console.warn("[sync] bridgeScoutingNoteAppend skip:", err);
+        console.warn("[sync] appendYDocScoutingNote skip:", err);
       }
     }
     await get().refresh();
@@ -261,9 +261,9 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
         syncNodeId: null,
       };
       try {
-        await bridgeAuctionDataUpdate(syncInput);
+        await updateYDocAuctionData(syncInput);
       } catch (err) {
-        console.warn("[sync] bridgeAuctionDataUpdate skip:", err);
+        console.warn("[sync] updateYDocAuctionData skip:", err);
       }
     }
     await get().refresh();

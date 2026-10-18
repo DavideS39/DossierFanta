@@ -989,7 +989,7 @@ use std::path::PathBuf;
 const DATA_REPO_OWNER: &str = "DavideS39";
 const DATA_REPO_NAME: &str = "DossierFanta-Data";
 
-const HTTP_USER_AGENT: &str = "DossierFanta/0.3.2 (+https://github.com/DavideS39/DossierFanta)";
+const HTTP_USER_AGENT: &str = "DossierFanta/0.3.3 (+https://github.com/DavideS39/DossierFanta)";
 
 
 /// Endpoint API GitHub per l'ultima release pubblica.

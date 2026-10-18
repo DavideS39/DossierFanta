@@ -150,3 +150,44 @@ export interface SyncPeerConnectedEvent {
 export interface SyncPeerDisconnectedEvent {
   peerKey: PeerKey;
 }
+
+// ----------------------------------------------------------------------
+// M3a.3 — Identità sync persistita (peer key Iroh stabile cross-boot)
+// ----------------------------------------------------------------------
+
+/**
+ * Identità sync persistita. Mirror di Rust `SyncIdentity` (sync.rs).
+ *
+ * Singleton row della tabella `sync_identity` (v2.4). Caricata da `iroh_start_node`
+ * per ricostruire la SecretKey Iroh salvata, così la peer_key (NodeId derivato)
+ * è stabile cross-boot. L'utente non deve ri-scambiare la peer_key con i peer
+ * fidati ad ogni riavvio.
+ */
+export interface SyncIdentity {
+  /** NodeId Iroh (formato base32). Scambiata out-of-band con i peer. */
+  peerKey: PeerKey;
+  /** Nome umano opzionale (es. "marco"). NULL se non ancora impostato. */
+  displayName: string | null;
+  /** ISO 8601 della prima generazione della SecretKey. */
+  createdAt: string;
+}
+
+/**
+ * Peer fidato salvato in `sync_peers` (trusted=1).
+ * Mirror di Rust `TrustedPeer` (sync.rs).
+ *
+ * Usato per l'auto-connect al boot: il SyncView chiama `listTrustedPeers`
+ * dopo `iroh_start_node` e riconnette automaticamente i peer salvati.
+ */
+export interface TrustedPeer {
+  /** NodeId Iroh base32 del peer. */
+  peerId: PeerKey;
+  /** Nome umano opzionale (es. "utente2"). */
+  displayName: string | null;
+  /** ISO 8601 primo pairing (quando l'utente ha aggiunto il peer). */
+  pairedAt: string;
+  /** ISO 8601 ultimo heartbeat / connect / sync. NULL se mai visto. */
+  lastSeen: string | null;
+  /** True se il peer è fidato (auto-connect al boot). False se rimosso. */
+  trusted: boolean;
+}

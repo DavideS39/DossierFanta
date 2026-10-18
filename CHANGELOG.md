@@ -6,6 +6,144 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ---
 
+## [0.3.3] — 2026-10-18 — M3a.3: sync multi-canale (Supabase + Iroh) + peer key persistente + Listone come DB
+
+Sprint finale per chiudere M3. Architettura sync completa con due provider
+attivi simultaneamente sullo stesso Y.Doc: Supabase (relay + offline storage)
+e Iroh (p2p diretto low-latency). La peer key Iroh è persistita in SQLite
+(stabile cross-boot). SyncView ridisegnata con auto-connect dei peer fidati.
+Listone promosso a DB di prima classe nel DatabaseManager con azioni inline.
+
+### Architettura sync finale (design doc v2.5, Cap.5 + brief M3a.3)
+
+```
+PC A ←─ Supabase Realtime ─→ Supabase ←─ Supabase Realtime ─→ PC B
+      (WebSocket ~100ms)    (gratis)    (WebSocket ~100ms)
+Y.Doc                         PostgreSQL
+SQLite                        yjs_updates
+      ←─ query (su reconnect) ─→   ←─ query (su reconnect) ─→
+
+      ←─ Iroh p2p diretto ──────────────────────────────────→
+         (quando entrambi online, ~50ms)
+```
+
+DUE PROVIDER attivi contemporaneamente sullo stesso Y.Doc. Yjs gestisce i
+duplicati automaticamente (idempotenza CRDT). Entrambi implementano
+l'interfaccia `SyncProvider` (abstraction layer) — domani, per sostituire
+Supabase con un server proprio, basta creare un nuovo provider che
+implementa la stessa interfaccia.
+
+### Deliverable M3a.3 (8 totali)
+
+1. **Abstraction layer SyncProvider + SyncManager** — interfaccia comune
+   per tutti i provider (`src/lib/sync/SyncProvider.ts`,
+   `src/lib/sync/SyncManager.ts`). Manager multi-provider con
+   `connectAll()` / `disconnectAll()` / `syncAllFromOffline()` via
+   `Promise.allSettled` (un provider fallito non blocca gli altri).
+2. **SupabaseYjsProvider** (`src/lib/sync/SupabaseYjsProvider.ts`) —
+   realtime broadcast via WebSocket (~100ms) + offline storage su
+   tabella PostgreSQL `yjs_updates`. Setup SQL documentato in
+   `docs/supabase-setup-m3a3.sql` (RLS policies, indici, pubblicazione
+   Realtime). Config centralizzata in `src/lib/sync/syncConfig.ts`
+   (URL + anonKey + roomName + cleanupDays).
+3. **Peer key persistente (Iroh)** — nuova tabella `sync_identity`
+   (schema v2.4, singleton row id=1) in
+   `src-tauri/migrations/schema_v2.4.sql`. `iroh_start_node` carica la
+   SecretKey salvata se esiste, altrimenti la genera + salva. Peer_key
+   (NodeId derivato) è STABILE cross-boot. `SCHEMA_VERSION_TARGET = 4`
+   in `db.rs`, migrazione `v2.3 → v2.4` idempotente.
+4. **IrohYjsProvider** (`src/lib/sync/IrohYjsProvider.ts`) — integrazione
+   frontend di Iroh gossip. Registra `onSyncUpdateReceived` per applicare
+   update remoti (`Y.applyUpdate(doc, bytes, this)`) + `ydoc.on('update')`
+   per broadcast update locali via `iroh_broadcast_update`. Auto-connect
+   trusted peers al boot. `connectToSavedPeers(peerKeys)` riconnette i
+   peer salvati in `sync_peers`.
+5. **Fix PB4-A (architetturale)** — risolto ELIMINANDO i bridge manuali
+   (`bridgePlayerUpdate`, `bridgeScoutingNoteAppend`,
+   `bridgeAuctionDataUpdate`) e i flag `isApplyingLocalBridge` /
+   `isApplyingRemoteUpdate`. L'anti-loop è ora gestito dal parametro
+   `origin` di Yjs (nativo, molto più robusto del flag manuale):
+   - Update locale: `yPlayers.set(...)` senza origin → listener
+     `yPlayers.observe` vede `transaction.local === true` → SKIP persistenza
+     (già fatta da `update_player` con `updated_by='me'`).
+   - Update remoto: `Y.applyUpdate(doc, bytes, this)` → listener vede
+     `transaction.local === false` → PROCEDE con `save_player_from_sync`
+     (`updated_by='sync-live'`).
+6. **SyncView redesign** (`src/components/SyncView.tsx`) — UI completamente
+   ridisegnata: sezione identità (peer key + display_name + [salva]),
+   stato dual-provider (● Supabase + ●/○ Iroh), lista peer conosciuti con
+   [connetti]/[disconnetti]/[rimuovi], aggiungi nuovo peer, box info.
+   Sincronizza con SyncManager singleton + `api.getSyncIdentity()` +
+   `api.listTrustedPeers()`.
+7. **Listone come DB nel DatabaseManager** — il DB di tipo `listone`
+   appare nel workspace con card inline contenente: counter giocatori,
+   ultimo aggiornamento, 3 pulsanti (`[aggiorna ora]` / `[anteprima]` /
+   `[fallback: fantacalcio.it]`). ImportPreview renderizzato inline nella
+   card per confermare il diff prima di applicare. Sostituisce la necessità
+   di aprire la schermata AggiornamentiView separata per le azioni di
+   routine.
+8. **Fix PB6 + WARN residui**:
+   - **PB6** (owner GitHub): `DATA_REPO_OWNER = "DavideS39"` già impostato
+     in `listone.rs:989` (M3a.2). Repo `DavideS39/DossierFanta-Data` è il
+     riferimento pubblico. Verifica: workflow `.github/workflows/scrape.yml`
+     + release con `players.json` asset pubblicato.
+   - **W1** (rimozione "marco" da `validate_updated_by`): già fatto in
+     M3a.2 — whitelist ora `{ "me", "auto-fetch", "sync-live" }`.
+   - **W2** (CHANGELOG entries M3 / M3.1 / M3a / M3a.1 / M3a.2 / M3a.3):
+     questa entry chiude W2 con un riepilogo completo.
+   - **W3** (`iroh_connect_by_peer_key` ritorna `Ok(false)` su errore/
+     timeout): già fatto in M3a.2 — solo `Ok(Ok(_conn))` ritorna `Ok(true)`
+     + aggiunge il peer alla lista connessi.
+
+### Altre modifiche
+
+- **App.tsx boot sync** — `initYjsBridge()` + `startCursorsCleanup()` +
+  `SyncManager.addProvider(SupabaseYjsProvider)` (sempre) + (se
+  `getSyncIdentity()` ritorna Some) `addProvider(IrohYjsProvider)` +
+  `connectAll()` + auto-connect trusted peers. Il listener
+  `sync-update-received` vive al root (non nel SyncView) così sopravvive
+  alla chiusura del modal. Gap 1 + Gap 2 chiusi.
+- **Nuovi comandi Tauri** (registrati in `lib.rs`):
+  `iroh_stop_node`, `get_sync_identity`, `set_sync_display_name`,
+  `list_trusted_peers`, `remove_trusted_peer`, `iroh_connect_by_peer_key_v2`.
+- **Nuovi wrapper `api/tauri.ts`**: `irohStopNode`,
+  `irohConnectByPeerKeyV2`, `getSyncIdentity`, `setSyncDisplayName`,
+  `listTrustedPeers`, `removeTrustedPeer`, `onSyncUpdateReceived`,
+  `onSyncPeerConnected`, `onSyncPeerDisconnected`.
+- **Nuovi tipi `types/sync.ts`**: `SyncIdentity`, `TrustedPeer`.
+- **`@supabase/supabase-js` v2.118** aggiunto alle dipendenze
+  (`package.json`).
+- **Cargo.lock + package-lock.json** aggiornati (vincolo HARD #15).
+- **Versioni bumped**: `package.json` 0.3.0 → 0.3.3, `Cargo.toml`
+  0.3.0 → 0.3.3, `tauri.conf.json` 0.3.0 → 0.3.3, `HTTP_USER_AGENT`
+  in `listone.rs` 0.3.2 → 0.3.3.
+
+### Vincoli HARD rispettati
+
+- **#13**: Sync-live NON sostituisce SQLite come source of truth. Yjs è
+  transport + merge layer.
+- **#14**: Pairing esplicito (peer key scambiata out-of-band).
+- **#15**: Cargo.lock + package-lock.json committati.
+- **#16**: Schema v2.2 + v2.3 invariati. v2.4 solo additive
+  (CREATE TABLE IF NOT EXISTS sync_identity).
+- **#17**: Niente Tag & Filtri (M4).
+- **#18**: Supabase NON è authoritativo. SQLite locale è source of truth.
+- **#19**: SUPABASE_URL e SUPABASE_ANON_KEY hardcoded in `syncConfig.ts`
+  (chiave publishable, NON sensibile).
+- **#20**: Tabella `yjs_updates` contiene SOLO bytes binari Yjs (CRDT
+  diffs). Decodificabile solo con il Y.Doc locale.
+- **#21**: Iroh opzionale. Se non disponibile, Supabase basta per il sync.
+
+### Test funzionali (14 minimi)
+
+Vedi `docs/supabase-setup-m3a3.sql` per l'SQL setup + brief M3a.3 per la
+checklist dei 14 test funzionali (Supabase connection, peer key persistente,
+sync online + offline + auto-reconnect, multi-provider idempotenza,
+updated_by markers, conflict resolution B.7, cursori collaborativi,
+listone come DB, build .msi verde).
+
+---
+
 ## [Unreleased] — 2026-10-17 — HOTFIX critico: l'app .msi non si avviava proprio
 
 Hotfix chirurgico che risolve un bug critico segnalato dall'utente: dopo aver

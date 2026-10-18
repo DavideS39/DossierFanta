@@ -5,13 +5,22 @@ import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
-import { api } from "@/api/tauri";
+import { api, isDesktop } from "@/api/tauri";
 // M2.2 — FIX A2 (F12): hook per sync live tra finestre. Quando il backend
 // emette `player-updated` (dopo save_scouting_note/save_auction_data/
 // set_player_status/assign_player), la main window refresha usePlayersStore
 // (lista Rosa) senza intervento manuale. La finestra OS ha il suo listener
 // interno in PlayerOSWindow per refreshare il singolo player corrente.
 import { usePlayerSync } from "@/lib/usePlayerSync";
+// M3a.3 — Sync boot al root: initYjsBridge + SyncManager con provider
+// Supabase + Iroh. Il listener `sync-update-received` è registrato qui (NON
+// nel SyncView) così sopravvive alla chiusura del modal. Se l'utente non
+// apre mai il modal, il sync live continua a funzionare in background.
+import { initYjsBridge, ydoc } from "@/lib/sync/yjsDocuments";
+import { startCursorsCleanup, stopCursorsCleanup } from "@/lib/sync/yjsCursors";
+import { getSyncManager } from "@/lib/sync/SyncManager";
+import { SupabaseYjsProvider } from "@/lib/sync/SupabaseYjsProvider";
+import { IrohYjsProvider } from "@/lib/sync/IrohYjsProvider";
 
 /**
  * App root. Avvia l'inizializzazione del DB al primo render.
@@ -29,6 +38,20 @@ import { usePlayerSync } from "@/lib/usePlayerSync";
  * `player-updated`. Quando l'utente modifica una scheda nella finestra OS
  * (o nella WM in-app), la main window refresha la lista Rosa + i metadati DB
  * (conteggi). In finestra OS il listener è no-op (delega a PlayerOSWindow).
+ *
+ * M3a.3 — SYNC BOOT AL ROOT (gap 1 + gap 2 chiusi):
+ *   1. `initYjsBridge()` registra i listener `yPlayers.observe` etc. che
+ *      persistono gli update remoti su SQLite (con updated_by='sync-live').
+ *   2. `startCursorsCleanup()` rimuove cursori collaborativi stale (>30s).
+ *   3. `getSyncManager()` istanzia il manager singleton.
+ *   4. Registra `SupabaseYjsProvider` (sempre attivo, relay + offline storage).
+ *   5. Se `getSyncIdentity()` ritorna Some (peer_key salvata), registra
+ *      anche `IrohYjsProvider` e auto-connette i peer fidati.
+ *   6. `connectAll()` avvia entrambi i provider in parallelo.
+ *
+ * Perché qui e non in SyncView? Perché il modal SyncView può essere chiuso
+ * dall'utente. Se il listener `sync-update-received` vive solo nel modal,
+ * chiudendolo il sync live smette di funzionare. Al root sopravvive sempre.
  */
 export function App() {
   const [booting, setBooting] = useState(true);
@@ -64,6 +87,8 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    // M3a.3 — Cleanup handle per sync boot (initYjsBridge + cursors + providers).
+    let syncCleanup: (() => void) | null = null;
     (async () => {
       try {
         // Inizializza DB (idempotente: crea file + applica schema se primo avvio)
@@ -85,6 +110,18 @@ export function App() {
           // nessun toast di errore — l'utente può forzare via schermata.
           // Skip anche in finestra OS nativa (non ha senso notificare lì).
           void checkListoneOnBoot();
+
+          // M3a.3 — SYNC BOOT AL ROOT. Skip in anteprima web (isDesktop=false)
+          // e in finestra OS nativa (sync live vive solo nella main window).
+          if (isDesktop) {
+            try {
+              syncCleanup = await bootSync();
+            } catch (err) {
+              // Non bloccare il boot se il sync init fallisce — l'app
+              // continua a funzionare offline. Log + mostra warning in UI.
+              console.warn("[M3a.3] bootSync fallito (non blocking):", err);
+            }
+          }
         }
         if (!cancelled) setBooting(false);
       } catch (e) {
@@ -96,9 +133,75 @@ export function App() {
     })();
     return () => {
       cancelled = true;
+      if (syncCleanup) syncCleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshMeta, refreshDbs, restoreFromLocalStorage, osPlayerId]);
+
+  /**
+   * M3a.3 — Sync boot al root.
+   *
+   * Passi:
+   *   1. initYjsBridge() — registra listener yPlayers/yNotes/yAuction che
+   *      persistono gli update remoti su SQLite (updated_by='sync-live').
+   *   2. startCursorsCleanup() — timer 5s che rimuove cursori >30s stale.
+   *   3. getSyncManager() — singleton manager.
+   *   4. addProvider(SupabaseYjsProvider) — sempre attivo.
+   *   5. getSyncIdentity() — se Some (peer_key salvata in sync_identity),
+   *      addProvider(IrohYjsProvider) + auto-connect trusted peers.
+   *   6. connectAll() — avvia entrambi i provider in parallelo.
+   *
+   * Ritorna cleanup function da chiamare su unmount.
+   */
+  async function bootSync(): Promise<() => void> {
+    const cleanupYjs = initYjsBridge();
+    startCursorsCleanup();
+
+    const syncManager = getSyncManager();
+    syncManager.addProvider(new SupabaseYjsProvider(ydoc));
+
+    // Auto-avvia Iroh SOLO se esiste già una peer_key salvata in sync_identity.
+    // Se è il primo boot (nessun sync_identity), l'utente deve avviare Iroh
+    // manualmente dal SyncView (così vede la sua peer_key e la condivide).
+    let irohProvider: IrohYjsProvider | null = null;
+    try {
+      const identity = await api.getSyncIdentity();
+      if (identity) {
+        irohProvider = new IrohYjsProvider(ydoc);
+        syncManager.addProvider(irohProvider);
+      }
+    } catch (err) {
+      // getSyncIdentity può fallire se sync_identity table non esiste ancora
+      // (DB pre-v2.4). Non bloccare — Supabase basta per il sync.
+      console.warn("[M3a.3] getSyncIdentity skip:", err);
+    }
+
+    // connectAll avvia i provider in parallelo (Promise.allSettled). Non
+    // blocca il boot se uno fallisce. SyncFromOffline è chiamato dentro
+    // connect() di ogni provider.
+    await syncManager.connectAll();
+
+    // Auto-connect trusted peers salvati (se Iroh è attivo).
+    if (irohProvider) {
+      try {
+        const trusted = await api.listTrustedPeers();
+        if (trusted.length > 0) {
+          // Fire-and-forget — non blocca. Le connect hanno timeout 10s l'una.
+          void irohProvider.connectToSavedPeers(trusted.map((p) => p.peerId));
+        }
+      } catch (err) {
+        console.warn("[M3a.3] listTrustedPeers / connectToSavedPeers skip:", err);
+      }
+    }
+
+    return () => {
+      cleanupYjs();
+      stopCursorsCleanup();
+      // Disconnect dei provider in background (non attendere — l'app sta
+      // chiudendo, il cleanup best-effort è sufficiente).
+      void syncManager.disconnectAll();
+    };
+  }
 
   /**
    * M3 — Auto-fetch check all'avvio.
@@ -181,10 +284,10 @@ export function App() {
           }}
         />
         <div className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}>
-          DossierFanta v2.5 · M3
+          DossierFanta v2.5 · M3a.3
         </div>
         <div className="text-xs mt-1" style={{ fontFamily: "var(--font-body)", color: "var(--ink-soft)" }}>
-          Inizializzazione DB locale + workspace multi-DB + auto-fetch listone…
+          Inizializzazione DB locale + workspace multi-DB + auto-fetch listone + sync live…
         </div>
       </div>
     );

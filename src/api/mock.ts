@@ -30,6 +30,12 @@ import type {
   Status,
   UpdatePlayerInput,
 } from "@/types/player";
+// M3a.3 — Tipi sync_* mirror Rust (per gli stub mock dei comandi M3a.3)
+import type {
+  SyncIdentity,
+  TrustedPeer,
+  SyncUpdateReceivedEvent,
+} from "@/types/sync";
 
 const delay = (ms = 70) => new Promise((r) => setTimeout(r, ms));
 
@@ -641,6 +647,49 @@ export const mockApi = {
   },
   async irohDisconnectPeer(_peerKey: string): Promise<void> {
     // no-op
+  },
+
+  // M3a.3 — Peer key persistente + trusted peers (stub mock)
+  async irohStopNode(): Promise<void> {
+    // no-op
+  },
+  async irohConnectByPeerKeyV2(_peerKey: string): Promise<boolean> {
+    return true;
+  },
+  async getSyncIdentity(): Promise<SyncIdentity | null> {
+    return null; // anteprima web — nessuna identità persistita
+  },
+  async setSyncDisplayName(_name: string): Promise<void> {
+    // no-op
+  },
+  async listTrustedPeers(): Promise<TrustedPeer[]> {
+    return [];
+  },
+  async removeTrustedPeer(_peerKey: string): Promise<void> {
+    // no-op
+  },
+
+  // M3a.3 — Listener eventi Tauri (stub mock, mai attivi in anteprima)
+  async onSyncUpdateReceived(
+    _cb: (event: SyncUpdateReceivedEvent) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op unlisten
+    };
+  },
+  async onSyncPeerConnected(
+    _cb: (event: { peerKey: string }) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op
+    };
+  },
+  async onSyncPeerDisconnected(
+    _cb: (event: { peerKey: string }) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op
+    };
   },
 
   // B.8 — save_*_from_sync (con marker updated_by='sync-live')
