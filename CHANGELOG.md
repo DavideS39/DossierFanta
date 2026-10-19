@@ -6,6 +6,173 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ---
 
+## [0.3.4] — 2026-10-19 — M3a.4 + M3a.5 + M3a.6: Pairing 8-cifre + ECDH + AES-GCM
+
+Sprint che chiude la falla di sicurezza di M3a.3 (Luca poteva leggere i dati
+di A+B facendo SELECT * FROM yjs_updates). Implementa pairing con codice
+8-cifre + ECDH X25519 + AES-256-GCM end-to-end encryption. Ogni pairing
+ha la sua stanza cifrata — anche un terzo peer con l'app installata non
+può decifrare i dati senza aver pairato esplicitamente.
+
+### Problema risolto
+
+In M3a.3, l'implementazione Supabase usava un singolo `room_name` globale
+(`dossierfanta-sync`) e RLS che permetteva a `anon` di leggere TUTTE le
+righe di `yjs_updates`. Conseguenza: chiunque installasse l'app (stesso
+URL+anonKey hardcoded) poteva leggere i bytes CRDT di tutti i pairing
+e ricostruire lo stato completo del Y.Doc.
+
+### Soluzione architetturale
+
+**Pairing esplicito + cifratura end-to-end.**
+
+```
+A (initiator)                       B (responder)
+1. pairing_create()                  2. (condivide codice 8-cifre)
+   → code "12345678"                  → entra su B
+   → INSERT Supabase pairings       3. pairing_join("12345678")
+   → subscribe Realtime                → SELECT pairings → peer_key_A
+     "pairing-12345678"                → ECDH(my_secret, peer_key_A)
+                                       → shared_secret (32 byte)
+                                       → broadcast "response"
+                                       → save sync_pairings
+
+4. A riceve "response" via Realtime
+   → pairing_complete(code, peer_key_B)
+   → ECDH(my_secret, peer_key_B) → STESSA shared_secret (matematica ECDH)
+   → room_name = "df-sync-<hex16(sha256(shared_secret))>"
+   → save sync_pairings
+   → DELETE Supabase pairings
+```
+
+Da quel momento, il sync Supabase tra A e B è **cifrato AES-256-GCM** con
+la shared_secret ECDH derivata. Anche se Luca (terzo peer) fa `SELECT *`
+su yjs_updates, ottiene ciphertext cifrati con chiavi che non ha. Senza
+pairing esplicito, Luca non vede nulla.
+
+### Deliverable M3a.4 + M3a.5 + M3a.6
+
+#### M3a.4 — Cifratura per-pairing (base layer)
+- **Schema v2.5**: nuove tabelle `sync_pairings` (peer_key_other,
+  shared_secret, room_name, display_name) + `sync_pairings_pending`
+  (codici 8-cifre in corso, initiator side). Migration idempotente
+  via `CREATE TABLE IF NOT EXISTS`.
+- **Cargo.toml**: nuove dipendenze crypto:
+  - `curve25519-dalek = "4.1"` (X25519 ECDH)
+  - `aes-gcm = "0.10"` (AES-256-GCM con 12-byte nonce + 16-byte tag)
+  - `sha2 = "0.10"` (SHA-256 per derivare room_name)
+  - `rand = "0.8"` (nonce generation)
+  - `hex = "0.4"` (room_name encoding)
+- **`src-tauri/src/commands/crypto.rs` (NUOVO)** — helper Rust:
+  - `derive_shared_secret_inner(conn, their_peer_key)`: carica mio SecretKey
+    da sync_identity, parsia loro PublicKey, calcola
+    `my_scalar * their_point` (X25519 ECDH) → 32 byte
+  - `derive_room_name_inner(shared_secret)`: SHA-256(shared_secret),
+    primi 8 byte → hex → "df-sync-<16 char>"
+  - `encrypt_update_inner(plaintext, shared_secret)`: AES-256-GCM con
+    12-byte random nonce (OsRng). Output: `[nonce || ciphertext || tag]`
+  - `decrypt_update_inner(ciphertext, shared_secret)`: AES-GCM decrypt
+    con tag verification (reject su tag invalid)
+  - `generate_pairing_code_inner()`: random 8-cifre (range 10000000-99999999)
+- **`src-tauri/src/commands/pairing.rs` (NUOVO)** — Tauri commands:
+  - `derive_shared_secret(their_peer_key)` → Vec<u8>
+  - `encrypt_update(update, shared_secret)` → Vec<u8>
+  - `decrypt_update(ciphertext, shared_secret)` → Vec<u8>
+  - `list_pairings()` → Vec<Pairing>
+  - `save_pairing(peer_key_other, shared_secret, room_name, display_name)`
+  - `delete_pairing(peer_key_other)`
+  - `pairing_create()` → PairingCode { code, expires_at } (initiator)
+  - `pairing_join(code, peer_key_initiator)` → PairingResult (responder)
+  - `pairing_complete(code, peer_key_responder)` → PairingResult (initiator)
+  - `pairing_cancel(code)`
+  - `list_pending_pairings()` → Vec<PairingPending>
+  - `touch_pairing_last_seen(peer_key_other)`
+  - `set_pairing_display_name(peer_key_other, name)`
+- **`SupabaseYjsProvider` refactor**: multi-room per-pairing. Per ogni
+  pairing salvato apre un canale Realtime dedicato + SELECT da
+  `yjs_updates WHERE room_name = ?`. Tutti i bytes broadcast/persistiti
+  sono cifrati AES-GCM con la shared_secret del pairing.
+
+#### M3a.5 — Pairing flow con 8-cifre + ECDH
+- **Supabase `pairings` table (NUOVA)** — rendezvous point temporaneo.
+  RLS: anon può INSERT/SELECT/DELETE. Il codice 8-cifre è public,
+  non contiene materiale crittografico.
+- **`src/lib/sync/supabaseClient.ts` (NUOVO)** — singleton Supabase client
+  per il pairing flow (separato dal SupabaseYjsProvider.client che gestisce
+  i canali per-room). Include `cleanupExpiredPairings(5)` per pulire
+  codici scaduti periodicamente.
+- **Flusso pairing completo** (vedi sezione "Soluzione architetturale"):
+  - Initiator: pairing_create → INSERT Supabase → subscribe Realtime
+  - Responder: SELECT Supabase → ECDH → broadcast response
+  - Initiator: riceve response → ECDH → stesso shared_secret → cleanup
+- **Codice 8-cifre (100M combinazioni)**: con 5-min TTL + rate-limit,
+  brute-force ha ~0.016% probabilità per finestra.
+
+#### M3a.6 — SyncView UI redesign con sezione pairing
+- **Sezione PAIRING**: due box affiancati
+  - Box sinistro (initiator): "Genera codice" → mostra codice 8-cifre
+    in grande + countdown + pulsante annulla
+  - Box destro (responder): input 8-cifre + pulsante "Paira"
+- **Sezione PAIRINGS CIFRATI**: lista pairings salvati con
+  - peer_key_other + room_name + display_name
+  - stato online/offline (●/○)
+  - info "sync cifrato AES-GCM + Iroh p2p"
+  - pulsanti [set nome / rinomina] [rimuovi pairing]
+- **Pending pairings**: badge in alto se ci sono codici in attesa
+  di risposta (initiator side).
+- **Cleanup periodico**: ogni 5s chiama `cleanupExpiredPairings(5)` per
+  rimuovere codici scaduti su Supabase.
+
+### Security model completo
+
+| Minaccia | Difesa |
+|---|---|
+| Luca indovina il codice 8-cifre | Codice scade dopo 5 min, brute-force 100M combo = ~0.016% probabilità per finestra |
+| Luca intercetta i messaggi pairing su `pairing-<code>` | ECDH X25519: anche con tutti i messaggi, senza le chiavi private non può derivare shared_secret |
+| Luca enumera tutte le room_name da `SELECT DISTINCT` | room_name = `hash(shared_secret)`. Unguessable senza shared_secret |
+| Luca applica i bytes al suo Y.Doc | Senza shared_secret, i bytes in yjs_updates sono AES-GCM ciphertext → rumore indecifrabile |
+| Replay attack (Luca ritrasmette vecchi pairing) | Codice monouso: dopo successo, DELETE row da Supabase + unsubscribe Realtime |
+
+### Vincoli HARD rispettati (estesi)
+
+- **#13**: SQLite locale SEMPRE source of truth. Yjs è transport + merge.
+- **#14**: Pairing esplicito. Niente auto-discovery su internet.
+- **#15**: Cargo.lock + package-lock.json committati (con nuove deps crypto).
+- **#16**: Schema v2.2 + v2.3 + v2.4 invariati. v2.5 solo additive
+  (CREATE TABLE IF NOT EXISTS sync_pairings + sync_pairings_pending).
+- **#18**: Supabase NON è authoritativo.
+- **#19**: SUPABASE_URL e SUPABASE_ANON_KEY hardcoded (publishable key).
+- **#20 (esteso)**: yjs_updates contiene SOLO bytes AES-GCM cifrati.
+  Decodificabile solo con la shared_secret del pairing corrispondente,
+  che vive solo in sync_pairings SQLite locale.
+- **#21**: Iroh opzionale. Se non disponibile, Supabase basta per il sync.
+
+### Files principali
+
+- `src-tauri/migrations/schema_v2.5.sql` (NUOVO)
+- `src-tauri/src/commands/crypto.rs` (NUOVO)
+- `src-tauri/src/commands/pairing.rs` (NUOVO)
+- `src-tauri/src/db.rs` (SCHEMA_VERSION_TARGET = 5, migrazione v2.5)
+- `src-tauri/src/lib.rs` (registrazione nuovi comandi)
+- `src-tauri/Cargo.toml` (nuove deps crypto + version bump 0.3.4)
+- `src/lib/sync/SupabaseYjsProvider.ts` (refactor multi-room + encryption)
+- `src/lib/sync/supabaseClient.ts` (NUOVO singleton per pairing flow)
+- `src/types/sync.ts` (nuovi tipi: Pairing, PairingCode, PairingResult, PairingPending)
+- `src/api/tauri.ts` (nuovi wrapper per i 13 comandi pairing/crypto)
+- `src/api/mock.ts` (stub per anteprima web)
+- `src/components/SyncView.tsx` (ridesign UI con sezione pairing)
+- `docs/supabase-setup-m3a3.sql` (aggiunta tabella `pairings` + RLS)
+
+### Version bump
+
+- `package.json` 0.3.3 → 0.3.4
+- `Cargo.toml` 0.3.3 → 0.3.4
+- `tauri.conf.json` 0.3.3 → 0.3.4
+- `HTTP_USER_AGENT` in `listone.rs` 0.3.3 → 0.3.4
+- `Cargo.lock` voce `dossierfanta` 0.3.3 → 0.3.4
+
+---
+
 ## [0.3.3] — 2026-10-18 — M3a.3: sync multi-canale (Supabase + Iroh) + peer key persistente + Listone come DB
 
 Sprint finale per chiudere M3. Architettura sync completa con due provider

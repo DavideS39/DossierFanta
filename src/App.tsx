@@ -139,14 +139,16 @@ export function App() {
   }, [refreshMeta, refreshDbs, restoreFromLocalStorage, osPlayerId]);
 
   /**
-   * M3a.3 — Sync boot al root.
+   * M3a.3 + M3a.4 — Sync boot al root.
    *
    * Passi:
    *   1. initYjsBridge() — registra listener yPlayers/yNotes/yAuction che
    *      persistono gli update remoti su SQLite (updated_by='sync-live').
    *   2. startCursorsCleanup() — timer 5s che rimuove cursori >30s stale.
    *   3. getSyncManager() — singleton manager.
-   *   4. addProvider(SupabaseYjsProvider) — sempre attivo.
+   *   4. addProvider(SupabaseYjsProvider) — sempre attivo. Multi-room
+   *      per-pairing encryption: carica i pairings da sync_pairings e
+   *      subscribe a ogni room_name derivato da ECDH shared_secret.
    *   5. getSyncIdentity() — se Some (peer_key salvata in sync_identity),
    *      addProvider(IrohYjsProvider) + auto-connect trusted peers.
    *   6. connectAll() — avvia entrambi i provider in parallelo.
@@ -158,6 +160,9 @@ export function App() {
     startCursorsCleanup();
 
     const syncManager = getSyncManager();
+    // M3a.4 — SupabaseYjsProvider carica i pairings da sync_pairings
+    // internamente al connect(). 0 pairings → provider "connesso" ma
+    // no-op finché l'utente non completa il primo pairing via SyncView.
     syncManager.addProvider(new SupabaseYjsProvider(ydoc));
 
     // Auto-avvia Iroh SOLO se esiste già una peer_key salvata in sync_identity.
@@ -182,6 +187,9 @@ export function App() {
     await syncManager.connectAll();
 
     // Auto-connect trusted peers salvati (se Iroh è attivo).
+    // M3a.3 — auto-connect dei peer fidati (sync_peers trusted=1) per Iroh.
+    // M3a.4 — il sync cifrato Supabase non ha bisogno di Iroh, ma se Iroh è
+    // attivo, ci si connette per la latenza più bassa (~50ms vs ~100ms relay).
     if (irohProvider) {
       try {
         const trusted = await api.listTrustedPeers();

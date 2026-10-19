@@ -1,9 +1,9 @@
 {
   "name": "dossierfanta-m2",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
-  "description": "DossierFanta v2.5 — M3a.3 (sync multi-canale Supabase + Iroh, peer key persistente, listone come DB, SyncView redesign). Tauri 2.0 desktop app: auto-fetch listone Serie A via GitHub Actions, fallback inline scraper, multi-DB workspace, archiviazione automatica, design taccuino scout 80s.",
+  "description": "DossierFanta v2.5 — M3a.4+5+6 (pairing 8-cifre + ECDH + AES-GCM, sync cifrato end-to-end, SyncView redesign). Tauri 2.0 desktop app: auto-fetch listone Serie A via GitHub Actions, fallback inline scraper, multi-DB workspace, archiviazione automatica, design taccuino scout 80s.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

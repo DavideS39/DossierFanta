@@ -6,12 +6,16 @@
 //!    sync-live (CRDT). ALTER TABLE additive + nuova tabella `sync_peers`.
 //!  - v2.4 (M3a.3): `migrations/schema_v2.4.sql` — estensione additive per
 //!    `sync_identity` (peer key Iroh persistente, singleton table).
+//!  - v2.5 (M3a.4 + M3a.5): `migrations/schema_v2.5.sql` — estensione additive per
+//!    `sync_pairings` (ECDH shared_secret + room_name derivata) +
+//!    `sync_pairings_pending` (codici 8-cifre pairing in corso).
 //!
 //! M3a (B.1) — Migrazione tracciata via `PRAGMA user_version`:
-//!  - 0 (never migrated) → applica v2.2 + v2.3 + v2.4, set user_version=4
-//!  - <3 (DB pre-v2.3) → applica v2.3 + v2.4, set user_version=4
-//!  - ==3 (v2.3 applicato, pre-v2.4) → applica v2.4, set user_version=4
-//!  - >=4 (v2.4 già applicato) → skip
+//!  - 0 (never migrated) → applica v2.2 + v2.3 + v2.4 + v2.5, set user_version=5
+//!  - <3 → applica v2.3 + v2.4 + v2.5, set user_version=5
+//!  - ==3 → applica v2.4 + v2.5, set user_version=5
+//!  - ==4 → applica v2.5, set user_version=5
+//!  - >=5 → skip
 //!
 //! Lo schema v2.2 è idempotente via check esistenza tabella `players`.
 //! Lo schema v2.3 è idempotente via `PRAGMA table_info` check su ogni ALTER
@@ -33,8 +37,13 @@ const SCHEMA_V2_3: &str = include_str!("../migrations/schema_v2.3.sql");
 /// table). Nessun ALTER — puramente additive.
 const SCHEMA_V2_4: &str = include_str!("../migrations/schema_v2.4.sql");
 
-/// Versione schema target. v4 = v2.4 (sync_identity per peer key persistente).
-const SCHEMA_VERSION_TARGET: i32 = 4;
+/// Schema SQL v2.5 (estensione additive M3a.4 + M3a.5 — pairing cifrato).
+/// Contiene SOLO CREATE TABLE IF NOT EXISTS sync_pairings + sync_pairings_pending.
+/// Nessun ALTER — puramente additive.
+const SCHEMA_V2_5: &str = include_str!("../migrations/schema_v2.5.sql");
+
+/// Versione schema target. v5 = v2.5 (sync_pairings per ECDH + AES-GCM).
+const SCHEMA_VERSION_TARGET: i32 = 5;
 
 /// Apre la connessione a `mio.db` (lo crea se non esiste) e applica lo
 /// schema v2.2 se è la prima esecuzione, poi la migrazione v2.3 se
@@ -73,9 +82,12 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         // Su DB nuovo, applica subito anche v2.4 (sync_identity singleton).
         log::info!("Applying DossierFanta schema v2.4 (sync_identity extension)...");
         conn.execute_batch(SCHEMA_V2_4)?;
+        // Su DB nuovo, applica subito anche v2.5 (sync_pairings per ECDH pairing).
+        log::info!("Applying DossierFanta schema v2.5 (sync_pairings extension)...");
+        conn.execute_batch(SCHEMA_V2_5)?;
         set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
         log::info!(
-            "Schema v2.4 applied. user_version={}.",
+            "Schema v2.5 applied. user_version={}.",
             SCHEMA_VERSION_TARGET
         );
     } else {
@@ -87,7 +99,7 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         );
         if current < SCHEMA_VERSION_TARGET {
             log::info!(
-                "Migrating DB from user_version={} to {} (v2.3+v2.4 sync extensions)...",
+                "Migrating DB from user_version={} to {} (v2.3+v2.4+v2.5 sync extensions)...",
                 current,
                 SCHEMA_VERSION_TARGET
             );
@@ -102,13 +114,18 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
                 conn.execute_batch(SCHEMA_V2_4)?;
                 log::info!("Migration to v2.4 complete (sync_identity table).");
             }
+            // Applica v2.5 (sync_pairings + sync_pairings_pending) se non ancora applicato (current < 5)
+            if current < 5 {
+                conn.execute_batch(SCHEMA_V2_5)?;
+                log::info!("Migration to v2.5 complete (sync_pairings + sync_pairings_pending tables).");
+            }
             set_user_version(&conn, SCHEMA_VERSION_TARGET)?;
             log::info!(
                 "Migration complete. user_version={}.",
                 SCHEMA_VERSION_TARGET
             );
         } else {
-            log::debug!("DB already at v2.4, skipping migration.");
+            log::debug!("DB already at v2.5, skipping migration.");
         }
     }
 

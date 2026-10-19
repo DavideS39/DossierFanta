@@ -89,6 +89,28 @@ CREATE POLICY "anon_delete_old_yjs_updates"
 
 ALTER PUBLICATION supabase_realtime ADD TABLE yjs_updates;
 
+-- ------------------------------------------------------------
+-- Tabella: pairings (NUOVA — M3a.5 — rendezvous per pairing 8-cifre)
+-- Rendezvous point temporaneo per il pairing flow. Un row per codice
+-- 8-cifre generato dall'initiator. Il responder lo legge per ottenere
+-- la peer_key dell'initiator. Cleanup automatico dopo 5 min.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pairings (
+  code            TEXT PRIMARY KEY,         -- 8 cifre "12345678"
+  peer_key_initiator TEXT NOT NULL,         -- NodeId Iroh base32 dell'initiator
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pairings_created_at ON pairings(created_at);
+
+ALTER TABLE pairings ENABLE ROW LEVEL SECURITY;
+
+-- RLS: anon può INSERT (creare codice), SELECT (leggere per join),
+-- DELETE (dopo successo o scadenza). Il codice 8-cifre è public
+-- rendezvous, non contiene materiale crittografico.
+CREATE POLICY "anon_pairings_all" ON pairings
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+
 -- ============================================================
 -- Verifica (eseguire dopo il setup per testare):
 -- ============================================================
@@ -96,6 +118,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE yjs_updates;
 --   VALUES ('dossierfanta-sync', E'\\x01020304');
 -- SELECT id, room_name, update_bytes, created_at FROM yjs_updates;
 -- DELETE FROM yjs_updates WHERE created_at < NOW() - INTERVAL '30 days';
+--
+-- Pairing test:
+-- INSERT INTO pairings (code, peer_key_initiator)
+--   VALUES ('12345678', 'test-peer-key-abc');
+-- SELECT * FROM pairings WHERE code = '12345678';
+-- DELETE FROM pairings WHERE code = '12345678';
 -- ============================================================
--- FINE SETUP SQL — DossierFanta M3a.3
+-- FINE SETUP SQL — DossierFanta M3a.4 + M3a.5
 -- ============================================================

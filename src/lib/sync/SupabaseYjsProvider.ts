@@ -1,68 +1,67 @@
-// src/lib/sync/SupabaseYjsProvider.ts — M3a.3 Deliverable 2.
+// src/lib/sync/SupabaseYjsProvider.ts — M3a.4 + M3a.5 — multi-room per-pairing encryption.
 //
-// Provider Supabase per sync live Yjs:
-//   - Realtime broadcast via WebSocket (~100ms latency, sempre attivo)
-//   - Offline storage via tabella PostgreSQL `yjs_updates` (recuperata
-//     al boot con syncFromOffline)
+// REFACTOR vs M3a.3:
+//  - NON ha più un solo `room_name` globale. Ha UN canale Realtime per ogni
+//    pairing salvato in `sync_pairings` (room_name derivata da ECDH shared_secret).
+//  - Tutti i bytes Yjs broadcast/persistiti sono cifrati AES-256-GCM con la
+//    shared_secret del pairing corrispondente.
+//  - syncFromOffline: per ogni pairing, SELECT WHERE room_name = ? e decifra
+//    ogni riga con la shared_secret del pairing.
 //
-// Architettura (M3a.3 — vedi brief sezione "DUE PROVIDER"):
+// SECURITY MODEL (M3a.4 + M3a.5):
+//  - shared_secret (32 byte) è derivata via X25519 ECDH dal mio SecretKey +
+//    la peer_key dell'altro. MAI trasmessa. Vive solo in `sync_pairings`
+//    SQLite locale.
+//  - room_name = "df-sync-<hex(sha256(shared_secret))[:16]>". Derivata
+//    deterministicamente. Unguessable senza shared_secret.
+//  - Senza shared_secret, i bytes in `yjs_updates` sono AES-GCM ciphertext
+//    indecifrabile (rumore casuale).
+//  - Anche se Luca (terzo utente con l'app installata) fa SELECT * FROM
+//    yjs_updates, ottiene ciphertext cifrati con chiavi che non ha. Senza
+//    pairing con A o B, non vede nulla.
 //
-//   PC A  ←── Supabase Realtime ──→  Supabase  ←── Supabase Realtime ──→  PC B
-//         (broadcast ~100ms)        (gratis)         (broadcast ~100ms)
-//   Y.Doc                              PostgreSQL
-//   SQLite                             yjs_updates
-//         ←── query (su reconnect) ──→           ←── query (su reconnect) ──→
-//
-// RESPONSABILITÀ:
-//   1. connect(): apre il canale Realtime, registra il listener `ydoc.on('update')`
-//      per broadcast + persist in tabella. Chiama syncFromOffline().
-//   2. syncFromOffline(): SELECT da yjs_updates WHERE id > last_seen ORDER BY id.
-//   3. disconnect(): chiude il canale, rilascia risorse.
-//
-// ANTI-LOOP: gestito dal parametro `origin` di Yjs.
-//   - Update locale (utente edita) → origin=undefined (non this) → broadcast.
-//   - Update remoto (ricevuto da Supabase) → Y.applyUpdate(doc, bytes, this)
-//     → origin=this → listener NON re-broadcast (anti-loop nativo Yjs).
-//
-// Vincolo HARD #18: SQLite locale SEMPRE authoritativo. Supabase è solo
-// transport + offline buffer.
-// Vincolo HARD #20: tabella yjs_updates contiene SOLO bytes binari Yjs
-// (CRDT diffs), nessun dato sensibile.
+// Vincolo HARD #18: Supabase NON è authoritativo. SQLite locale è source of truth.
+// Vincolo HARD #19: SUPABASE_URL e SUPABASE_ANON_KEY hardcoded (publishable key).
+// Vincolo HARD #20 (esteso): yjs_updates contiene SOLO bytes AES-GCM cifrati.
 
 import * as Y from "yjs";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import type { SyncProvider } from "./SyncProvider";
 import { SYNC_CONFIG } from "./syncConfig";
+import { api } from "@/api/tauri";
+import type { Pairing } from "@/types/sync";
 
 /**
- * Provider Supabase: realtime broadcast + offline storage.
+ * Stato per-pairing: shared_secret + lastSeenId (per syncFromOffline
+ * incrementale) + handle al canale Realtime dedicato.
+ */
+interface PairingChannel {
+  pairing: Pairing;
+  /** Canale Realtime dedicato a questo pairing (nome = room_name). */
+  channel: RealtimeChannel;
+  /** shared_secret come Uint8Array (convertita da number[] del tipo Pairing). */
+  sharedSecretBytes: Uint8Array;
+  /** Ultimo id di yjs_updates ricevuto per questa room. Persistito in localStorage. */
+  lastSeenId: number;
+}
+
+/**
+ * Provider Supabase con multi-room per-pairing encryption.
  *
- * Sempre attivo (primario). Garantisce sync anche se Iroh non è disponibile
- * o non si connette (es. NAT simmetrico senza relay).
+ * Per ogni pairing salvato in sync_pairings:
+ *   - Apre un canale Realtime dedicato (nome = room_name)
+ *   - Registra un handler broadcast per decifrare gli update in arrivo
+ *   - Registra un handler ydoc.on('update') per cifrare + broadcast + persist
+ *   - syncFromOffline: SELECT WHERE room_name = ? AND id > last_seen_id
  */
 export class SupabaseYjsProvider implements SyncProvider {
   readonly name = "supabase";
 
   private client: SupabaseClient;
-  private channel: RealtimeChannel | null = null;
   private connected = false;
   private ydoc: Y.Doc;
-
-  /**
-   * Ultimo id di `yjs_updates` ricevuto. Persistito in localStorage per
-   * sopravvivere ai riavvii (al boot, scarica solo gli update accumulati
-   * da quando eri offline).
-   *
-   * Schema: chiave `yjs_supabase_last_seen_id` → stringa decimale.
-   */
-  private lastSeenId: number = 0;
-
+  private channels: Map<string /* peer_key_other */, PairingChannel> = new Map();
   private statusCallbacks: Array<(connected: boolean) => void> = [];
-
-  /**
-   * Memorizza il listener `ydoc.on('update')` per poter fare unoff() su
-   * disconnect() (evita leak).
-   */
   private ydocUpdateHandler:
     | ((update: Uint8Array, origin: unknown) => void)
     | null = null;
@@ -73,23 +72,10 @@ export class SupabaseYjsProvider implements SyncProvider {
       SYNC_CONFIG.supabase.url,
       SYNC_CONFIG.supabase.anonKey,
       {
-        // Disabilita persistenza sessione (no auth, solo anon).
         auth: { persistSession: false, autoRefreshToken: false },
-        // Realtime params: se la connessione WebSocket si rompe, riprova
-        // automaticamente con backoff esponenziale (gestito da supabase-js).
-        realtime: {
-          params: { eventsPerSecond: 50 }, // hard cap per evitare flood
-        },
+        realtime: { params: { eventsPerSecond: 50 } },
       }
     );
-
-    // Carica lastSeenId da localStorage (continuità cross-boot).
-    try {
-      const saved = localStorage.getItem("yjs_supabase_last_seen_id");
-      if (saved) this.lastSeenId = parseInt(saved, 10) || 0;
-    } catch {
-      // localStorage non disponibile (es. SSR) — fallback a 0.
-    }
   }
 
   get isConnected(): boolean {
@@ -102,105 +88,100 @@ export class SupabaseYjsProvider implements SyncProvider {
 
   private notifyStatusChange(): void {
     for (const cb of this.statusCallbacks) {
-      try {
-        cb(this.connected);
-      } catch (err) {
-        console.warn("[SupabaseYjsProvider] statusCallback fallita:", err);
-      }
+      try { cb(this.connected); } catch (err) { console.warn("[SupabaseYjsProvider] statusCallback fallita:", err); }
     }
   }
 
+  /**
+   * Carica i pairings salvati in `sync_pairings` e per ognuno:
+   *  - apre un canale Realtime dedicato
+   *  - registra handler broadcast (decifra + Y.applyUpdate)
+   *  - esegue syncFromOffline (SELECT WHERE room_name = ? AND id > last_seen)
+   *
+   * Se 0 pairings salvati (utente non ha ancora pairato con nessuno), il
+   * provider è "connesso" ma non fa nulla finché non viene chiamato
+   * `addPairing()` (chiamato dal SyncView dopo pairing_complete/pairing_join).
+   */
   async connect(): Promise<void> {
-    if (this.connected) return; // idempotente
+    if (this.connected) return;
 
-    // 1. Crea il canale Realtime per broadcast live.
-    const channelName = `yjs:${SYNC_CONFIG.supabase.roomName}`;
-    this.channel = this.client.channel(channelName, {
-      config: { broadcast: { self: false } }, // non ricevere i propri broadcast
-    });
+    // 1. Carica pairings dal Rust (sync_pairings SQLite locale).
+    let pairings: Pairing[] = [];
+    try {
+      pairings = await api.listPairings();
+    } catch (err) {
+      console.warn("[SupabaseYjsProvider] listPairings fallito (DB pre-v2.5?):", err);
+    }
 
-    // 2. Listener per update ricevuti via broadcast (live sync).
-    //    Payload: { update: number[] } (JSON-safe, ricostruito in Uint8Array).
-    this.channel.on("broadcast", { event: "update" }, ({ payload }) => {
-      try {
-        const arr = (payload as { update?: number[] }).update;
-        if (!arr || !Array.isArray(arr) || arr.length === 0) {
-          console.warn("[SupabaseYjsProvider] broadcast payload vuoto/malformato, skip.");
-          return;
-        }
-        const bytes = new Uint8Array(arr as number[]);
-        // Origin = this → ANTI-LOOP NATIVO Yjs:
-        // il listener ydoc.on('update') più sotto NON re-invia.
-        Y.applyUpdate(this.ydoc, bytes, this);
-      } catch (err) {
-        console.error("[SupabaseYjsProvider] applyUpdate da broadcast fallito:", err);
-      }
-    });
+    // 2. Per ogni pairing, apri un canale + syncFromOffline.
+    for (const p of pairings) {
+      await this.subscribeToPairing(p);
+    }
 
-    // 3. Listener per update locali → broadcast + persist in tabella.
-    //    Origin check: skip se origin === this (era un update remoto appena
-    //    applicato — altrimenti A→A loop via broadcast-self).
+    // 3. Listener globale ydoc.on('update') — cifra + broadcast + persist
+    //    per OGNI pairing. Origin check: skip se origin === this (anti-loop).
     this.ydocUpdateHandler = (update: Uint8Array, origin: unknown) => {
-      if (origin === this) return; // anti-loop nativo Yjs
-
-      // Broadcast live (supabase-js serializza in JSON → Array.from è obbligatorio
-      // perché Uint8Array non è direttamente JSON-serializzabile).
-      //
-      // NOTA: `channel.send` è SYNC in supabase-js v2 (ritorna `this` per chaining).
-      // Errori di invio vengono riportati come stato `CHANNEL_ERROR` nella callback
-      // di `subscribe`, non come eccezione qui. Quindi niente .catch().
-      try {
-        this.channel?.send({
-          type: "broadcast",
-          event: "update",
-          payload: { update: Array.from(update) },
-        });
-      } catch (err) {
-        console.warn("[SupabaseYjsProvider] broadcast send fallito:", err);
-      }
-
-      // Persisti in tabella (offline storage per peer offline).
-      // supabase-js accetta Uint8Array direttamente per BYTEA (converte in
-      // base64 sul wire). NON usare Array.from() qui — sarebbe rifiutato
-      // dal type system Postgres (JSON array ≠ bytea).
-      this.client
-        .from(SYNC_CONFIG.supabase.updatesTable)
-        .insert({
-          room_name: SYNC_CONFIG.supabase.roomName,
-          update_bytes: update, // Uint8Array → base64 wire
-        })
-        .then(({ error }) => {
-          if (error) {
-            console.warn(
-              "[SupabaseYjsProvider] insert yjs_updates fallito:",
-              error.message
-            );
-          }
-        });
+      if (origin === this) return;
+      void this.broadcastToLocalPairings(update);
     };
     this.ydoc.on("update", this.ydocUpdateHandler);
 
-    // 4. Subscribe al canale (apre WebSocket).
-    //
-    // `channel.subscribe(callback)` ritorna il channel stesso (chainable, NON
-    // una Promise). Per ottenere una Promise che risolve quando il channel è
-    // attivo, lo wrappiamo manualmente. Aggiungiamo un timeout 15s per evitare
-    // di rimanere in pending per sempre se Supabase è irraggiungibile.
-    await new Promise<void>((resolve, reject) => {
-      if (!this.channel) {
-        reject(new Error("channel non inizializzato"));
-        return;
+    this.connected = true;
+    this.notifyStatusChange();
+    console.info(
+      `[SupabaseYjsProvider] connesso. ${pairings.length} pairing(s) attivi.`
+    );
+  }
+
+  /**
+   * Apre un canale Realtime dedicato al pairing + registra handler broadcast +
+   * syncFromOffline iniziale.
+   *
+   * Chiamato da `connect()` per ogni pairing salvato, e da `addPairing()`
+   * quando l'utente completa un nuovo pairing (a runtime, senza riavviare).
+   */
+  async subscribeToPairing(pairing: Pairing): Promise<void> {
+    if (this.channels.has(pairing.peerKeyOther)) {
+      console.warn(`[SupabaseYjsProvider] pairing ${pairing.peerKeyOther.slice(0, 16)}... già subscribed, skip.`);
+      return;
+    }
+
+    const sharedSecretBytes = new Uint8Array(pairing.sharedSecret);
+    const channelName = `yjs:${pairing.roomName}`;
+    const channel = this.client.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
+
+    // Listener per broadcast in arrivo (decifra + apply).
+    channel.on("broadcast", { event: "update" }, async ({ payload }) => {
+      try {
+        const arr = (payload as { update?: number[] }).update;
+        if (!arr || !Array.isArray(arr) || arr.length === 0) return;
+        const encrypted = new Uint8Array(arr as number[]);
+        // Decifra con la shared_secret del pairing.
+        const decrypted = await api.decryptUpdate(encrypted, sharedSecretBytes);
+        // Origin = this → ANTI-LOOP: il ydoc.on('update') handler NON re-broadcast.
+        Y.applyUpdate(this.ydoc, decrypted, this);
+        // Touch last_seen del pairing.
+        api.touchPairingLastSeen(pairing.peerKeyOther).catch(() => {});
+      } catch (err) {
+        console.error(
+          `[SupabaseYjsProvider] decrypt+apply da broadcast fallito (room=${pairing.roomName}):`,
+          err
+        );
       }
+    });
+
+    // Subscribe con timeout 15s (come in connect() M3a.3).
+    await new Promise<void>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
         if (!settled) {
           settled = true;
-          reject(
-            new Error("Supabase channel subscribe timeout (15s) — URL/key errati o rete down?")
-          );
+          reject(new Error(`Supabase pairing ${pairing.roomName} subscribe timeout (15s)`));
         }
       }, 15000);
-      this.channel!.subscribe((status: string) => {
+      channel.subscribe((status: string) => {
         if (settled) return;
         if (status === "SUBSCRIBED") {
           settled = true;
@@ -209,26 +190,98 @@ export class SupabaseYjsProvider implements SyncProvider {
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           settled = true;
           clearTimeout(timeout);
-          reject(new Error(`Supabase channel ${status}`));
+          reject(new Error(`Supabase pairing ${pairing.roomName} ${status}`));
         }
-        // 'CLOSED' non reject (può succedere su disconnect intenzionale)
       });
     });
 
-    this.connected = true;
-    this.notifyStatusChange();
+    // Persist channel state.
+    const lastSeenId = this.loadLastSeenId(pairing.roomName);
+    this.channels.set(pairing.peerKeyOther, {
+      pairing,
+      channel,
+      sharedSecretBytes,
+      lastSeenId,
+    });
 
-    // 5. Sync iniziale: scarica update accumulati offline.
+    // syncFromOffline iniziale per questo pairing.
     try {
-      const n = await this.syncFromOffline();
+      const n = await this.syncPairingFromOffline(pairing.peerKeyOther);
       if (n > 0) {
         console.info(
-          `[SupabaseYjsProvider] syncFromOffline: ${n} update recuperati (last_seen_id=${this.lastSeenId}).`
+          `[SupabaseYjsProvider] pairing ${pairing.peerKeyOther.slice(0, 16)}... syncFromOffline: ${n} update recuperati.`
         );
       }
     } catch (err) {
-      // syncFromOffline failure is NOT fatal — il canale live è già attivo.
-      console.warn("[SupabaseYjsProvider] syncFromOffline fallito (non blocking):", err);
+      console.warn(
+        `[SupabaseYjsProvider] syncFromOffline fallito per pairing ${pairing.peerKeyOther.slice(0, 16)}... (non blocking):`,
+        err
+      );
+    }
+  }
+
+  /**
+   * Aggiunge un nuovo pairing a runtime (chiamato dal SyncView dopo
+   * pairing_complete/pairing_join). Non disconnette gli altri canali.
+   */
+  async addPairing(pairing: Pairing): Promise<void> {
+    await this.subscribeToPairing(pairing);
+  }
+
+  /**
+   * Rimuove un pairing (disconnette il canale + cleanup stato in memoria).
+   * NON chiama deletePairing sul Rust — quello è gestito dal chiamante.
+   */
+  async removePairing(peerKeyOther: string): Promise<void> {
+    const entry = this.channels.get(peerKeyOther);
+    if (entry) {
+      this.client.removeChannel(entry.channel);
+      this.channels.delete(peerKeyOther);
+    }
+  }
+
+  /**
+   * Handler per update locali del Y.Doc:
+   *  - Per ogni pairing salvato, cifra l'update con la shared_secret
+   *  - Broadcast sul canale Realtime dedicato
+   *  - Persisti (cifrato) in yjs_updates con il room_name del pairing
+   */
+  private async broadcastToLocalPairings(update: Uint8Array): Promise<void> {
+    for (const [_, entry] of this.channels) {
+      try {
+        // Cifra con la shared_secret del pairing.
+        const encrypted = await api.encryptUpdate(update, entry.sharedSecretBytes);
+        // Broadcast live sul canale Realtime.
+        try {
+          entry.channel.send({
+            type: "broadcast",
+            event: "update",
+            payload: { update: Array.from(encrypted) },
+          });
+        } catch (err) {
+          console.warn(`[SupabaseYjsProvider] broadcast send fallito (room=${entry.pairing.roomName}):`, err);
+        }
+        // Persisti cifrato in yjs_updates (offline storage).
+        this.client
+          .from(SYNC_CONFIG.supabase.updatesTable)
+          .insert({
+            room_name: entry.pairing.roomName,
+            update_bytes: encrypted, // Uint8Array → base64 wire
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.warn(
+                `[SupabaseYjsProvider] insert yjs_updates fallito (room=${entry.pairing.roomName}):`,
+                error.message
+              );
+            }
+          });
+      } catch (err) {
+        console.error(
+          `[SupabaseYjsProvider] encrypt+broadcast fallito per pairing ${entry.pairing.peerKeyOther.slice(0, 16)}...:`,
+          err
+        );
+      }
     }
   }
 
@@ -237,32 +290,54 @@ export class SupabaseYjsProvider implements SyncProvider {
       this.ydoc.off("update", this.ydocUpdateHandler);
       this.ydocUpdateHandler = null;
     }
-    if (this.channel) {
-      this.client.removeChannel(this.channel);
-      this.channel = null;
+    for (const [_, entry] of this.channels) {
+      this.client.removeChannel(entry.channel);
     }
+    this.channels.clear();
     if (this.connected) {
       this.connected = false;
       this.notifyStatusChange();
     }
   }
 
+  /**
+   * Sync offline per tutti i pairing. Chiamato dal SyncManager.connectAll().
+   */
   async syncFromOffline(): Promise<number> {
-    // Scarica tutti gli update con id > lastSeenId, in ordine crescente.
-    // Safety limit 1000: se il peer è offline da molto, evita di scaricare
-    // decine di migliaia di update in un colpo solo. Al successivo boot
-    // riprende da dove ha lasciato.
+    let total = 0;
+    for (const [peerKey, _] of this.channels) {
+      try {
+        total += await this.syncPairingFromOffline(peerKey);
+      } catch (err) {
+        console.warn(
+          `[SupabaseYjsProvider] syncFromOffline pairing ${peerKey.slice(0, 16)}... fallito:`,
+          err
+        );
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Sync offline per un singolo pairing. SELECT WHERE room_name = ? AND id > last_seen.
+   * Decifra ogni riga con la shared_secret del pairing.
+   */
+  private async syncPairingFromOffline(peerKeyOther: string): Promise<number> {
+    const entry = this.channels.get(peerKeyOther);
+    if (!entry) return 0;
+    const { pairing, sharedSecretBytes } = entry;
+
     const { data, error } = await this.client
       .from(SYNC_CONFIG.supabase.updatesTable)
       .select("id, update_bytes")
-      .eq("room_name", SYNC_CONFIG.supabase.roomName)
-      .gt("id", this.lastSeenId)
+      .eq("room_name", pairing.roomName)
+      .gt("id", entry.lastSeenId)
       .order("id", { ascending: true })
       .limit(1000);
 
     if (error) {
       console.warn(
-        "[SupabaseYjsProvider] SELECT yjs_updates fallito:",
+        `[SupabaseYjsProvider] SELECT yjs_updates fallito (room=${pairing.roomName}):`,
         error.message
       );
       return 0;
@@ -270,55 +345,61 @@ export class SupabaseYjsProvider implements SyncProvider {
     if (!data || data.length === 0) return 0;
 
     let applied = 0;
-    let maxId = this.lastSeenId;
+    let maxId = entry.lastSeenId;
     for (const row of data) {
       try {
-        // row.update_bytes torna come Uint8Array (default supabase-js per bytea)
-        // — fallback a base64 string per retrocompatibilità con vecchie versioni.
-        let bytes: Uint8Array;
+        let encrypted: Uint8Array;
         const raw = row.update_bytes as unknown;
         if (raw instanceof Uint8Array) {
-          bytes = raw;
+          encrypted = raw;
         } else if (typeof raw === "string") {
-          // Vecchia rappresentazione base64 — decodifica.
           const bin = atob(raw);
-          bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          encrypted = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) encrypted[i] = bin.charCodeAt(i);
         } else if (Array.isArray(raw)) {
-          // Vecchia rappresentazione JSON array (fallback).
-          bytes = new Uint8Array(raw as number[]);
+          encrypted = new Uint8Array(raw as number[]);
         } else {
-          console.warn(
-            "[SupabaseYjsProvider] update_bytes tipo non riconosciuto, skip riga:",
-            typeof raw
-          );
           continue;
         }
-        // Origin = this → ANTI-LOOP: il listener ydoc.on('update') NON
-        // re-broadcast (altrimenti ogni sync offline genererebbe un echo
-        // a tutti i peer online).
-        Y.applyUpdate(this.ydoc, bytes, this);
+        // Decifra con la shared_secret del pairing.
+        const decrypted = await api.decryptUpdate(encrypted, sharedSecretBytes);
+        // Origin = this → ANTI-LOOP: il handler ydoc.on('update') NON re-broadcast.
+        Y.applyUpdate(this.ydoc, decrypted, this);
         if (row.id > maxId) maxId = row.id;
         applied++;
       } catch (err) {
         console.error(
-          `[SupabaseYjsProvider] applyUpdate fallito per riga id=${row.id}:`,
+          `[SupabaseYjsProvider] decrypt+apply fallito per riga id=${row.id} (room=${pairing.roomName}):`,
           err
         );
       }
     }
 
-    if (maxId > this.lastSeenId) {
-      this.lastSeenId = maxId;
-      try {
-        localStorage.setItem("yjs_supabase_last_seen_id", String(this.lastSeenId));
-      } catch {
-        // localStorage non disponibile — lastSeenId non persistito, al prossimo
-        // boot ripartirà da 0 e riapplicherà (idempotenza CRDT garantisce merge).
-      }
+    if (maxId > entry.lastSeenId) {
+      entry.lastSeenId = maxId;
+      this.saveLastSeenId(pairing.roomName, maxId);
     }
 
     return applied;
+  }
+
+  // --- localStorage helpers per lastSeenId per-pairing ---
+
+  private loadLastSeenId(roomName: string): number {
+    try {
+      const saved = localStorage.getItem(`yjs_supabase_last_seen_id:${roomName}`);
+      return saved ? parseInt(saved, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private saveLastSeenId(roomName: string, id: number): void {
+    try {
+      localStorage.setItem(`yjs_supabase_last_seen_id:${roomName}`, String(id));
+    } catch {
+      // localStorage non disponibile — best effort
+    }
   }
 
   async cleanup(olderThanDays: number = SYNC_CONFIG.supabase.cleanupDays): Promise<void> {

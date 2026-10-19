@@ -42,6 +42,11 @@ import type {
   TrustedPeer,
   // M3a.3 — tipo evento sync-update-received
   SyncUpdateReceivedEvent,
+  // M3a.4 + M3a.5 — tipi pairing cifrato
+  Pairing,
+  PairingCode,
+  PairingResult,
+  PairingPending,
 } from "@/types/sync";
 
 export const tauriApi = {
@@ -452,6 +457,105 @@ export const tauriApi = {
     cb: (event: { peerKey: string }) => void
   ): Promise<UnlistenFn> =>
     listen<{ peerKey: string }>("sync-peer-disconnected", (e) => cb(e.payload)),
+
+  // ===== M3a.4 + M3a.5 — Pairing cifrato (ECDH + AES-GCM) =====
+
+  /**
+   * Deriva la shared_secret (32 byte) dal mio SecretKey Iroh + their peer_key.
+   * Usa X25519 ECDH. La shared_secret è MATEMATICAMENTE la stessa che l'altro
+   * peer deriva dal suo SecretKey + la mia peer_key.
+   */
+  deriveSharedSecret: (theirPeerKey: string) =>
+    invoke<number[]>("derive_shared_secret", { theirPeerKey }).then((arr) =>
+      new Uint8Array(arr)
+    ),
+
+  /**
+   * Cifra `update` (Yjs bytes binari) con AES-256-GCM usando `shared_secret`.
+   * Output: `[nonce(12) || ciphertext || tag(16)]`.
+   */
+  encryptUpdate: (update: Uint8Array, sharedSecret: Uint8Array) =>
+    invoke<number[]>("encrypt_update", {
+      update: Array.from(update),
+      sharedSecret: Array.from(sharedSecret),
+    }).then((arr) => new Uint8Array(arr)),
+
+  /**
+   * Decifra `ciphertext` (formato `[nonce(12) || ciphertext || tag(16)]`)
+   * con AES-256-GCM usando `shared_secret`. Ritorna plaintext.
+   */
+  decryptUpdate: (ciphertext: Uint8Array, sharedSecret: Uint8Array) =>
+    invoke<number[]>("decrypt_update", {
+      ciphertext: Array.from(ciphertext),
+      sharedSecret: Array.from(sharedSecret),
+    }).then((arr) => new Uint8Array(arr)),
+
+  /** Lista tutti i pairings salvati (per boot auto-connect del SupabaseYjsProvider). */
+  listPairings: () =>
+    invoke<Pairing[]>("list_pairings"),
+
+  /**
+   * Salva un pairing (chiamato da pairing_complete/pairing_join, ma anche
+   * esponibile per UI manuale). Idempotente via INSERT OR REPLACE.
+   */
+  savePairing: (
+    peerKeyOther: string,
+    sharedSecret: Uint8Array,
+    roomName: string,
+    displayName?: string | null
+  ) =>
+    invoke<void>("save_pairing", {
+      peerKeyOther,
+      sharedSecret: Array.from(sharedSecret),
+      roomName,
+      displayName: displayName ?? null,
+    }),
+
+  /** Rimuove un pairing. NON tocca sync_peers — per rimuovere completamente,
+   *  chiama anche `removeTrustedPeer`. */
+  deletePairing: (peerKeyOther: string) =>
+    invoke<void>("delete_pairing", { peerKeyOther }),
+
+  /**
+   * M3a.5 — Initiator: genera un codice 8-cifre + lo salva localmente in
+   * sync_pairings_pending per tracking/crash-resume. La pubblicazione su
+   * Supabase `pairings` table è gestita dal frontend (chiama Supabase diretto).
+   */
+  pairingCreate: () =>
+    invoke<PairingCode>("pairing_create"),
+
+  /**
+   * M3a.5 — Responder: entra il codice 8-cifre, deriva shared_secret + room_name
+   * via ECDH, salva pairing localmente, ritorna PairingResult.
+   * Il frontend poi broadcast su Realtime `pairing-<code>`: { peer_key_responder: my }.
+   */
+  pairingJoin: (code: string, peerKeyInitiator: string) =>
+    invoke<PairingResult>("pairing_join", { code, peerKeyInitiator }),
+
+  /**
+   * M3a.5 — Initiator: quando riceve la risposta del responder via Realtime
+   * (peer_key_responder), chiama questo comando per completare il pairing.
+   * Deriva la stessa shared_secret del responder (ECDH), salva pairing,
+   * cleanup sync_pairings_pending locale.
+   */
+  pairingComplete: (code: string, peerKeyResponder: string) =>
+    invoke<PairingResult>("pairing_complete", { code, peerKeyResponder }),
+
+  /** M3a.5 — Cancella un codice pairing in corso (initiator side). */
+  pairingCancel: (code: string) =>
+    invoke<void>("pairing_cancel", { code }),
+
+  /** M3a.5 — Lista codici pairing pending (in corso, initiator side). */
+  listPendingPairings: () =>
+    invoke<PairingPending[]>("list_pending_pairings"),
+
+  /** M3a.4 — Aggiorna last_seen di un pairing (chiamato su ogni sync-update-received). */
+  touchPairingLastSeen: (peerKeyOther: string) =>
+    invoke<void>("touch_pairing_last_seen", { peerKeyOther }),
+
+  /** M3a.4 — Imposta il display_name di un pairing (es. "Giorgio"). */
+  setPairingDisplayName: (peerKeyOther: string, name: string) =>
+    invoke<void>("set_pairing_display_name", { peerKeyOther, name }),
 };
 
 /** True solo dentro il binario Tauri (WebView con internals iniettati). */

@@ -313,6 +313,20 @@ pub fn run() {
             commands::sync::save_player_from_sync,
             commands::sync::save_scouting_note_from_sync,
             commands::sync::save_auction_data_from_sync,
+            // M3a.4 + M3a.5 — Pairing cifrato + crypto helpers
+            commands::pairing::derive_shared_secret,
+            commands::pairing::encrypt_update,
+            commands::pairing::decrypt_update,
+            commands::pairing::list_pairings,
+            commands::pairing::save_pairing,
+            commands::pairing::delete_pairing,
+            commands::pairing::pairing_create,
+            commands::pairing::pairing_join,
+            commands::pairing::pairing_complete,
+            commands::pairing::pairing_cancel,
+            commands::pairing::list_pending_pairings,
+            commands::pairing::touch_pairing_last_seen,
+            commands::pairing::set_pairing_display_name,
             // sync_lan.rs (M3a B.9) — solo con feature `lan-only`
             // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,
             // lan_discover_peers nuovo per mDNS discovery automatico.

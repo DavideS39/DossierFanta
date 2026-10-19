@@ -35,6 +35,10 @@ import type {
   SyncIdentity,
   TrustedPeer,
   SyncUpdateReceivedEvent,
+  Pairing,
+  PairingCode,
+  PairingResult,
+  PairingPending,
 } from "@/types/sync";
 
 const delay = (ms = 70) => new Promise((r) => setTimeout(r, ms));
@@ -690,6 +694,58 @@ export const mockApi = {
     return () => {
       // no-op
     };
+  },
+
+  // M3a.4 + M3a.5 — Pairing cifrato (stub mock, anteprima web non paira davvero)
+  async deriveSharedSecret(_theirPeerKey: string): Promise<Uint8Array> {
+    return new Uint8Array(32); // 32 byte di zeri come mock shared_secret
+  },
+  async encryptUpdate(update: Uint8Array, _sharedSecret: Uint8Array): Promise<Uint8Array> {
+    return update; // pass-through (no encryption in mock)
+  },
+  async decryptUpdate(ciphertext: Uint8Array, _sharedSecret: Uint8Array): Promise<Uint8Array> {
+    return ciphertext; // pass-through
+  },
+  async listPairings(): Promise<Pairing[]> {
+    return [];
+  },
+  async savePairing(): Promise<void> {
+    // no-op
+  },
+  async deletePairing(): Promise<void> {
+    // no-op
+  },
+  async pairingCreate(): Promise<PairingCode> {
+    return {
+      code: "12345678",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    };
+  },
+  async pairingJoin(_code: string, _peerKeyInitiator: string): Promise<PairingResult> {
+    return {
+      peerKeyOther: "mock-peer-key-1234567890abcdef",
+      roomName: "df-sync-mock",
+      sharedSecret: new Array(32).fill(0),
+    };
+  },
+  async pairingComplete(_code: string, _peerKeyResponder: string): Promise<PairingResult> {
+    return {
+      peerKeyOther: "mock-peer-key-1234567890abcdef",
+      roomName: "df-sync-mock",
+      sharedSecret: new Array(32).fill(0),
+    };
+  },
+  async pairingCancel(): Promise<void> {
+    // no-op
+  },
+  async listPendingPairings(): Promise<PairingPending[]> {
+    return [];
+  },
+  async touchPairingLastSeen(): Promise<void> {
+    // no-op
+  },
+  async setPairingDisplayName(): Promise<void> {
+    // no-op
   },
 
   // B.8 — save_*_from_sync (con marker updated_by='sync-live')
