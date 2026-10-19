@@ -492,10 +492,8 @@ type ListoneMode = "idle" | "checking" | "downloading" | "previewing" | "applyin
 function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }: ListoneInlineCardProps): React.ReactElement {
   const [mode, setMode] = useState<ListoneMode>("idle");
   // M3a.3 — latest è tenuto come cache del ListoneVersionInfo più recente
-  // scaricato da check_latest_listone_version. Non più letto direttamente qui
-  // (lo stato `downloaded` contiene già tag + entries). Conservato come
-  // estensione futura (es. badge "versione disponibile" nella card).
-  const [, setLatest] = useState<ListoneVersionInfo | null>(null);
+  // scaricato da check_latest_listone_version.
+  const [latest, setLatest] = useState<ListoneVersionInfo | null>(null);
   const [downloaded, setDownloaded] = useState<ListoneData | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -518,8 +516,58 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
     }
   }, [autofetchStatus]);
 
+  // M3a.4 — Check background della versione più recente disponibile su GitHub.
+  // Se `latest.tag === autofetchStatus.last_applied_tag` → mostra badge
+  // "✓ Aggiornato" invece del pulsante "aggiorna ora" (non proporre
+  // l'aggiornamento se il database è già all'ultima versione).
+  // Silent skip su errore di rete (es. offline).
+  const [checkingVersion, setCheckingVersion] = useState<boolean>(false);
+  useEffect(() => {
+    let cancelled = false;
+    const checkLatest = async () => {
+      setCheckingVersion(true);
+      try {
+        const lv = await api.checkLatestListoneVersion();
+        if (!cancelled) setLatest(lv);
+      } catch (err) {
+        // Silent — la card mostra "—" come fallback
+        console.debug("[ListoneInlineCard] checkLatestListoneVersion skip:", err);
+      } finally {
+        if (!cancelled) setCheckingVersion(false);
+      }
+    };
+    void checkLatest();
+    // Refresh ogni 5 minuti (in caso di nuove release GitHub)
+    const timer = setInterval(() => void checkLatest(), 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // True se il database listone è già all'ultima versione disponibile su GitHub.
+  const isUpToDate =
+    !!latest?.tag &&
+    !!autofetchStatus?.last_applied_tag &&
+    latest.tag === autofetchStatus.last_applied_tag;
+
+  // True se c'è una nuova versione disponibile (diversa da quella applicata).
+  const hasNewVersion =
+    !!latest?.tag &&
+    (!autofetchStatus?.last_applied_tag || latest.tag !== autofetchStatus.last_applied_tag);
+
   // --- [aggiorna ora] flow ---
   const handleAggiornaOra = useCallback(async () => {
+    // M3a.4 — Se già aggiornato, NON scaricare nulla. Mostra solo un messaggio.
+    if (isUpToDate) {
+      setMode("applied");
+      setProgressLabel(`Già aggiornato all'ultima versione (${latest?.tag}).`);
+      setTimeout(() => {
+        setMode("idle");
+        setProgressLabel("");
+      }, 3000);
+      return;
+    }
     setMode("checking");
     setProgressLabel("Controllo versione GitHub…");
     try {
@@ -528,8 +576,11 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
       if (!lv?.tag || lv.tag === autofetchStatus?.last_applied_tag) {
         // Già aggiornato
         setMode("applied");
-        setProgressLabel("Già aggiornato all'ultima versione.");
-        setTimeout(() => setMode("idle"), 2500);
+        setProgressLabel(`Già aggiornato all'ultima versione (${lv?.tag ?? "—"}).`);
+        setTimeout(() => {
+          setMode("idle");
+          setProgressLabel("");
+        }, 3000);
         return;
       }
       // Scarica players.json
@@ -549,7 +600,7 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
       onError(`Aggiorna ora fallito: ${err instanceof Error ? err.message : String(err)}`);
       setTimeout(() => setMode("idle"), 4000);
     }
-  }, [autofetchStatus, onError]);
+  }, [autofetchStatus, onError, isUpToDate, latest]);
 
   // --- [anteprima] flow (senza applicare) ---
   const handleAnteprima = useCallback(async () => {
@@ -651,18 +702,52 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
             ? `${autofetchStatus.last_applied_tag}`
             : "mai"}
         </span>
+        {latest?.tag && (
+          <span>
+            <strong style={{ fontFamily: "var(--font-display)" }}>Disponibile:</strong>{" "}
+            {checkingVersion ? "controllo…" : latest.tag}
+            {hasNewVersion && (
+              <span style={{ color: "var(--amber, #B8860B)", marginLeft: "4px" }}>
+                ● nuovo!
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
-      {/* 3 action buttons */}
-      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={handleAggiornaOra}
-          disabled={mode === "checking" || mode === "downloading" || mode === "applying" || mode === "previewing"}
-          style={listoneBtnPrimary}
-        >
-          {mode === "checking" ? "controllo…" : mode === "downloading" ? "scarico…" : "aggiorna ora"}
-        </button>
+      {/* 3 action buttons — "aggiorna ora" nascosto se isUpToDate */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+        {isUpToDate ? (
+          // M3a.4 — Database già all'ultima versione. Non proporre aggiornamento.
+          // Mostra badge verde "✓ Aggiornato" invece del pulsante.
+          <span
+            style={{
+              padding: "4px 12px",
+              background: "rgba(74,103,65,0.10)",
+              border: "1px solid var(--green)",
+              color: "var(--green)",
+              fontFamily: "var(--font-display)",
+              fontSize: "12px",
+            }}
+          >
+            ✓ Aggiornato all'ultima versione ({latest?.tag})
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAggiornaOra}
+            disabled={mode === "checking" || mode === "downloading" || mode === "applying" || mode === "previewing"}
+            style={listoneBtnPrimary}
+          >
+            {mode === "checking"
+              ? "controllo…"
+              : mode === "downloading"
+              ? "scarico…"
+              : hasNewVersion && latest?.tag
+              ? `aggiorna a ${latest.tag}`
+              : "aggiorna ora"}
+          </button>
+        )}
         <button
           type="button"
           onClick={handleAnteprima}

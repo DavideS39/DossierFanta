@@ -221,56 +221,13 @@ export function SyncView(): React.ReactElement {
     }
   }, [state.peerKey]);
 
-  // --- Connetti nuovo peer ---
-  const [newPeerKey, setNewPeerKey] = useState("");
-  const handleConnectNew = useCallback(async () => {
-    const pk = newPeerKey.trim();
-    if (!pk) return;
-    setState((s) => ({ ...s, busy: true, error: null }));
-    try {
-      // Prima avvia Iroh se non ancora attivo
-      if (!state.peerKey) {
-        await api.irohStartNode();
-        const syncManager = getSyncManager();
-        if (!syncManager.getProvider("iroh")) {
-          syncManager.addProvider(new IrohYjsProvider(ydoc));
-        }
-      }
-      const connected = await api.irohConnectByPeerKeyV2(pk);
-      if (!connected) {
-        setState((s) => ({
-          ...s,
-          busy: false,
-          error: `Connessione a ${pk.slice(0, 16)}... fallita. Peer dietro NAT senza relay? Riprova tra 30s.`,
-        }));
-        return;
-      }
-      setNewPeerKey("");
-      await refresh();
-    } catch (err) {
-      setState((s) => ({
-        ...s,
-        busy: false,
-        error: `Connessione fallita: ${err instanceof Error ? err.message : String(err)}`,
-      }));
-    }
-  }, [newPeerKey, state.peerKey, refresh]);
-
-  // --- Disconnetti un peer ---
-  const handleDisconnectPeer = useCallback(
-    async (peerKey: string) => {
-      try {
-        await api.irohDisconnectPeer(peerKey);
-        await refresh();
-      } catch (err) {
-        setState((s) => ({
-          ...s,
-          error: `Disconnessione fallita: ${err instanceof Error ? err.message : String(err)}`,
-        }));
-      }
-    },
-    [refresh]
-  );
+  // M3a.5 — handleConnectNew e handleDisconnectPeer sono stati RIMOSSI.
+  // Erano usati dalla sezione "Aggiungi nuovo peer" (peer_key paste) e
+  // "Trusted peers" (lista peer connessi). Entrambe le sezioni sono state
+  // rimosse in favore del pairing flow 8-cifre + ECDH (handleCreatePairing,
+  // handleJoinPairing, handlePairingResponse, handleCancelPairing).
+  // La gestione disconnessione/rimozione peer è ora demandata a
+  // `handleRemovePeer` (rimuove pairing + Iroh trusted peer).
 
   // --- Rimuovi un peer dai trusted ---
   const handleRemovePeer = useCallback(
@@ -876,15 +833,17 @@ export function SyncView(): React.ReactElement {
               <div
                 style={{
                   fontFamily: "var(--font-mono, var(--font-body))",
-                  fontSize: "24px",
+                  fontSize: "52px",
                   fontWeight: "bold",
-                  letterSpacing: "0.15em",
+                  letterSpacing: "0.18em",
                   color: "var(--blue, #2C4A6B)",
-                  padding: "8px 0",
+                  padding: "20px 8px",
                   textAlign: "center",
                   background: "var(--paper)",
-                  border: "2px dashed var(--blue, #2C4A6B)",
-                  marginBottom: "8px",
+                  border: "3px dashed var(--blue, #2C4A6B)",
+                  marginBottom: "12px",
+                  lineHeight: 1.1,
+                  wordBreak: "keep-all",
                 }}
               >
                 {state.generatedCode.split("").join(" ")}
@@ -896,7 +855,8 @@ export function SyncView(): React.ReactElement {
               disabled={
                 state.pairingFlow === "creating" ||
                 state.pairingFlow === "awaiting_response" ||
-                state.pairingFlow === "completing"
+                state.pairingFlow === "completing" ||
+                !!state.generatedCode  // M3a.5 — un solo codice alla volta
               }
               style={{
                 width: "100%",
@@ -908,15 +868,17 @@ export function SyncView(): React.ReactElement {
                 border: "none",
                 cursor:
                   state.pairingFlow === "creating" ||
-                  state.pairingFlow === "awaiting_response"
-                    ? "wait"
+                  state.pairingFlow === "awaiting_response" ||
+                  !!state.generatedCode
+                    ? "not-allowed"
                     : "pointer",
+                opacity: !!state.generatedCode ? 0.4 : 1,
               }}
             >
               {state.pairingFlow === "creating"
                 ? "generazione…"
                 : state.generatedCode
-                ? "genera nuovo codice"
+                ? "in attesa di risposta (annulla sotto per generare nuovo)"
                 : "Genera codice di pairing"}
             </button>
             {state.generatedCode && state.pairingFlow === "awaiting_response" && (
@@ -1276,213 +1238,6 @@ export function SyncView(): React.ReactElement {
               ? "nessun peer connesso (solo relay Supabase)"
               : "non avviato — genera una peer_key per attivare"}
           </div>
-        </div>
-      </div>
-
-      {/* --- PEER CONOSCIUTI --- */}
-      <div style={{ marginBottom: "20px" }}>
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: "12px",
-            color: "var(--ink-soft)",
-            marginBottom: "8px",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Peer conosciuti (Iroh) — {state.trustedPeers.length} salvati
-        </div>
-        {state.trustedPeers.length === 0 ? (
-          <div
-            style={{
-              padding: "12px",
-              background: "var(--paper-dim)",
-              border: "1px dashed var(--ink-soft)",
-              fontSize: "12px",
-              color: "var(--ink-soft)",
-            }}
-          >
-            Nessun peer conosciuto. Aggiungi un amico incollando la sua peer_key
-            qui sotto.
-          </div>
-        ) : (
-          <div
-            style={{
-              border: "1px solid rgba(43,27,18,0.2)",
-              background: "var(--paper-dim)",
-            }}
-          >
-            {state.trustedPeers.map((peer, idx) => {
-              const isOnline = state.connectedPeers.includes(peer.peerId);
-              return (
-                <div
-                  key={peer.peerId}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                    padding: "10px 12px",
-                    borderBottom:
-                      idx < state.trustedPeers.length - 1
-                        ? "1px solid rgba(43,27,18,0.15)"
-                        : "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: isOnline ? "var(--green)" : "var(--ink-soft)",
-                      }}
-                    >
-                      {isOnline ? "●" : "○"}
-                    </span>
-                    <strong style={{ fontSize: "13px" }}>
-                      {peer.displayName || peer.peerId.slice(0, 16) + "…"}
-                    </strong>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono, var(--font-body))",
-                        fontSize: "10px",
-                        color: "var(--ink-soft)",
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      ({peer.peerId.slice(0, 24)}…)
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontSize: "11px",
-                      color: "var(--ink-soft)",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span>
-                      stato:{" "}
-                      {isOnline ? (
-                        <>
-                          <strong style={{ color: "var(--green)" }}>online</strong>{" "}
-                          · ●live (latenza ~50ms via QUIC diretto)
-                        </>
-                      ) : (
-                        <>
-                          <strong>offline</strong> · modifiche via Supabase
-                          (recuperate al suo prossimo avvio)
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
-                    {isOnline ? (
-                      <button
-                        type="button"
-                        onClick={() => handleDisconnectPeer(peer.peerId)}
-                        style={btnSecondaryStyle}
-                      >
-                        disconnetti
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setState((s) => ({ ...s, busy: true, error: null }));
-                          try {
-                            const ok = await api.irohConnectByPeerKeyV2(
-                              peer.peerId
-                            );
-                            if (!ok) {
-                              setState((s) => ({
-                                ...s,
-                                error: `Riconnessione a ${peer.peerId.slice(0, 16)}… fallita (timeout 10s).`,
-                              }));
-                            }
-                          } finally {
-                            setState((s) => ({ ...s, busy: false }));
-                            void refresh();
-                          }
-                        }}
-                        disabled={state.busy}
-                        style={btnSecondaryStyle}
-                      >
-                        connetti
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePeer(peer.peerId)}
-                      style={{
-                        ...btnSecondaryStyle,
-                        color: "var(--red)",
-                        borderColor: "var(--red)",
-                      }}
-                    >
-                      rimuovi
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* --- AGGIUNGI NUOVO PEER --- */}
-      <div style={{ marginBottom: "20px" }}>
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: "12px",
-            color: "var(--ink-soft)",
-            marginBottom: "8px",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Aggiungi nuovo peer (Iroh)
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <input
-            type="text"
-            value={newPeerKey}
-            onChange={(e) => setNewPeerKey(e.target.value)}
-            placeholder="incolla peer key (NodeId base32)..."
-            style={{
-              flex: 1,
-              fontFamily: "var(--font-mono, var(--font-body))",
-              fontSize: "12px",
-              padding: "6px 10px",
-              background: "var(--paper)",
-              border: "1px solid var(--ink-soft)",
-              color: "var(--ink)",
-            }}
-          />
-          <button
-            type="button"
-            onClick={handleConnectNew}
-            disabled={state.busy || !newPeerKey.trim()}
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "12px",
-              padding: "6px 14px",
-              background: "var(--blue, #2C4A6B)",
-              color: "var(--paper)",
-              border: "none",
-              cursor: state.busy ? "wait" : "pointer",
-            }}
-          >
-            {state.busy ? "…" : "connetti e salva"}
-          </button>
         </div>
       </div>
 
