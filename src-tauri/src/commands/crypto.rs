@@ -41,6 +41,7 @@
 //!    La sicurezza è garantita dalla cifratura end-to-end, non da Supabase.
 
 use aes_gcm::aead::{Aead, KeyInit, OsRng as AesOsRng};
+use rand::RngCore;  // for `OsRng::fill_bytes` (trait method)
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use curve25519_dalek::scalar::Scalar;
@@ -99,7 +100,7 @@ pub fn derive_shared_secret_inner(
     let their_public: iroh_base::key::PublicKey = their_peer_key
         .parse()
         .map_err(|e| AppError::Validation(format!("peer key non valida: {}", e)))?;
-    let their_public_bytes = their_public.to_bytes();
+    let their_public_bytes = *their_public.as_bytes();
 
     // 3. curve25519-dalek ECDH.
     //    - `Scalar::from_bytes_mod_order` converte 32 byte in uno Scalar
