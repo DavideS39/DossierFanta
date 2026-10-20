@@ -480,7 +480,7 @@ pub fn import_listone(
     // `last_known_data` in `players_archive`. Se l'utente ha editato
     // recentemente uno di questi player (updated_at > scraped_at),
     // viene skippato (conflict resolution B.7).
-    let asterisk_archived = match archive_asterisk_players_inner(state, &active_id, scraped_at.as_deref()) {
+    let asterisk_archived = match archive_asterisk_players_inner(&*state, &active_id, scraped_at.as_deref()) {
         Ok(n) => {
             if n > 0 {
                 log::info!(
@@ -1909,5 +1909,5 @@ pub fn archive_asterisk_players_inner(
 #[tauri::command]
 pub fn archive_asterisk_players(state: State<'_, DbState>) -> AppResult<usize> {
     let active_id = state.active_db_id()?;
-    archive_asterisk_players_inner(state, &active_id, None)
+    archive_asterisk_players_inner(&*state, &active_id, None)
 }
