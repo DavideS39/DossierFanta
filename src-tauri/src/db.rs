@@ -129,6 +129,21 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
         }
     }
 
+    // M3a.5 — Auto-crea il database "ListoneSerieA.db" se non esiste già.
+    // Idempotente via INSERT OR IGNORE (la chiave primaria `id` impedisce
+    // duplicati). Questo DB ospita il listone Serie A auto-fetched da
+    // fantacalcio.it via GitHub Actions. La ListoneInlineCard nel
+    // DatabaseManager mostra l'interfaccia di aggiornamento per questo DB.
+    // Funziona sia su DB nuovo (dopo schema applicato) sia su DB esistente
+    // (dopo migrazione a v2.5) — INSERT OR IGNORE saluta silenziosamente se
+    // la riga esiste già.
+    conn.execute(
+        "INSERT OR IGNORE INTO databases (id, name, type, owner, schema_ver) \
+         VALUES ('default-listone', 'ListoneSerieA.db', 'listone', 'auto-fetch', ?1)",
+        rusqlite::params![SCHEMA_VERSION_TARGET],
+    )?;
+    log::info!("ListoneSerieA.db ensured in databases table (idempotent).");
+
     Ok(conn)
 }
 

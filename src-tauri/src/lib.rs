@@ -290,6 +290,8 @@ pub fn run() {
             commands::listone::apply_auto_fetch,
             commands::listone::scrape_listone_inline,
             commands::listone::get_autofetch_status,
+            // M3a.5 — Archiviazione giocatori asterisk (fuori serie A)
+            commands::listone::archive_asterisk_players,
             // sync.rs (M3a — B.3 yrs core + B.4 Iroh + B.8 sync-live markers)
             commands::sync::yjs_apply_update,
             commands::sync::yjs_get_state_vector,

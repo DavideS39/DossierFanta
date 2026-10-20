@@ -297,6 +297,15 @@ export const tauriApi = {
   getAutofetchStatus: () =>
     invoke<AutoFetchStatus>("get_autofetch_status"),
 
+  /**
+   * M3a.5 — Archivia tutti i giocatori con `*` nel nome (fuori serie A).
+   * Li sposta da `players` a `players_archive` con archived_reason='non_in_listone'.
+   * NON distruttivo — i dati sono preservati in last_known_data.
+   * Ritorna il count dei player archiviati.
+   */
+  archiveAsteriskPlayers: () =>
+    invoke<number>("archive_asterisk_players"),
+
   // ====================================================================
   // M3a — Sync live CRDT P2P (Yjs + Iroh). Design doc Cap.5.
   // Tutti i comandi sync_* esposti da src-tauri/src/commands/sync.rs.

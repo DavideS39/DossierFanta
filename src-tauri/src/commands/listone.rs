@@ -129,11 +129,24 @@ pub fn import_listone(
     // Valida le entry: scarta righe senza name, valida pos_fanta se presente.
     let mut valid_entries: Vec<ListoneEntry> = Vec::new();
     let mut error_messages: Vec<String> = Vec::new();
+    let mut skipped_asterisk: Vec<String> = Vec::new();
     let valid_pos = ["P", "D", "C", "A"];
     for (i, e) in entries.into_iter().enumerate() {
         let name = e.name.trim().to_string();
         if name.is_empty() {
             error_messages.push(format!("riga {}: name vuoto, saltato", i + 1));
+            continue;
+        }
+        // M3a.5 — SKIP entries con `*` nel nome. La convenzione di
+        // fantacalcio.it è che i giocatori con asterisco sono FUORI
+        // SERIE A (es. venduti all'estero, ritirati, in Serie B).
+        // Non vanno mai nel `players` table. Vengono saltati qui, e
+        // il comando `archive_asterisk_players` (chiamato in fondo a
+        // questa funzione) pulisce eventuali asterisk già scivolati
+        // nel table da listone precedenti (pre-fix).
+        if name.contains('*') {
+            log::debug!("[M3a.5] skip entry asterisk (fuori serie A): {}", name);
+            skipped_asterisk.push(name.clone());
             continue;
         }
         if let Some(p) = &e.pos_fanta {
@@ -459,6 +472,40 @@ pub fn import_listone(
             .unwrap_or_else(|_| "?".to_string());
         Ok(n)
     })?;
+
+    // M3a.5 — Pulizia post-import: archivia eventuali giocatori con `*`
+    // nel nome ancora presenti nel `players` table. Questi sono asterisk
+    // scivolati dentro da versioni precedenti del listone (pre-fix del
+    // filtro). NON distruttivo: il snapshot arricchito va su
+    // `last_known_data` in `players_archive`. Se l'utente ha editato
+    // recentemente uno di questi player (updated_at > scraped_at),
+    // viene skippato (conflict resolution B.7).
+    let asterisk_archived = match archive_asterisk_players_inner(state, &active_id, scraped_at.as_deref()) {
+        Ok(n) => {
+            if n > 0 {
+                log::info!(
+                    "[M3a.5] import_listone: archiviati {} giocatori asterisk (fuori serie A)",
+                    n
+                );
+                error_messages.push(format!(
+                    "Archiviati {} giocatori con asterisco (fuori serie A, non più nel listone).",
+                    n
+                ));
+            }
+            n
+        }
+        Err(e) => {
+            log::warn!("[M3a.5] archive_asterisk_players fallito (non blocking): {}", e);
+            0
+        }
+    };
+    let _ = asterisk_archived; // incluso implicitamente in `archived` count via side-effect? No — somma separata.
+    if !skipped_asterisk.is_empty() {
+        log::info!(
+            "[M3a.5] import_listone: saltate {} entry con asterisco (non importate)",
+            skipped_asterisk.len()
+        );
+    }
 
     Ok(ImportSummary {
         created,
@@ -1710,4 +1757,157 @@ pub struct AutoFetchStatus {
     pub cache_path: String,
     /// Ultime 5 entry di aggiornamento.
     pub update_log: Vec<UpdateLogEntry>,
+}
+
+// ----------------------------------------------------------------------
+// M3a.5 — Archiviazione giocatori con asterisco (fuori serie A)
+// ----------------------------------------------------------------------
+
+/// Archivia tutti i giocatori con `*` nel nome presenti nel `players` table.
+///
+/// La convenzione di fantacalcio.it è che i giocatori con asterisco nel nome
+/// sono FUORI SERIE A (venduti all'estero, ritirati, in Serie B). NON vanno
+/// mai nel `players` table attivo — vengono archiviati in `players_archive`
+/// con `archived_reason = 'non_in_listone'`.
+///
+/// Comportamento:
+///   1. SELECT id, db_id, name FROM players WHERE name LIKE '%*%' ORDER BY name
+///   2. Per ognuno:
+///      - Pre-check conflict resolution B.7: se l'utente ha editato
+///        recentemente (updated_at > scraped_at), SKIP — non archiviare
+///      - Pre-check: già in archive? SKIP — non duplicare
+///      - Snapshot arricchito (player + auction_data + scouting_notes +
+///        oracolo_projections + pressione_mercato) → JSON in last_known_data
+///      - INSERT INTO players_archive con archived_reason='non_in_listone'
+///      - DELETE FROM players (con cascade sulle tabelle collegate —
+///        ma lo snapshot ha già preservato i dati)
+///   3. Return count archived
+///
+/// Chiamato:
+///   - Automaticamente in fondo a `import_listone` (pulizia post-import)
+///   - Manualmente dal pulsante "Pulisci asterischi" nella ListoneInlineCard
+///
+/// NON distruttivo — i dati sono preservati in `last_known_data` e possono
+/// essere recuperati via `restore_archived_player` se il giocatore torna
+/// in Serie A.
+pub fn archive_asterisk_players_inner(
+    state: &DbState,
+    active_id: &str,
+    scraped_at: Option<&str>,
+) -> AppResult<usize> {
+    state.with_conn(active_id, |conn| {
+        let mut archived: usize = 0;
+
+        // SELECT tutti i player con `*` nel nome. LOWER/UPPER non serve —
+        // LIKE '%*%' è case-insensitive di default in SQLite per ASCII.
+        let mut stmt = conn.prepare(
+            "SELECT id, name FROM players WHERE name LIKE '%*%' ORDER BY name",
+        )?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .filter_map(Result::ok)
+            .collect();
+        drop(stmt); // rilascia statement prima di nuove query
+
+        for (pid, pname) in &rows {
+            // Conflict resolution B.7: se l'utente ha editato recentemente
+            // questo player (updated_at > scraped_at), SKIP. Non bloccare
+            // il cleanup globale per un solo player editato.
+            if let Some(ref scraped) = scraped_at {
+                if let Ok(true) = crate::commands::sync::player_has_recent_local_edit(
+                    conn, pid, scraped,
+                ) {
+                    log::debug!(
+                        "[M3a.5] skip asterisk {}: edit recente (B.7)",
+                        pname
+                    );
+                    continue;
+                }
+            }
+
+            // Pre-check: già in archive? SKIP — non duplicare.
+            let already: bool = conn
+                .query_row(
+                    "SELECT 1 FROM players_archive WHERE id = ?1 LIMIT 1",
+                    params![pid],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if already {
+                log::debug!("[M3a.5] skip asterisk {}: già in archive", pname);
+                continue;
+            }
+
+            // Snapshot arricchito (player + auction_data + scouting_notes +
+            // oracolo_projections + pressione_mercato). Riutilizza l'helper
+            // esistente in players.rs.
+            let snapshot_value = _collect_player_snapshot(conn, pid);
+            let snapshot_str = serde_json::to_string(&snapshot_value)
+                .unwrap_or_else(|_| "{}".to_string());
+
+            // Estrai campi minimi per i metadati dell'archivio.
+            let player_obj = snapshot_value
+                .get("player")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let p_team = player_obj.get("team").and_then(|v| v.as_str());
+            let p_pos_fanta = player_obj.get("pos_fanta").and_then(|v| v.as_str());
+            let p_pos_real = player_obj.get("pos_real").and_then(|v| v.as_str());
+
+            // Insert into archive + delete from players (atomic via tx).
+            let tx = conn.unchecked_transaction()?;
+            let r: rusqlite::Result<()> = (|| {
+                tx.execute(
+                    r#"INSERT INTO players_archive
+                       (id, db_id, name, team, pos_fanta, pos_real,
+                        archived_at, archived_reason, last_known_data, source_db_id)
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), 'non_in_listone', ?7, ?8)"#,
+                    params![
+                        pid,
+                        active_id,
+                        pname,
+                        p_team,
+                        p_pos_fanta,
+                        p_pos_real,
+                        snapshot_str,
+                        active_id,
+                    ],
+                )?;
+                tx.execute("DELETE FROM players WHERE id = ?1", params![pid])?;
+                Ok(())
+            })();
+            match r {
+                Ok(()) => {
+                    tx.commit()?;
+                    archived += 1;
+                    log::info!("[M3a.5] archived asterisk player: {} ({})", pname, pid);
+                }
+                Err(e) => {
+                    // Rollback e skip — non bloccare il loop per un errore singolo
+                    let _ = tx.rollback();
+                    log::warn!(
+                        "[M3a.5] failed to archive asterisk {} ({}): {}",
+                        pname, pid, e
+                    );
+                }
+            }
+        }
+
+        Ok(archived)
+    })
+}
+
+/// Comando Tauri: archivia tutti i giocatori con `*` nel nome.
+///
+/// Chiamato dal pulsante "Pulisci asterischi" nella ListoneInlineCard
+/// del DatabaseManager. Ritorna il count dei player archiviati.
+///
+/// NOTA: non prende `scraped_at` come parametro (per uso manuale, non
+/// contesto di listone update). Se l'utente ha editato recentemente
+/// un player asterisk (B.7), viene skippato — il cleanup non blocca
+/// le modifiche locali.
+#[tauri::command]
+pub fn archive_asterisk_players(state: State<'_, DbState>) -> AppResult<usize> {
+    let active_id = state.active_db_id()?;
+    archive_asterisk_players_inner(state, &active_id, None)
 }

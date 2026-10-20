@@ -6,7 +6,6 @@ import { StatsBar } from "@/components/StatsBar";
 import { PlayerForm } from "@/components/PlayerForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { DatabaseManager } from "@/components/DatabaseManager";
-import { ImportListone } from "@/components/ImportListone";
 import { ArchiveView } from "@/components/ArchiveView";
 import { AggiornamentiView } from "@/components/AggiornamentiView";
 import { SyncView } from "@/components/SyncView";
@@ -24,7 +23,7 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; player: Player };
 
-type ModalState = "none" | "databases" | "import" | "archive" | "aggiornamenti" | "sync";
+type ModalState = "none" | "databases" | "archive" | "aggiornamenti" | "sync";
 
 /**
  * Vista principale M2.1: Rosa (multi-DB + archiviazione + design taccuino
@@ -277,15 +276,6 @@ export function RosaView() {
 
           <button
             type="button"
-            onClick={() => setModal("import")}
-            className="df-btn df-btn--warn"
-            title="Import listone Serie A (anteprima diff + archiviazione automatica)"
-          >
-            ⚑ Import listone
-          </button>
-
-          <button
-            type="button"
             onClick={() => setModal("aggiornamenti")}
             className="df-btn df-btn--accent"
             title="Aggiornamenti listone auto-fetch via GitHub Releases"
@@ -454,15 +444,6 @@ export function RosaView() {
       )}
       {modal === "databases" && (
         <DatabaseManager onClose={() => setModal("none")} />
-      )}
-      {modal === "import" && (
-        <ImportListone
-          onClose={() => setModal("none")}
-          onImported={() => {
-            void refresh();
-            void refreshMeta();
-          }}
-        />
       )}
       {modal === "archive" && (
         <ArchiveView

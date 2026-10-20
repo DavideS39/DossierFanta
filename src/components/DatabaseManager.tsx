@@ -67,6 +67,9 @@ export function DatabaseManager({ onClose }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<DatabaseMeta | null>(null);
   const [deleteChecked, setDeleteChecked] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // M3a.5 — Toggle per ListoneInlineCard (default collapsed). L'utente
+  // clicca "aggiorna" sulla riga listone per espandere l'interfaccia.
+  const [listoneCardExpanded, setListoneCardExpanded] = useState(false);
 
   // M2.1 B6: stato del banner dismissibile
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(loadBannerDismissed());
@@ -273,11 +276,30 @@ export function DatabaseManager({ onClose }: Props) {
                           ✕
                         </button>
                       )}
+                      {/* M3a.5 — Per i DB di tipo listone, mostra il pulsante "aggiorna"
+                          che togglea (espande/collassa) la ListoneInlineCard sotto la riga.
+                          Di default è collassata per tenere la lista compatta. */}
+                      {db.type === "listone" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setListoneCardExpanded((v) => !v);
+                          }}
+                          className="text-ink hover:text-ink/80 text-sm"
+                          style={{ fontFamily: "var(--font-display)" }}
+                          aria-label={listoneCardExpanded ? "Chiudi interfaccia aggiornamento" : "Apri interfaccia aggiornamento"}
+                          title={listoneCardExpanded ? "Chiudi" : "Aggiorna"}
+                        >
+                          {listoneCardExpanded ? "▲" : "aggiorna"}
+                        </button>
+                      )}
                     </div>
                     {/* M3a.3 Deliverable 7 — Card inline per DB di tipo listone.
+                        Espansa solo quando l'utente clicca "aggiorna" sulla riga.
                         Mostra: counter giocatori + ultimo aggiornamento + 3 azioni
                         ([aggiorna ora] [anteprima] [fallback]) + ImportPreview modale. */}
-                    {db.type === "listone" && (
+                    {db.type === "listone" && listoneCardExpanded && (
                       <div className="col-span-12 pt-2 pb-3 px-3 bg-paper-dim/40 border-t border-ink/5">
                         <ListoneInlineCard
                           dbId={db.id}
@@ -764,6 +786,48 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
           title="Scarica diretto da fantacalcio.it (~10-15s). Usa se GitHub è down."
         >
           fallback: fantacalcio.it
+        </button>
+        {/* M3a.5 — Pulsante "Pulisci asterischi". Archivia tutti i giocatori
+            con `*` nel nome (fuori serie A per convenzione fantacalcio.it).
+            NON distruttivo: i dati vanno in players_archive con
+            archived_reason='non_in_listone', recuperabili via search
+            "includi archivio". Chiamato anche automaticamente dopo
+            ogni import_listone, ma questo pulsante permette cleanup on-demand
+            anche senza aggiornare il listone. */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (
+              !window.confirm(
+                "Archiviare tutti i giocatori con asterisco (*) nel nome?\n" +
+                "Verranno spostati in players_archive (NON eliminati) con\n" +
+                "archived_reason='non_in_listone'. Recuperabili via search\n" +
+                "\"includi archivio\". Questa azione è sicura."
+              )
+            )
+              return;
+            try {
+              setProgressLabel("Pulizia asterischi in corso…");
+              const n = await api.archiveAsteriskPlayers();
+              if (n > 0) {
+                setProgressLabel(`✓ Archiviati ${n} giocatori con asterisco.`);
+                await onApplied();
+              } else {
+                setProgressLabel("✓ Nessun giocatore con asterisco trovato. DB già pulito.");
+              }
+              setTimeout(() => setProgressLabel(""), 5000);
+            } catch (err) {
+              onError(
+                `Pulizia asterischi fallita: ${err instanceof Error ? err.message : String(err)}`
+              );
+              setProgressLabel("");
+            }
+          }}
+          disabled={mode === "checking" || mode === "downloading" || mode === "applying" || mode === "previewing"}
+          style={listoneBtnSecondary}
+          title="Archivia tutti i giocatori con * nel nome (fuori serie A). Non distruttivo."
+        >
+          pulisci asterischi
         </button>
       </div>
 

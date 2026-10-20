@@ -614,6 +614,12 @@ export const mockApi = {
     };
   },
 
+  // M3a.5 — Archiviazione asterisk (stub mock)
+  async archiveAsteriskPlayers(): Promise<number> {
+    await delay(50);
+    return 0;
+  },
+
   // ===== M3a — Stub mock per i comandi sync live (anteprima web dev-only) =====
   // M3a.1 (verifica TS) — Aggiunti stub per tutti i comandi M3a (yjs_*, iroh_*,
   // save_*_from_sync) + M3a.1 (lan_*) così tsc --noEmit è pulito anche in
