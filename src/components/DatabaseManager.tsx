@@ -56,6 +56,12 @@ export function DatabaseManager({ onClose }: Props) {
   const createDatabase = useDbStore((s) => s.createDatabase);
   const deleteDatabase = useDbStore((s) => s.deleteDatabase);
   const setActiveDatabase = useDbStore((s) => s.setActiveDatabase);
+  // M3a.5 — Multi-DB attivo
+  const activeDbIds = useDbStore((s) => s.activeDbIds);
+  const toggleActiveDb = useDbStore((s) => s.toggleActiveDb);
+  const showListoneDeactivateConfirm = useDbStore((s) => s.showListoneDeactivateConfirm);
+  const confirmDeactivateListone = useDbStore((s) => s.confirmDeactivateListone);
+  const cancelDeactivateListone = useDbStore((s) => s.cancelDeactivateListone);
   const refreshMeta = useDbMetaStore((s) => s.refresh);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -67,9 +73,11 @@ export function DatabaseManager({ onClose }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<DatabaseMeta | null>(null);
   const [deleteChecked, setDeleteChecked] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // M3a.5 — Toggle per ListoneInlineCard (default collapsed). L'utente
-  // clicca "aggiorna" sulla riga listone per espandere l'interfaccia.
-  const [listoneCardExpanded, setListoneCardExpanded] = useState(false);
+  // M3a.5 — Modale grosso per l'aggiornamento del listone. Si apre cliccando
+  // il pulsante blu "aggiorna" sulla riga ListoneSerieA.db. Contiene la
+  // ListoneInlineCard (stessa interfaccia di prima, ma in modale invece di
+  // inline espansa sotto la riga — più pulito e compatto).
+  const [listoneModalOpen, setListoneModalOpen] = useState(false);
 
   // M2.1 B6: stato del banner dismissibile
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(loadBannerDismissed());
@@ -241,7 +249,21 @@ export function DatabaseManager({ onClose }: Props) {
                     tabIndex={0}
                   >
                     <div className="col-span-1 text-base">
-                      {isActive ? <span className="text-green">✓</span> : <span className="text-ink/20">○</span>}
+                      {/* M3a.5 — Checkbox multi-DB attivo. Toggle del DB nel set
+                          di DB visibili nella Rosa. Click separato dal setActive
+                          (che imposta il DB "principale" per editing). */}
+                      <input
+                        type="checkbox"
+                        checked={activeDbIds.has(db.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleActiveDb(db.id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "var(--blue, #2C4A6B)" }}
+                        title={activeDbIds.has(db.id) ? "Disattiva (nascondi dalla Rosa)" : "Attiva (mostra nella Rosa)"}
+                      />
+                      {isActive && <span className="ml-1 text-green text-xs">✓</span>}
                     </div>
                     <div className="col-span-4 truncate" style={{ fontFamily: "var(--font-display)" }}>
                       {db.name}
@@ -276,42 +298,29 @@ export function DatabaseManager({ onClose }: Props) {
                           ✕
                         </button>
                       )}
-                      {/* M3a.5 — Per i DB di tipo listone, mostra il pulsante "aggiorna"
-                          che togglea (espande/collassa) la ListoneInlineCard sotto la riga.
-                          Di default è collassata per tenere la lista compatta. */}
+                      {/* M3a.5 — Pulsante blu "aggiorna" per DB listone.
+                          Apre un MODALE grosso con la ListoneInlineCard
+                          (stessa interfaccia: aggiorna ora / anteprima / fallback). */}
                       {db.type === "listone" && (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setListoneCardExpanded((v) => !v);
+                            setListoneModalOpen(true);
                           }}
-                          className="text-ink hover:text-ink/80 text-sm"
-                          style={{ fontFamily: "var(--font-display)" }}
-                          aria-label={listoneCardExpanded ? "Chiudi interfaccia aggiornamento" : "Apri interfaccia aggiornamento"}
-                          title={listoneCardExpanded ? "Chiudi" : "Aggiorna"}
+                          className="df-btn df-btn--accent"
+                          style={{
+                            fontSize: "11px",
+                            padding: "2px 10px",
+                            fontFamily: "var(--font-display)",
+                          }}
+                          aria-label="Apri modale aggiornamento listone"
+                          title="Aggiorna listone Serie A"
                         >
-                          {listoneCardExpanded ? "▲" : "aggiorna"}
+                          ⟳ aggiorna
                         </button>
                       )}
                     </div>
-                    {/* M3a.3 Deliverable 7 — Card inline per DB di tipo listone.
-                        Espansa solo quando l'utente clicca "aggiorna" sulla riga.
-                        Mostra: counter giocatori + ultimo aggiornamento + 3 azioni
-                        ([aggiorna ora] [anteprima] [fallback]) + ImportPreview modale. */}
-                    {db.type === "listone" && listoneCardExpanded && (
-                      <div className="col-span-12 pt-2 pb-3 px-3 bg-paper-dim/40 border-t border-ink/5">
-                        <ListoneInlineCard
-                          dbId={db.id}
-                          autofetchStatus={autofetchStatus}
-                          onError={setError}
-                          onApplied={async () => {
-                            await refresh();
-                            await refreshMeta();
-                          }}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -456,6 +465,136 @@ export function DatabaseManager({ onClose }: Props) {
                 {deleting ? "Eliminazione…" : "Elimina definitivamente"}
               </button>
             </footer>
+          </div>
+        </div>
+      )}
+
+      {/* M3a.5 — Modale grosso per l'aggiornamento del listone.
+          Contiene la ListoneInlineCard (aggiorna ora / anteprima / fallback).
+          Si apre cliccando il pulsante blu "aggiorna" sulla riga ListoneSerieA.db. */}
+      {listoneModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Aggiornamento listone Serie A"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(20, 30, 50, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setListoneModalOpen(false);
+          }}
+        >
+          <div style={{ position: "relative", maxWidth: "90vw", width: "640px" }}>
+            <button
+              type="button"
+              onClick={() => setListoneModalOpen(false)}
+              aria-label="Chiudi"
+              style={{
+                position: "absolute",
+                top: "-12px",
+                right: "-12px",
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                background: "#2C4A6B",
+                color: "#FFFFFF",
+                border: "2px solid #F7F3E8",
+                cursor: "pointer",
+                fontSize: "14px",
+                lineHeight: 1,
+                zIndex: 51,
+              }}
+            >
+              ×
+            </button>
+            <ListoneInlineCard
+              dbId="default-listone"
+              autofetchStatus={autofetchStatus}
+              onError={setError}
+              onApplied={async () => {
+                await refresh();
+                await refreshMeta();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* M3a.5 — Modale di conferma per disattivare ListoneSerieA. */}
+      {showListoneDeactivateConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Conferma disattivazione ListoneSerieA"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(20, 30, 50, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 60,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) cancelDeactivateListone();
+          }}
+        >
+          <div
+            style={{
+              maxWidth: "420px",
+              background: "var(--paper)",
+              border: "2px solid var(--amber, #B8860B)",
+              padding: "24px",
+              borderRadius: "4px",
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "16px",
+                color: "var(--amber, #B8860B)",
+                marginBottom: "12px",
+              }}
+            >
+              ⚠ Disattivare ListoneSerieA?
+            </h3>
+            <p
+              style={{
+                fontFamily: "var(--font-body)",
+                fontSize: "13px",
+                color: "var(--ink)",
+                lineHeight: 1.6,
+                marginBottom: "16px",
+              }}
+            >
+              ListoneSerieA è il database di riferimento per i giocatori
+              della Serie A. Disattivandolo, non vedrai più i giocatori
+              del listone nella Rosa. Potrai riattivarlo in qualsiasi
+              momento. Sei sicuro?
+            </p>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={cancelDeactivateListone}
+                className="tacc-btn"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeactivateListone}
+                className="tacc-btn"
+                style={{ color: "var(--amber, #B8860B)", borderColor: "var(--amber, #B8860B)" }}
+              >
+                Sì, disattiva
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -786,48 +925,6 @@ function ListoneInlineCard({ dbId: _dbId, autofetchStatus, onError, onApplied }:
           title="Scarica diretto da fantacalcio.it (~10-15s). Usa se GitHub è down."
         >
           fallback: fantacalcio.it
-        </button>
-        {/* M3a.5 — Pulsante "Pulisci asterischi". Archivia tutti i giocatori
-            con `*` nel nome (fuori serie A per convenzione fantacalcio.it).
-            NON distruttivo: i dati vanno in players_archive con
-            archived_reason='non_in_listone', recuperabili via search
-            "includi archivio". Chiamato anche automaticamente dopo
-            ogni import_listone, ma questo pulsante permette cleanup on-demand
-            anche senza aggiornare il listone. */}
-        <button
-          type="button"
-          onClick={async () => {
-            if (
-              !window.confirm(
-                "Archiviare tutti i giocatori con asterisco (*) nel nome?\n" +
-                "Verranno spostati in players_archive (NON eliminati) con\n" +
-                "archived_reason='non_in_listone'. Recuperabili via search\n" +
-                "\"includi archivio\". Questa azione è sicura."
-              )
-            )
-              return;
-            try {
-              setProgressLabel("Pulizia asterischi in corso…");
-              const n = await api.archiveAsteriskPlayers();
-              if (n > 0) {
-                setProgressLabel(`✓ Archiviati ${n} giocatori con asterisco.`);
-                await onApplied();
-              } else {
-                setProgressLabel("✓ Nessun giocatore con asterisco trovato. DB già pulito.");
-              }
-              setTimeout(() => setProgressLabel(""), 5000);
-            } catch (err) {
-              onError(
-                `Pulizia asterischi fallita: ${err instanceof Error ? err.message : String(err)}`
-              );
-              setProgressLabel("");
-            }
-          }}
-          disabled={mode === "checking" || mode === "downloading" || mode === "applying" || mode === "previewing"}
-          style={listoneBtnSecondary}
-          title="Archivia tutti i giocatori con * nel nome (fuori serie A). Non distruttivo."
-        >
-          pulisci asterischi
         </button>
       </div>
 

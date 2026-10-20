@@ -38,6 +38,15 @@ interface DbState {
   error: string | null;
   lastUpdated: string | null;
 
+  // M3a.5 — Multi-DB attivo: set di DB IDs "attivi" (visibili nella Rosa).
+  // ListoneSerieA (default-listone) è SEMPRE attivo di default.
+  // Gli altri DB si attivano/disattivano con checkbox nel DatabaseManager.
+  activeDbIds: Set<string>;
+  /** True se il modale di conferma "disattivare ListoneSerieA?" è visibile. */
+  showListoneDeactivateConfirm: boolean;
+  /** ID del DB che si sta tentando di disattivare (per il confirm modal). */
+  pendingDeactivateId: string | null;
+
   // Azioni
   refresh: () => Promise<void>;
   createDatabase: (name: string, type?: DatabaseType) => Promise<DatabaseMeta>;
@@ -46,6 +55,13 @@ interface DbState {
   getActiveDatabase: () => DatabaseMeta | null;
   /** M2.1: ripristina il DB attivo da localStorage. Chiamato al boot. */
   restoreFromLocalStorage: () => Promise<void>;
+  /** M3a.5: toggle un DB nel set di DB attivi. Se è ListoneSerieA,
+   *  mostra il modale di conferma invece di disattivarlo direttamente. */
+  toggleActiveDb: (id: string) => void;
+  /** M3a.5: conferma disattivazione di ListoneSerieA (dopo modale). */
+  confirmDeactivateListone: () => void;
+  /** M3a.5: annulla disattivazione (chiudi modale). */
+  cancelDeactivateListone: () => void;
 }
 
 export const useDbStore = create<DbState>((set, get) => ({
@@ -54,6 +70,10 @@ export const useDbStore = create<DbState>((set, get) => ({
   loading: false,
   error: null,
   lastUpdated: null,
+  // M3a.5 — ListoneSerieA sempre attivo di default.
+  activeDbIds: new Set<string>(["default-listone"]),
+  showListoneDeactivateConfirm: false,
+  pendingDeactivateId: null,
 
   refresh: async () => {
     set({ loading: true, error: null });
@@ -127,5 +147,36 @@ export const useDbStore = create<DbState>((set, get) => ({
     } catch {
       // se la listDatabases fallisce, lascia che refresh() venga chiamata dopo
     }
+  },
+
+  toggleActiveDb: (id: string) => {
+    const { activeDbIds } = get();
+    const newSet = new Set(activeDbIds);
+    if (newSet.has(id)) {
+      // Disattivazione. Se è ListoneSerieA, mostra modale di conferma.
+      if (id === "default-listone") {
+        set({ showListoneDeactivateConfirm: true, pendingDeactivateId: id });
+        return; // Non rimuovere finché l'utente non conferma
+      }
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    set({ activeDbIds: newSet });
+  },
+
+  confirmDeactivateListone: () => {
+    const { activeDbIds, pendingDeactivateId } = get();
+    if (pendingDeactivateId) {
+      const newSet = new Set(activeDbIds);
+      newSet.delete(pendingDeactivateId);
+      set({ activeDbIds: newSet, showListoneDeactivateConfirm: false, pendingDeactivateId: null });
+    } else {
+      set({ showListoneDeactivateConfirm: false });
+    }
+  },
+
+  cancelDeactivateListone: () => {
+    set({ showListoneDeactivateConfirm: false, pendingDeactivateId: null });
   },
 }));

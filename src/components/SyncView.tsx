@@ -831,78 +831,33 @@ export function SyncView(): React.ReactElement {
             </div>
             <button
               type="button"
-              onClick={() => {
-                if (state.generatedCode) {
-                  // Annulla il codice attivo per poterne generare uno nuovo
-                  void handleCancelPairing(state.generatedCode);
-                  setState((s) => ({ ...s, generatedCode: null, pairingFlow: "idle" }));
-                } else {
-                  void handleCreatePairing();
-                }
-              }}
+              onClick={() => void handleCreatePairing()}
               disabled={
                 state.pairingFlow === "creating" ||
-                state.pairingFlow === "completing"
+                state.pairingFlow === "completing" ||
+                !!state.generatedCode  // un solo codice alla volta
               }
               style={{
                 width: "100%",
                 fontFamily: "var(--font-display)",
                 fontSize: "12px",
                 padding: "8px",
-                background: state.generatedCode ? "transparent" : "var(--ink)",
-                color: state.generatedCode ? "var(--red)" : "var(--paper)",
-                border: state.generatedCode ? "1px solid var(--red)" : "none",
+                background: "var(--ink)",
+                color: "var(--paper)",
+                border: "none",
                 cursor:
                   state.pairingFlow === "creating" ||
-                  state.pairingFlow === "completing"
-                    ? "wait"
+                  state.pairingFlow === "completing" ||
+                  !!state.generatedCode
+                    ? "not-allowed"
                     : "pointer",
-                marginBottom: "8px",
+                opacity: state.generatedCode ? 0.4 : 1,
               }}
             >
               {state.pairingFlow === "creating"
                 ? "generazione…"
-                : state.generatedCode
-                ? "✕ Annulla codice (per generarne uno nuovo)"
                 : "Genera codice di pairing"}
             </button>
-            {state.generatedCode ? (
-              <div
-                style={{
-                  fontFamily: "var(--font-mono, var(--font-body))",
-                  fontSize: "44px",
-                  fontWeight: "bold",
-                  letterSpacing: "0.15em",
-                  color: "var(--blue, #2C4A6B)",
-                  padding: "16px 8px",
-                  textAlign: "center",
-                  background: "var(--paper)",
-                  border: "2px dashed var(--blue, #2C4A6B)",
-                  lineHeight: 1.1,
-                  wordBreak: "keep-all",
-                  boxSizing: "border-box",
-                  width: "100%",
-                }}
-              >
-                {state.generatedCode.split("").join(" ")}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontFamily: "var(--font-body)",
-                  fontSize: "11px",
-                  color: "var(--ink-soft)",
-                  fontStyle: "italic",
-                  textAlign: "center",
-                  padding: "12px 0",
-                  lineHeight: 1.5,
-                }}
-              >
-                Clicca il pulsante sopra per generare un codice
-                di 8 cifre. Condividilo con il tuo amico (voce, SMS,
-                di persona). Valido 5 minuti.
-              </div>
-            )}
           </div>
 
           {/* Responder box — enter code */}
@@ -975,6 +930,83 @@ export function SyncView(): React.ReactElement {
             </button>
           </div>
         </div>
+
+        {/* M3a.5 — Codice generato display FULL WIDTH sotto il grid.
+            BIG 80px, separato dal pulsante Genera (che è disabled quando
+            codice è attivo). Pulsante Annulla separato sotto il codice. */}
+        {state.generatedCode ? (
+          <div style={{ marginTop: "12px" }}>
+            <div
+              style={{
+                fontFamily: "var(--font-mono, var(--font-body))",
+                fontSize: "80px",
+                fontWeight: "bold",
+                letterSpacing: "0.12em",
+                color: "var(--blue, #2C4A6B)",
+                padding: "24px 8px",
+                textAlign: "center",
+                background: "var(--paper)",
+                border: "3px dashed var(--blue, #2C4A6B)",
+                lineHeight: 1.1,
+                wordBreak: "keep-all",
+                boxSizing: "border-box",
+                width: "100%",
+              }}
+            >
+              {state.generatedCode.split("").join(" ")}
+            </div>
+            <div
+              style={{
+                textAlign: "center",
+                fontFamily: "var(--font-body)",
+                fontSize: "12px",
+                color: "var(--ink-soft)",
+                marginTop: "8px",
+                lineHeight: 1.5,
+              }}
+            >
+              Codice valido per 5 minuti. Condividilo con il tuo amico
+              (voce, SMS, di persona). Aspettando la sua risposta…
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const code = state.generatedCode;
+                if (code) void handleCancelPairing(code);
+                setState((s) => ({ ...s, generatedCode: null, pairingFlow: "idle" }));
+              }}
+              style={{
+                display: "block",
+                margin: "12px auto 0",
+                fontFamily: "var(--font-display)",
+                fontSize: "12px",
+                padding: "6px 20px",
+                background: "transparent",
+                color: "var(--red)",
+                border: "1px solid var(--red)",
+                cursor: "pointer",
+              }}
+            >
+              ✕ Annulla codice
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: "12px",
+              fontFamily: "var(--font-body)",
+              fontSize: "12px",
+              color: "var(--ink-soft)",
+              fontStyle: "italic",
+              textAlign: "center",
+              padding: "16px 0",
+              lineHeight: 1.5,
+            }}
+          >
+            Clicca «Genera codice di pairing» per creare un codice di 8 cifre.
+            Condividilo con il tuo amico (voce, SMS, di persona). Valido 5 minuti.
+          </div>
+        )}
 
         {/* Pending pairings list (initiator side, codes in attesa) */}
         {state.pendingPairings.length > 0 && (

@@ -1855,6 +1855,10 @@ pub fn archive_asterisk_players_inner(
             let p_pos_real = player_obj.get("pos_real").and_then(|v| v.as_str());
 
             // Insert into archive + delete from players (atomic via tx).
+            // M3a.5 — RIMUOVI l'asterisco dal nome quando archivi.
+            // La convenzione di fantacalcio.it è che `*` = fuori serie A.
+            // Quando archiviamo, puliamo il nome: "Rossi*" → "Rossi".
+            let pname_clean = pname.replace('*', "").trim().to_string();
             let tx = conn.unchecked_transaction()?;
             let r: rusqlite::Result<()> = (|| {
                 tx.execute(
@@ -1865,7 +1869,7 @@ pub fn archive_asterisk_players_inner(
                     params![
                         pid,
                         active_id,
-                        pname,
+                        pname_clean,
                         p_team,
                         p_pos_fanta,
                         p_pos_real,

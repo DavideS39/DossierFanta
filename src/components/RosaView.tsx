@@ -7,7 +7,6 @@ import { PlayerForm } from "@/components/PlayerForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { DatabaseManager } from "@/components/DatabaseManager";
 import { ArchiveView } from "@/components/ArchiveView";
-import { AggiornamentiView } from "@/components/AggiornamentiView";
 import { SyncView } from "@/components/SyncView";
 import { WindowManager } from "@/components/WindowManager";
 import { usePlayersStore } from "@/stores/usePlayersStore";
@@ -23,7 +22,7 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; player: Player };
 
-type ModalState = "none" | "databases" | "archive" | "aggiornamenti" | "sync";
+type ModalState = "none" | "databases" | "archive" | "sync";
 
 /**
  * Vista principale M2.1: Rosa (multi-DB + archiviazione + design taccuino
@@ -276,15 +275,6 @@ export function RosaView() {
 
           <button
             type="button"
-            onClick={() => setModal("aggiornamenti")}
-            className="df-btn df-btn--accent"
-            title="Aggiornamenti listone auto-fetch via GitHub Releases"
-          >
-            ⟳ Aggiornamenti
-          </button>
-
-          <button
-            type="button"
             onClick={() => setModal("sync")}
             className="df-btn"
             title="Sync live CRDT P2P (Yjs + Iroh) — pairing, stato peer, cursori collaborativi"
@@ -402,15 +392,16 @@ export function RosaView() {
       )}
 
       {/* M3 — Toast notifica "aggiornamento disponibile" (auto-fetch all'avvio).
-          L'utente clicka per aprire la schermata Aggiornamenti e confermare.
+          L'utente clicka per aprire il DatabaseManager dove può cliccare
+          "aggiorna" sulla riga ListoneSerieA.db.
           Vincolo hard #12: NON auto-applicare, l'archiviazione è irreversibile. */}
-      {updateNotice && modal !== "aggiornamenti" && (
+      {updateNotice && modal !== "databases" && (
         <div
           className="df-toast df-toast--accent"
           role="status"
           style={{ cursor: "pointer", borderColor: "var(--amber)" }}
-          onClick={() => setModal("aggiornamenti")}
-          title="Clicca per aprire la schermata Aggiornamenti"
+          onClick={() => setModal("databases")}
+          title="Clicca per aprire il Database Manager e aggiornare il listone"
         >
           ⟳ {updateNotice}
           <button
@@ -449,18 +440,6 @@ export function RosaView() {
         <ArchiveView
           onClose={() => setModal("none")}
           onRestored={() => {
-            void refresh();
-            void refreshMeta();
-          }}
-        />
-      )}
-      {modal === "aggiornamenti" && (
-        <AggiornamentiView
-          onClose={() => setModal("none")}
-          onApplied={() => {
-            // Dopo l'apply, pulisce il toast notifica (se presente) e refresha
-            // la lista + i meta (conteggi Rosa)
-            clearUpdateNotice();
             void refresh();
             void refreshMeta();
           }}
