@@ -230,7 +230,16 @@ pub fn yjs_apply_update(update_bytes: Vec<u8>) -> AppResult<bool> {
         })?;
         // Applica l'update al Doc (transazione interna yrs)
         let mut txn = doc.transact_mut();
-        txn.apply_update(update);
+        // M3a.3 fix post-review — `apply_update` ritorna `Result<(), UpdateError>`
+        // in yrs 0.21. Il warning `unused_must_use` del compilatore indica che
+        // l'Err veniva silenziosamente scartato. Su Err, logga warning ma NON
+        // abortire il comando: la persistenza SQLite è gestita dall'osservatore
+        // separato, e un fallimento di integrazione CRDT (es. update malformato
+        // proveniente da un peer con versione yrs diversa) non deve bloccare
+        // il sync live — i prossimi update dell'altro peer riallineeranno lo stato.
+        if let Err(e) = txn.apply_update(update) {
+            log::warn!("[yjs] apply_update fallito (non blocking): {}", e);
+        }
         // Nota: la persistenza SQLite è gestita dall'osservatore
         // registrato in `register_yjs_observers()` (vedi modulo bridge).
         drop(txn);
@@ -964,21 +973,48 @@ pub async fn iroh_connect_by_peer_key_v2(
     let connected = iroh_connect_by_peer_key(peer_key.clone()).await?;
 
     if connected {
-        // Salva come trusted per auto-connect futuri. Idempotente via INSERT OR IGNORE.
+        // M3a.3 D4 fix — Persisti il peer in sync_peers (trusted=1) per
+        // auto-connect al boot successivo. INSERT OR IGNORE: se il peer era
+        // già salvato, non sovrascrive display_name/paired_at/last_seen
+        // esistenti. Distinzione esplicita fra:
+        //   - affected > 0 → INFO (prima volta che il peer viene persisted)
+        //   - affected = 0 → DEBUG (no-op, peer già noto)
+        //   - Err          → WARN (persistenza fallita, il peer resta in
+        //                            memoria ma al riavvio dovrà essere
+        //                            riaggiunto manualmente)
         let db_id = state.active_db_id()?;
-        if let Err(e) = state.with_conn(&db_id, |conn| {
-            conn.execute(
+        match state.with_conn(&db_id, |conn| {
+            let affected = conn.execute(
                 "INSERT OR IGNORE INTO sync_peers (peer_id, display_name, paired_at, last_seen, trusted)
                  VALUES (?1, NULL, datetime('now'), datetime('now'), 1)",
                 rusqlite::params![peer_key],
             )?;
-            Ok(())
+            Ok::<_, AppError>(affected)
         }) {
-            log::warn!(
-                "[M3a.3] save_trusted_peer({}) fallito (non blocking): {}",
-                peer_key,
-                e
-            );
+            Ok(affected) if affected > 0 => {
+                log::info!(
+                    "[M3a.3] peer {} salvato in sync_peers (trusted=1) per auto-connect",
+                    peer_key
+                );
+            }
+            Ok(_) => {
+                log::debug!(
+                    "[M3a.3] peer {} già presente in sync_peers (INSERT OR IGNORE no-op)",
+                    peer_key
+                );
+            }
+            Err(e) => {
+                // NON fallire il connect: il peer è in lista in-memory, solo
+                // la persistenza è fallita. L'utente vedrà il peer connesso
+                // in questa sessione, ma al riavvio dovrà riaggiungerlo
+                // manualmente.
+                log::warn!(
+                    "[M3a.3] persist sync_peers fallito per peer {}: {} — \
+                     auto-connect al riavvio non disponibile per questo peer",
+                    peer_key,
+                    e
+                );
+            }
         }
     }
 

@@ -224,7 +224,31 @@ pub fn create_database(
     name: String,
     db_type: Option<String>,
 ) -> AppResult<DatabaseMeta> {
-    let name = name.trim().to_string();
+    // M3a.3 fix post-review — Normalizza il nome: DEVE terminare in `.db`
+    // (lowercase). Gestisce:
+    //   - "marco"        → "marco.db"
+    //   - "marco.db"     → "marco.db" (no-op)
+    //   - "marco.DB"     → "marco.db" (normalizza case estensione)
+    //   - "marco.Db"     → "marco.db"
+    //   - "marco.dB"     → "marco.db"
+    //   - "  marco  "    → "marco.db" (trim prima di normalizzare)
+    // Coerenza coi DB di default (`mio.db`, `ListoneSerieA.db`) e con la
+    // placeholder nel form frontend ("es. marco.db, listone-2026.db").
+    let name = {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("name è obbligatorio".to_string()));
+        }
+        let lower_ext = trimmed.to_lowercase();
+        let final_name = if lower_ext.ends_with(".db") {
+            // Strip le ultime 3 char (".db" / ".DB" / ".Db" / ".dB") e ri-aggiungi ".db"
+            let prefix = &trimmed[..trimmed.len() - 3];
+            format!("{}.db", prefix)
+        } else {
+            format!("{}.db", trimmed)
+        };
+        final_name
+    };
     if name.is_empty() {
         return Err(AppError::Validation("name è obbligatorio".to_string()));
     }

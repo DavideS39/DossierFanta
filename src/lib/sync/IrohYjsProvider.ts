@@ -16,14 +16,14 @@
 //      al boot.
 //
 // ANTI-LOOP (architetturale, vedi Deliverable 5):
-//   - Update locale (utente edita, bridgePlayerUpdate chiamato da
-//     usePlayersStore) → ydoc.transact → ydoc.on('update') scatta con
-//     origin=undefined (origin del transact) → provider invia via
-//     iroh_broadcast_update.
+//   - Update locale (utente edita, `updateYDocPlayer` chiamato da
+//     usePlayersStore — sostituto del rimosso `bridgePlayerUpdate`)
+//     → ydoc.transact → ydoc.on('update') scatta con origin=undefined
+//     (origin del transact) → provider invia via iroh_broadcast_update.
 //   - Update remoto (ricevuto via gossip) → listener `sync-update-received`
 //     → Y.applyUpdate(ydoc, bytes, this) → origin=this → listener
 //     ydoc.on('update') scatta con origin=this → provider NON re-invia
-//     (anti-loop nativo Yjs).
+//     (anti-loop nativo Yjs via `transaction.local`).
 //
 // Vincolo HARD #21: Iroh è opzionale. Se fallisce a connettersi (NAT
 // simmetrico, relay irraggiungibile), SupabaseYjsProvider basta per il

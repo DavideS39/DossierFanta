@@ -725,6 +725,7 @@ export const mockApi = {
     return {
       code: "12345678",
       expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      revokedCodes: [],
     };
   },
   async pairingJoin(_code: string, _peerKeyInitiator: string): Promise<PairingResult> {

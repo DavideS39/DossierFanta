@@ -230,6 +230,13 @@ export interface PairingCode {
   code: string;
   /** ISO 8601 scadenza (5 min dopo creazione). */
   expiresAt: string;
+  /**
+   * M3a.3 fix post-review — Lista di codici pending precedentemente attivi
+   * che sono stati revocati da questo `pairing_create` (per garantire
+   * 1 solo codice alla volta). Il frontend li DELETE su Supabase
+   * `pairings` table.
+   */
+  revokedCodes: string[];
 }
 
 /**

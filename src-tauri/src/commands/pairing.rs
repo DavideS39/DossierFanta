@@ -96,6 +96,11 @@ pub struct PairingCode {
     pub code: String,
     /// ISO 8601 scadenza (5 min dopo created_at).
     pub expires_at: String,
+    /// M3a.3 fix post-review — Lista di codici pending precedentemente attivi
+    /// che sono stati revocati da questo `pairing_create` (per garantire
+    /// 1 solo codice alla volta). Il frontend li DELETE su Supabase
+    /// `pairings` table.
+    pub revoked_codes: Vec<String>,
 }
 
 /// Output di `pairing_join` (responder) e `pairing_complete` (initiator).
@@ -268,16 +273,22 @@ pub fn delete_pairing(
 
 /// Genera un codice 8-cifre + lo persiste in `sync_pairings_pending` locale.
 ///
+/// **M3a.3 fix post-review — 1 solo codice alla volta.** Prima di generare il
+/// nuovo codice, revoca TUTTI i codici pending esistenti per questo utente:
+///   1. SELECT sync_pairings_pending (per ottenere la lista vecchi codici)
+///   2. DELETE FROM sync_pairings_pending (locale)
+///   3. Ritorna la lista dei vecchi codici al chiamante (frontend), che poi
+///      farà DELETE su Supabase `pairings` table per ognuno.
+///
 /// NOTA: la pubblicazione su Supabase `pairings` table è gestita dal frontend
 /// (chiama Supabase client diretto). Questo comando Rust genera solo il codice
-/// + lo salva localmente per tracking/crash-resume.
+/// + lo salva localmente per tracking/crash-resume + revoca i precedenti.
 ///
-/// Return: `PairingCode { code: "12345678", expires_at: "..." }`.
+/// Return: `PairingCode { code: "12345678", expires_at: "...", revoked_codes: [...] }`.
 #[tauri::command]
 pub fn pairing_create(
     state: State<'_, crate::DbState>,
 ) -> AppResult<PairingCode> {
-    let code = generate_pairing_code_inner();
     let db_id = state.active_db_id()?;
 
     // Recupera il mio peer_key da sync_identity (deve esistere — se non
@@ -300,6 +311,41 @@ pub fn pairing_create(
         )))?;
         Ok(pk)
     })?;
+
+    // M3a.3 fix post-review — Revoca tutti i codici pending precedenti
+    // per garantire 1 solo codice attivo alla volta (anche cross-restart).
+    // I vecchi codici vengono restituiti al frontend che li DELETE su Supabase.
+    let revoked_codes: Vec<String> = state.with_conn(&db_id, |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_pairings_pending' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Err(AppError::Generic(
+                "sync_pairings_pending table non esistente (DB pre-v2.5).".into(),
+            ));
+        }
+        // SELECT vecchi codici (escluso quello che stiamo per generare —
+        // generazione dopo, quindi qui è tutto "vecchio").
+        let mut stmt = conn.prepare(
+            "SELECT code FROM sync_pairings_pending ORDER BY created_at DESC",
+        )?;
+        let old_codes: Vec<String> = stmt.query_map([], |r| r.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        if !old_codes.is_empty() {
+            log::info!(
+                "[M3a.5] pairing_create: revocati {} codice/i pending precedenti: {:?}",
+                old_codes.len(),
+                old_codes
+            );
+            // DELETE tutti i pending precedenti.
+            conn.execute("DELETE FROM sync_pairings_pending", [])?;
+        }
+        Ok(old_codes)
+    })?;
+
+    // Genera il nuovo codice.
+    let code = generate_pairing_code_inner();
 
     // Salva in sync_pairings_pending (local tracking per crash-resume).
     state.with_conn(&db_id, |conn| {
@@ -324,12 +370,13 @@ pub fn pairing_create(
     let expires_at = (now + chrono::Duration::minutes(5)).to_rfc3339();
 
     log::info!(
-        "[M3a.5] pairing_create: code={} expires_at={} (pubblicazione su Supabase gestita dal frontend)",
+        "[M3a.5] pairing_create: code={} expires_at={} revoked={} (pubblicazione su Supabase gestita dal frontend)",
         code,
-        expires_at
+        expires_at,
+        revoked_codes.len()
     );
 
-    Ok(PairingCode { code, expires_at })
+    Ok(PairingCode { code, expires_at, revoked_codes })
 }
 
 /// Completa il pairing dal lato initiator: quando il responder risponde via

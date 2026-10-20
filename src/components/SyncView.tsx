@@ -67,6 +67,10 @@ interface ConnectionState {
   joinCodeInput: string;
   /** Codice appena generato (initiator side, display temporaneo). */
   generatedCode: string | null;
+  /** M3a.3 fix post-review — Timestamp scadenza codice (ms epoch) per countdown UI. */
+  generatedCodeExpiresAt: number | null;
+  /** M3a.3 fix post-review — Secondi rimanenti alla scadenza (per display countdown). */
+  generatedCodeSecondsLeft: number;
   /** Stato del flow pairing corrente. */
   pairingFlow: "idle" | "creating" | "awaiting_response" | "joining" | "completing" | "error";
 }
@@ -88,6 +92,8 @@ const initialState: ConnectionState = {
   pendingPairings: [],
   joinCodeInput: "",
   generatedCode: null,
+  generatedCodeExpiresAt: null,
+  generatedCodeSecondsLeft: 0,
   pairingFlow: "idle",
 };
 
@@ -98,6 +104,8 @@ const initialState: ConnectionState = {
 export function SyncView(): React.ReactElement {
   const [state, setState] = useState<ConnectionState>(initialState);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // M3a.3 fix post-review — Timer per il countdown del codice pairing (1s).
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // --- Funzione di refresh unico stato da SyncManager + API ---
   const refresh = useCallback(async () => {
@@ -145,8 +153,71 @@ export function SyncView(): React.ReactElement {
     }, 5000);
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
+      if (countdownTimer.current) clearInterval(countdownTimer.current);
     };
   }, [refresh]);
+
+  // M3a.3 fix post-review — Countdown effect: se generatedCodeExpiresAt è settato,
+  // fai partire un timer 1s che aggiorna generatedCodeSecondsLeft. A 0 secondi,
+  // scade il codice: cleanup locale + Supabase + UI reset.
+  useEffect(() => {
+    if (!state.generatedCodeExpiresAt) {
+      if (countdownTimer.current) {
+        clearInterval(countdownTimer.current);
+        countdownTimer.current = null;
+      }
+      return;
+    }
+    const tick = () => {
+      const now = Date.now();
+      const left = Math.max(0, Math.floor((state.generatedCodeExpiresAt! - now) / 1000));
+      setState((s) => ({ ...s, generatedCodeSecondsLeft: left }));
+      if (left <= 0) {
+        // Codice scaduto: cleanup.
+        if (countdownTimer.current) {
+          clearInterval(countdownTimer.current);
+          countdownTimer.current = null;
+        }
+        const expiredCode = state.generatedCode;
+        if (expiredCode) {
+          // Best-effort cleanup: pairing_cancel (local) + DELETE Supabase.
+          void api.pairingCancel(expiredCode).catch((err) => {
+            console.warn("[SyncView] pairing_cancel (scadenza) fallito:", err);
+          });
+          try {
+            void getSupabaseClient()
+              .from("pairings")
+              .delete()
+              .eq("code", expiredCode)
+              .then(({ error }) => {
+                if (error) {
+                  console.warn("[SyncView] DELETE Supabase pairings (scadenza) fallito:", error.message);
+                }
+              });
+          } catch (err) {
+            console.warn("[SyncView] DELETE Supabase pairings (scadenza) exception:", err);
+          }
+        }
+        setState((s) => ({
+          ...s,
+          generatedCode: null,
+          generatedCodeExpiresAt: null,
+          generatedCodeSecondsLeft: 0,
+          pairingFlow: "idle",
+          error: "Codice pairing scaduto (5 min). Generane uno nuovo per riprovare.",
+        }));
+        setTimeout(() => setState((s) => ({ ...s, error: null })), 4000);
+      }
+    };
+    tick(); // chiama subito per valore iniziale
+    countdownTimer.current = setInterval(tick, 1000);
+    return () => {
+      if (countdownTimer.current) {
+        clearInterval(countdownTimer.current);
+        countdownTimer.current = null;
+      }
+    };
+  }, [state.generatedCodeExpiresAt, state.generatedCode]);
 
   // --- Avvia Iroh manualmente (se peer_key non ancora creata) ---
   const handleStartIroh = useCallback(async () => {
@@ -270,9 +341,26 @@ export function SyncView(): React.ReactElement {
    * Initiator: genera codice 8-cifre, lo pubblica su Supabase `pairings` table,
    * subscribe al canale Realtime `pairing-<code>` per ricevere la risposta
    * del responder.
+   *
+   * M3a.3 fix post-review:
+   *  - 1 solo codice alla volta: `pairingCreate()` revoca TUTTI i pending
+   *    precedenti (locale) e ritorna `revokedCodes` che il frontend DELETE
+   *    su Supabase. Garantisce clean state anche dopo restart/crash.
+   *  - Scadenza 5 min con countdown UI: `expiresAt` dal Rust + timer 1s
+   *    lato frontend (vedi useEffect sopra). A 0s, cleanup automatico.
+   *  - Diagnosi INSERT Supabase più chiara: se fallisce, log dettagliato
+   *    + cleanup del codice locale (pairing_cancel) per non lasciare stati
+   *    inconsistenti. L'utente vede l'errore esplicito.
    */
   const handleCreatePairing = useCallback(async () => {
-    setState((s) => ({ ...s, pairingFlow: "creating", error: null, generatedCode: null }));
+    setState((s) => ({
+      ...s,
+      pairingFlow: "creating",
+      error: null,
+      generatedCode: null,
+      generatedCodeExpiresAt: null,
+      generatedCodeSecondsLeft: 0,
+    }));
     try {
       // 1. Assicurati che Iroh sia avviato (peer_key necessaria per pubblicare).
       if (!state.peerKey) {
@@ -288,10 +376,43 @@ export function SyncView(): React.ReactElement {
         state.identity = id;
       }
 
-      // 2. Chiama il comando Rust per generare il codice + salvarlo localmente.
+      // 2. Chiama il comando Rust per generare il codice + revocare precedenti.
+      //    M3a.3 fix post-review — pairingCreate ritorna revokedCodes (vecchi
+      //    codici pending che sono stati eliminati localmente).
       const pairingCode = await api.pairingCreate();
 
-      // 3. Pubblica su Supabase `pairings` table (rendezvous point).
+      // 3. DELETE su Supabase per i vecchi codici revocati (best-effort).
+      //    Questo garantisce che anche dopo restart/crash, vecchi codici
+      //    pendenti su Supabase vengano puliti quando se ne genera uno nuovo.
+      if (pairingCode.revokedCodes.length > 0) {
+        const supabase = getSupabaseClient();
+        try {
+          const { error: revokeErr } = await supabase
+            .from("pairings")
+            .delete()
+            .in("code", pairingCode.revokedCodes);
+          if (revokeErr) {
+            console.warn(
+              "[SyncView] cleanup vecchi codici pending su Supabase fallito (non blocking):",
+              revokeErr.message
+            );
+          } else {
+            console.info(
+              `[SyncView] puliti ${pairingCode.revokedCodes.length} vecchi codici pending su Supabase`
+            );
+          }
+        } catch (err) {
+          console.warn(
+            "[SyncView] cleanup vecchi codici pending su Supabase exception:",
+            err
+          );
+        }
+      }
+
+      // 4. Pubblica su Supabase `pairings` table (rendezvous point).
+      //    M3a.3 fix post-review — Diagnosi migliorata: log dettagliato se
+      //    fallisce (es. tabella `pairings` non esiste → suggerimento di
+      //    eseguire docs/supabase-setup-m3a3.sql).
       const supabase = getSupabaseClient();
       const { error: insertErr } = await supabase
         .from("pairings")
@@ -300,10 +421,31 @@ export function SyncView(): React.ReactElement {
           peer_key_initiator: state.peerKey,
         });
       if (insertErr) {
-        throw new Error(`Supabase insert pairings fallito: ${insertErr.message}`);
+        // Cleanup del codice locale perché il publish Supabase è fallito.
+        // Senza questo, il responder non troverebbe mai il codice su Supabase
+        // e il pairing non potrebbe completarsi.
+        try {
+          await api.pairingCancel(pairingCode.code);
+        } catch (cleanupErr) {
+          console.warn("[SyncView] pairing_cancel post-fallito:", cleanupErr);
+        }
+        // Diagnosi: se il messaggio contiene "relation" + "does not exist",
+        // è quasi certamente perché l'utente non ha eseguito lo script SQL
+        // di setup. Suggeriscilo esplicitamente.
+        const msg = insertErr.message || "";
+        let hint = "";
+        if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("Could not find")) {
+          hint =
+            " — SUGGERIMENTO: la tabella `pairings` non esiste su Supabase. " +
+            "Esegui lo script SQL in docs/supabase-setup-m3a3.sql sul tuo " +
+            "progetto Supabase (SQL Editor → incolla → Run).";
+        }
+        throw new Error(
+          `Pubblicazione su Supabase fallita: ${msg}${hint}`
+        );
       }
 
-      // 4. Subscribe al canale Realtime `pairing-<code>` per ascoltare la
+      // 5. Subscribe al canale Realtime `pairing-<code>` per ascoltare la
       //    risposta del responder (quando entra il codice e fa ECDH).
       const channelName = `pairing-${pairingCode.code}`;
       const channel = supabase.channel(channelName, {
@@ -337,12 +479,20 @@ export function SyncView(): React.ReactElement {
         });
       });
 
+      // 6. Calcola expiresAt in ms epoch per il countdown UI.
+      const expiresAtMs = Date.now() + 5 * 60 * 1000;
+      const secondsLeft = 5 * 60;
+
       setState((s) => ({
         ...s,
         pairingFlow: "awaiting_response",
         generatedCode: pairingCode.code,
+        generatedCodeExpiresAt: expiresAtMs,
+        generatedCodeSecondsLeft: secondsLeft,
       }));
-      console.info(`[SyncView] pairing creato: codice ${pairingCode.code} (scade tra 5 min)`);
+      console.info(
+        `[SyncView] pairing creato: codice ${pairingCode.code} (scade tra 5 min, countdown UI attivo)`
+      );
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -404,6 +554,8 @@ export function SyncView(): React.ReactElement {
           ...s,
           pairingFlow: "idle",
           generatedCode: null,
+          generatedCodeExpiresAt: null,
+          generatedCodeSecondsLeft: 0,
         }));
         await refresh();
         console.info(`[SyncView] pairing completo con ${peerKeyResponder.slice(0, 16)}... (room=${result.roomName})`);
@@ -542,13 +694,23 @@ export function SyncView(): React.ReactElement {
     }
   }, [state.joinCodeInput, state.peerKey, handleStartIroh, refresh]);
 
-  /** Cancella un codice pairing in corso (initiator side). */
+  /** Cancella un codice pairing in corso (initiator side).
+   *  M3a.3 fix post-review — Pulisce anche lo stato del countdown UI
+   *  (generatedCodeExpiresAt = null ferma il timer nell'useEffect). */
   const handleCancelPairing = useCallback(
     async (code: string) => {
       try {
         await api.pairingCancel(code);
         const supabase = getSupabaseClient();
         await supabase.from("pairings").delete().eq("code", code);
+        // M3a.3 fix post-review — Reset countdown state.
+        setState((s) => ({
+          ...s,
+          generatedCode: null,
+          generatedCodeExpiresAt: null,
+          generatedCodeSecondsLeft: 0,
+          pairingFlow: "idle",
+        }));
         await refresh();
       } catch (err) {
         setState((s) => ({
@@ -808,10 +970,11 @@ export function SyncView(): React.ReactElement {
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: "12px",
-            alignItems: "stretch",
+            alignItems: "start",  // M3a.3 fix post-review — start (non stretch) per allineare i box in alto
           }}
         >
-          {/* Initiator box — generate code */}
+          {/* Initiator box — generate code + codice generato mostrato SOTTO
+              la casella, alla stessa dimensione del pairing code input (20px). */}
           <div
             style={{
               padding: "12px",
@@ -835,7 +998,7 @@ export function SyncView(): React.ReactElement {
               disabled={
                 state.pairingFlow === "creating" ||
                 state.pairingFlow === "completing" ||
-                !!state.generatedCode  // un solo codice alla volta
+                !!state.generatedCode  // M3a.3 fix post-review — 1 solo codice alla volta (UI-side guard)
               }
               style={{
                 width: "100%",
@@ -858,6 +1021,90 @@ export function SyncView(): React.ReactElement {
                 ? "generazione…"
                 : "Genera codice di pairing"}
             </button>
+
+            {/* M3a.3 fix post-review — Codice generato mostrato SOTTO il
+                pulsante "Genera", all'INTERNO della stessa casella initiator.
+                Dimensione 20px = IDENTICA al pairing code input (responder side).
+                Layout compatto: codice + countdown + annulla in uno stesso
+                blocco verticale, senza diventare enorme (era 80px). */}
+            {state.generatedCode ? (
+              <div style={{ marginTop: "10px" }}>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono, var(--font-body))",
+                    fontSize: "20px",  // M3a.3 fix — STESSA size del pairing code input (responder)
+                    fontWeight: "bold",
+                    letterSpacing: "0.15em",
+                    color: "var(--blue, #2C4A6B)",
+                    padding: "8px",
+                    textAlign: "center",
+                    background: "var(--paper)",
+                    border: "1px solid var(--blue, #2C4A6B)",
+                    lineHeight: 1.2,
+                    wordBreak: "keep-all",
+                    boxSizing: "border-box",
+                    width: "100%",
+                  }}
+                >
+                  {state.generatedCode}
+                </div>
+                <div
+                  style={{
+                    textAlign: "center",
+                    fontFamily: "var(--font-body)",
+                    fontSize: "11px",
+                    color: "var(--ink-soft)",
+                    marginTop: "6px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Scade in{" "}
+                  <strong
+                    style={{
+                      color:
+                        state.generatedCodeSecondsLeft < 60
+                          ? "var(--red)"
+                          : "var(--ink)",
+                      fontFamily: "var(--font-mono, var(--font-body))",
+                    }}
+                  >
+                    {Math.floor(state.generatedCodeSecondsLeft / 60)}:
+                    {String(state.generatedCodeSecondsLeft % 60).padStart(2, "0")}
+                  </strong>
+                  <br />
+                  Condividilo con il tuo amico (voce, SMS, di persona).
+                  <br />
+                  Aspettando la sua risposta…
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const code = state.generatedCode;
+                    if (code) void handleCancelPairing(code);
+                    setState((s) => ({
+                      ...s,
+                      generatedCode: null,
+                      generatedCodeExpiresAt: null,
+                      generatedCodeSecondsLeft: 0,
+                      pairingFlow: "idle",
+                    }));
+                  }}
+                  style={{
+                    display: "block",
+                    margin: "8px auto 0",
+                    fontFamily: "var(--font-display)",
+                    fontSize: "11px",
+                    padding: "4px 14px",
+                    background: "transparent",
+                    color: "var(--red)",
+                    border: "1px solid var(--red)",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕ Annulla codice
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* Responder box — enter code */}
@@ -931,66 +1178,9 @@ export function SyncView(): React.ReactElement {
           </div>
         </div>
 
-        {/* M3a.5 — Codice generato display FULL WIDTH sotto il grid.
-            BIG 80px, separato dal pulsante Genera (che è disabled quando
-            codice è attivo). Pulsante Annulla separato sotto il codice. */}
-        {state.generatedCode ? (
-          <div style={{ marginTop: "12px" }}>
-            <div
-              style={{
-                fontFamily: "var(--font-mono, var(--font-body))",
-                fontSize: "80px",
-                fontWeight: "bold",
-                letterSpacing: "0.12em",
-                color: "var(--blue, #2C4A6B)",
-                padding: "24px 8px",
-                textAlign: "center",
-                background: "var(--paper)",
-                border: "3px dashed var(--blue, #2C4A6B)",
-                lineHeight: 1.1,
-                wordBreak: "keep-all",
-                boxSizing: "border-box",
-                width: "100%",
-              }}
-            >
-              {state.generatedCode.split("").join(" ")}
-            </div>
-            <div
-              style={{
-                textAlign: "center",
-                fontFamily: "var(--font-body)",
-                fontSize: "12px",
-                color: "var(--ink-soft)",
-                marginTop: "8px",
-                lineHeight: 1.5,
-              }}
-            >
-              Codice valido per 5 minuti. Condividilo con il tuo amico
-              (voce, SMS, di persona). Aspettando la sua risposta…
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const code = state.generatedCode;
-                if (code) void handleCancelPairing(code);
-                setState((s) => ({ ...s, generatedCode: null, pairingFlow: "idle" }));
-              }}
-              style={{
-                display: "block",
-                margin: "12px auto 0",
-                fontFamily: "var(--font-display)",
-                fontSize: "12px",
-                padding: "6px 20px",
-                background: "transparent",
-                color: "var(--red)",
-                border: "1px solid var(--red)",
-                cursor: "pointer",
-              }}
-            >
-              ✕ Annulla codice
-            </button>
-          </div>
-        ) : (
+        {/* M3a.3 fix post-review — Hint testuale quando nessun codice è attivo.
+            Mostrato FULL WIDTH sotto il grid (era inline con il codice prima). */}
+        {!state.generatedCode && (
           <div
             style={{
               marginTop: "12px",
@@ -999,7 +1189,7 @@ export function SyncView(): React.ReactElement {
               color: "var(--ink-soft)",
               fontStyle: "italic",
               textAlign: "center",
-              padding: "16px 0",
+              padding: "8px 0",
               lineHeight: 1.5,
             }}
           >

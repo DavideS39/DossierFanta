@@ -228,9 +228,9 @@ export function DatabaseManager({ onClose }: Props) {
               <div className="col-span-1">Attivo</div>
               <div className="col-span-4">Nome</div>
               <div className="col-span-2">Tipo</div>
-              <div className="col-span-2">Owner</div>
+              <div className="col-span-1">Owner</div>
               <div className="col-span-2">Creato</div>
-              <div className="col-span-1 text-right">Azioni</div>
+              <div className="col-span-2 text-right">Azioni</div>
             </div>
             {databases.length === 0 ? (
               <div className="px-3 py-6 text-center text-ink-soft text-sm" style={{ fontFamily: "var(--font-body)" }}>
@@ -276,13 +276,13 @@ export function DatabaseManager({ onClose }: Props) {
                     <div className="col-span-2 text-xs">
                       <span className="tacc-db-chip">{DATABASE_TYPE_LABELS[db.type as DatabaseType] ?? db.type}</span>
                     </div>
-                    <div className="col-span-2 text-xs text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
+                    <div className="col-span-1 text-xs text-ink-soft truncate" style={{ fontFamily: "var(--font-body)" }} title={db.owner ?? ""}>
                       {db.owner ?? "—"}
                     </div>
                     <div className="col-span-2 text-xs text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
                       {db.created_at ? formatDate(db.created_at) : "—"}
                     </div>
-                    <div className="col-span-1 text-right">
+                    <div className="col-span-2 text-right flex items-center justify-end gap-1">
                       {!isDefault && db.type !== "listone" && (
                         <button
                           type="button"
@@ -300,7 +300,11 @@ export function DatabaseManager({ onClose }: Props) {
                       )}
                       {/* M3a.5 — Pulsante blu "aggiorna" per DB listone.
                           Apre un MODALE grosso con la ListoneInlineCard
-                          (stessa interfaccia: aggiorna ora / anteprima / fallback). */}
+                          (stessa interfaccia: aggiorna ora / anteprima / fallback).
+                          M3a.3 fix post-review — colonna Azioni allargata da
+                          col-span-1 a col-span-2 (ridotto Owner a 1) per dare
+                          spazio al pulsante blu col testo "aggiorna" senza
+                          overflow fuori dalla cella. */}
                       {db.type === "listone" && (
                         <button
                           type="button"
@@ -313,6 +317,7 @@ export function DatabaseManager({ onClose }: Props) {
                             fontSize: "11px",
                             padding: "2px 10px",
                             fontFamily: "var(--font-display)",
+                            whiteSpace: "nowrap",
                           }}
                           aria-label="Apri modale aggiornamento listone"
                           title="Aggiorna listone Serie A"
@@ -345,7 +350,7 @@ export function DatabaseManager({ onClose }: Props) {
                 <div className="col-span-2">
                   <input
                     type="text"
-                    placeholder="Nome (es. marco.db, listone-2026.db)"
+                    placeholder="Nome (es. marco, listone-2026 — .db aggiunto in automatico)"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     className="tacc-input"
@@ -469,9 +474,14 @@ export function DatabaseManager({ onClose }: Props) {
         </div>
       )}
 
-      {/* M3a.5 — Modale grosso per l'aggiornamento del listone.
+      {/* M3a.3 fix post-review — Modale grosso per l'aggiornamento del listone.
           Contiene la ListoneInlineCard (aggiorna ora / anteprima / fallback).
-          Si apre cliccando il pulsante blu "aggiorna" sulla riga ListoneSerieA.db. */}
+          Si apre cliccando il pulsante blu "aggiorna" sulla riga ListoneSerieA.db.
+
+          FIX: il wrapper interno ORA ha sfondo `var(--paper)`, bordo ink,
+          padding, header + chrome completa — prima era solo un contenitore
+          trasparente e il contenuto della card era illeggibile (text fields
+          appena visibili sul backdrop scuro). */}
       {listoneModalOpen && (
         <div
           role="dialog"
@@ -480,48 +490,80 @@ export function DatabaseManager({ onClose }: Props) {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(20, 30, 50, 0.45)",
+            background: "rgba(20, 30, 50, 0.55)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 50,
+            padding: "16px",
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setListoneModalOpen(false);
           }}
         >
-          <div style={{ position: "relative", maxWidth: "90vw", width: "640px" }}>
-            <button
-              type="button"
-              onClick={() => setListoneModalOpen(false)}
-              aria-label="Chiudi"
+          <div
+            style={{
+              position: "relative",
+              maxWidth: "min(90vw, 720px)",
+              width: "100%",
+              maxHeight: "90vh",
+              overflow: "auto",
+              background: "var(--paper, #F4ECD8)",
+              border: "2px solid var(--ink, #2B1B12)",
+              boxShadow: "0 12px 32px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.20)",
+              borderRadius: "2px",
+              padding: "0",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header del modale — titolo + close button. Stesso pattern
+                degli altri modali (tacc-modal-header) ma inline perché
+                questo modale non usa la classe `tacc-modal` (layout custom). */}
+            <header
               style={{
-                position: "absolute",
-                top: "-12px",
-                right: "-12px",
-                width: "28px",
-                height: "28px",
-                borderRadius: "50%",
-                background: "#2C4A6B",
-                color: "#FFFFFF",
-                border: "2px solid #F7F3E8",
-                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 20px",
+                background: "var(--ink, #2B1B12)",
+                color: "var(--paper, #F4ECD8)",
+                fontFamily: "var(--font-display, 'Special Elite', monospace)",
                 fontSize: "14px",
-                lineHeight: 1,
-                zIndex: 51,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
               }}
             >
-              ×
-            </button>
-            <ListoneInlineCard
-              dbId="default-listone"
-              autofetchStatus={autofetchStatus}
-              onError={setError}
-              onApplied={async () => {
-                await refresh();
-                await refreshMeta();
-              }}
-            />
+              <h2 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+                » Aggiornamento listone Serie A
+              </h2>
+              <button
+                type="button"
+                onClick={() => setListoneModalOpen(false)}
+                aria-label="Chiudi"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--paper, #F4ECD8)",
+                  fontSize: "20px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "0 4px",
+                }}
+              >
+                ×
+              </button>
+            </header>
+            <div style={{ padding: "20px" }}>
+              <ListoneInlineCard
+                dbId="default-listone"
+                autofetchStatus={autofetchStatus}
+                onError={setError}
+                onApplied={async () => {
+                  await refresh();
+                  await refreshMeta();
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

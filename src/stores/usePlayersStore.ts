@@ -1,21 +1,26 @@
-// Store Zustand per stato giocatori + filtri UI.
-// Tutte le mutazioni passano per api/tauri.ts (comandi Rust), mai SQL diretto.
-//
-// M2: il filtro db_id è gestito qui. Valori possibili:
-//   null/undefined → "active" (default: usa active_db_id dal backend)
-//   "all"          → tutti i DB
-//   "<uuid>"       → un DB specifico
-//
-// M3a.1 (PB4 fix) — Cablaggio del bridge Rust→Yjs.
-// Le mutazioni `updatePlayer` / `saveScoutingNote` / `saveAuctionData`
-// DOPO il commit SQLite invocano anche le funzioni bridge di yjsDocuments
-// per applicare l'update al Y.Doc locale e propagarlo ai peer via Iroh.
-// Questo attiva il path end-to-end del sync live:
-//   UI → api.updatePlayer → SQLite commit → updateYDocPlayer →
-//   yPlayers.update → iroh_broadcast_update → gossip → Peer B
-// L'anti-loop è garantito dal flag `isApplyingRemoteUpdate` in yjsDocuments:
-// il path `save_*_from_sync` NON invoca bridge*, quindi peer B che riceve
-// un update non lo re-invia ad A.
+/**
+ * usePlayersStore — store Zustand per i giocatori (M3a.3 D5 — PB4-A fix).
+ *
+ * Flusso completo di una modifica locale:
+ *   UI → api.updatePlayer → SQLite commit (updated_by='me')
+ *      → updateYDocPlayer(player) → yPlayers.set(...) [transazione LOCALE Yjs]
+ *      → Y.Doc emette 'update' event (origin=undefined)
+ *      → provider Supabase + Iroh ricevono l'event, broadcast ai peer remoti
+ *
+ * Anti-loop nativo Yjs (PB4-A fix M3a.3):
+ *   Il listener `yPlayers.observe((event, transaction) => ...)` in
+ *   `yjsDocuments.ts::initYjsBridge` controlla `transaction.local`:
+ *    - true  → update locale (skip save_player_from_sync, updated_by='me' PRESERVATO)
+ *    - false → update remoto (procedi, save_player_from_sync, updated_by='sync-live')
+ *
+ * I vecchi bridge `bridgePlayerUpdate` / `bridgeScoutingNoteAppend` /
+ * `bridgeAuctionDataUpdate` in `yjsDocuments.ts` sono RIMOSSI in M3a.3 D5.
+ * Le sostituiscono `updateYDocPlayer` / `appendYDocScoutingNote` /
+ * `updateYDocAuctionData` — firma identica, senza flag manuale
+ * `isApplyingLocalBridge` (l'anti-loop è nativo Yjs via `transaction.local`).
+ *
+ * Vincolo HARD #13: SQLite rimane source of truth. Yjs è transport + merge.
+ */
 
 import { create } from "zustand";
 import { api } from "@/api/tauri";

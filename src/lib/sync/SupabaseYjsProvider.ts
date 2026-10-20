@@ -172,27 +172,43 @@ export class SupabaseYjsProvider implements SyncProvider {
       }
     });
 
-    // Subscribe con timeout 15s (come in connect() M3a.3).
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error(`Supabase pairing ${pairing.roomName} subscribe timeout (15s)`));
-        }
-      }, 15000);
-      channel.subscribe((status: string) => {
-        if (settled) return;
-        if (status === "SUBSCRIBED") {
-          settled = true;
-          clearTimeout(timeout);
+    // Subscribe con safety timeout 10s. M3a.3 fix post-review — NON reject
+    // su CHANNEL_ERROR/TIMED_OUT/CLOSED: risolvi comunque e lascia che la
+    // prima `broadcastAndPersist` fallisca (verrà loggata come warn). In
+    // questo modo connect() non abortisce se Supabase è momentaneamente
+    // irraggiungibile, e SyncView può mostrare lo stato reale via
+    // `isConnected` (che resta true finché il provider non viene
+    // disconnesso esplicitamente).
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const tryResolve = () => {
+        if (!resolved) {
+          resolved = true;
           resolve();
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          settled = true;
-          clearTimeout(timeout);
-          reject(new Error(`Supabase pairing ${pairing.roomName} ${status}`));
+        }
+      };
+      channel.subscribe((status: string) => {
+        // 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED'
+        if (status === "SUBSCRIBED") {
+          console.log(
+            `[SupabaseYjsProvider] canale Realtime subscribed (room=${pairing.roomName})`
+          );
+          tryResolve();
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          console.warn(
+            `[SupabaseYjsProvider] channel status: ${status} (room=${pairing.roomName})`
+          );
+          tryResolve(); // risolvi comunque — SyncView mostrerà "○ Supabase non connesso"
         }
       });
+      // Safety timeout: se subscribe non risponde in 10s, risolvi comunque.
+      // Il provider ha `isConnected = true` ma se Realtime non risponde,
+      // la prima `broadcastAndPersist` fallirà e logga un warning.
+      setTimeout(tryResolve, 10_000);
     });
 
     // Persist channel state.
