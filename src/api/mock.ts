@@ -748,6 +748,9 @@ export const mockApi = {
   async listPendingPairings(): Promise<PairingPending[]> {
     return [];
   },
+  async cleanupExpiredPendingPairings(): Promise<number> {
+    return 0;
+  },
   async touchPairingLastSeen(): Promise<void> {
     // no-op
   },

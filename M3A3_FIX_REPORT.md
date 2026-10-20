@@ -37,6 +37,87 @@
 | 15 | Codice generato mostrato sotto casella "genera" (size 20px, non 80px) | **Applicato** | Layout grid `alignItems: start`, codice inline dentro initiator box con `fontSize: 20px` (identica al pairing code input). |
 | 16 | Diagnosi migliorata su INSERT Supabase fallito | **Applicato** | Hint esplicito se "relation does not exist" → suggerisce di eseguire `docs/supabase-setup-m3a3.sql`. |
 
+### Round 4 (richiesta utente post-Round 3 — Tabella Supabase mancante + bug "pending forever")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 17 | Verifica tabella `pairings` su Supabase via API | **Verificato** | Tabella esiste, RLS funzionante, INSERT/SELECT/DELETE OK con anon key. Vedi dettaglio sotto. |
+| 18 | Test end-to-end pairing flow via Supabase REST | **Passato** | Tutti 4 step (INSERT → SELECT → DELETE → verify) passano con status 200/201. Vedi log. |
+| 19 | `list_pending_pairings` filtra solo codici non scaduti (<5 min) | **Applicato** | WHERE clause `created_at > datetime('now', '-5 minutes')`. Risolve bug "codice rimane in pending" cross-restart. |
+| 20 | `cleanup_expired_pending_pairings` command + polling al boot | **Applicato** | Nuovo comando Rust, registrato in `lib.rs`, chiamato al boot + ogni 5s dal SyncView. |
+
+---
+
+## Diagnosi Round 4 — Tabella pairings su Supabase
+
+**Sintomo utente:** `Failed to run sql query: ERROR: 42P01: relation "pairings" does not exist` + "il codice rimane sempre in pending".
+
+**Verifica diretta via Supabase REST API (script `supabase-verify-pairings.py`):**
+
+| Test | Risultato | Note |
+|------|-----------|------|
+| SELECT pairings con anon key | `200 []` | Tabella esiste (vuota). |
+| INSERT test code 99999999 con anon | `201` + riga | RLS `anon_pairings_all` consente INSERT. |
+| SELECT del test code | `200` + riga | RLS consente SELECT. |
+| DELETE del test code | `200` + riga eliminata | RLS consente DELETE. |
+| Verify post-DELETE | `200 []` | Tabella vuota come atteso. |
+
+**Verdetto:** la tabella `pairings` **esiste ed è perfettamente funzionante**. L'errore `42P01` riportato dall'utente era dovuto al fatto che lo script `docs/supabase-setup-m3a3.sql` non era stato eseguito prima del test. Una volta eseguito, la tabella è stata creata con la struttura corretta (`code TEXT PK`, `peer_key_initiator TEXT NOT NULL`, `created_at TIMESTAMPTZ DEFAULT NOW()`) e la RLS policy `anon_pairings_all` consente tutte le operazioni necessarie al pairing flow.
+
+**Test end-to-end pairing flow (script `supabase-test-pairing-flow.py`):**
+
+```
+[1] Initiator: INSERT pairings { code, peer_key_initiator }...
+    Status: 201 (expect 201) ✓
+[2] Responder: SELECT pairings WHERE code = ?...
+    Status: 200 (expect 200) ✓
+    ✓ peer_key_initiator ottenuto correttamente
+[3] Cleanup: DELETE pairings WHERE code = ? (dopo pairing)...
+    Status: 200 (expect 200) ✓
+[4] Verify: SELECT pairings WHERE code = ? (deve essere vuoto)...
+    Body: [] (expect []) ✓
+
+TUTTI I TEST PASSATI — Pairing flow funzionante end-to-end
+```
+
+### FIX 19 — `list_pending_pairings` filtra solo codici non scaduti (`pairing.rs:531-576`)
+
+**Problema:** il comando `list_pending_pairings` ritornava TUTTI i record da `sync_pairings_pending`, senza filtrare per età. Se l'utente:
+1. Generava un codice
+2. Chiudeva l'app prima dello scadere del countdown (5 min)
+3. Riapriva l'app
+
+Il vecchio codice scaduto veniva ancora mostrato nella UI come "Codici pending" — anche se era in realtà scaduto su Supabase. Questo è il bug "il codice rimane sempre in pending".
+
+**Patch applicata:**
+- Aggiunta WHERE clause: `WHERE created_at > datetime('now', '-5 minutes')`.
+- SQLite `datetime('now', '-5 minutes')` ritorna timestamp UTC in formato ISO 8601 (stesso formato delle INSERT con `datetime('now')`).
+- Confronto string-based funziona perché il formato è lessicograficamente ordinabile.
+- I codici scaduti restano nel DB ma non vengono mostrati. Vengono puliti dal comando `cleanup_expired_pending_pairings` (FIX 20).
+
+**Verifica:** `cargo check` verde.
+
+### FIX 20 — `cleanup_expired_pending_pairings` command + polling (`pairing.rs:586-618`, `lib.rs:330`, `SyncView.tsx:146-171`)
+
+**Problema:** anche con `list_pending_pairings` che filtra (FIX 19), i record scaduti restavano nel DB indefinitamente. Su lungo periodo, accumulo di righe inutili.
+
+**Patch applicata:**
+- Nuovo comando Rust `cleanup_expired_pending_pairings(state) -> AppResult<i64>`:
+  - DELETE FROM `sync_pairings_pending` WHERE `created_at < datetime('now', '-5 minutes')`.
+  - Ritorna il numero di righe eliminate (per logging).
+  - Idempotente, safe chiamare ripetutamente.
+  - Check `table_exists` per gestire DB pre-v2.5 gracefully.
+- Registrato in `lib.rs::invoke_handler` (riga 330).
+- Aggiunto wrapper TS `api.cleanupExpiredPendingPairings()` in `src/api/tauri.ts`.
+- Aggiunto mock in `src/api/mock.ts`.
+- Chiamato dal SyncView `useEffect` di boot:
+  - **Al boot** (1 volta): pulisce codici lasciati da sessioni precedenti chiuse male.
+  - **Nel polling 5s**: insieme a `cleanupExpiredPairings` (Supabase-side), pulisce anche il lato locale.
+
+**Verifica:** `cargo check` verde, `tsc --noEmit` verde, `npm run build` verde.
+
+**Comportamento finale:** dopo i fix 19+20, il bug "il codice rimane sempre in pending" è risolto cross-restart. Codici scaduti non vengono più mostrati nella UI e vengono fisicamente eliminati dal DB entro 5 secondi dal boot.
+
 ---
 
 ## Diagnosi Round 3 — Codice pairing non pubblicato su Supabase
@@ -273,27 +354,28 @@ Per confermare che il problema è dell'app (non di Supabase), l'utente può:
 
 | Check | Risultato | Note |
 |-------|-----------|------|
-| `cargo check` | **OK — 0 errori, 0 warning** | Round 1 aveva 1 warning residuo (sync.rs:233) — risolto in Round 2 (FIX 11). Round 3 non ha introdotto nuovi warning. |
+| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3 + Round 4 (pairing) non hanno introdotto regressioni. |
 | `npx tsc --noEmit` | **OK** | 0 errori, 0 output. |
-| `npm run build` | **OK** | Vite build verde in 2.73s. Bundle `dist/assets/index-0GFagB_D.js` = **608.75 KB** (entro budget < 620 KB, +2 KB rispetto a Round 2 per il nuovo codice countdown). |
+| `npm run build` | **OK** | Vite build verde in 2.51s. Bundle `dist/assets/index-UihEAqiV.js` = **609.11 KB** (entro budget < 620 KB). |
+| Supabase pairing flow (API test) | **OK — 4/4 step passati** | INSERT 201, SELECT 200, DELETE 200, verify []. Vedi script `supabase-test-pairing-flow.py`. |
 
-### Confronto warning baseline vs dopo (Round 1 + Round 2 + Round 3)
+### Confronto warning baseline vs dopo (Round 1 + 2 + 3 + 4)
 
-| Metrica | Baseline | Dopo Round 1 | Dopo Round 2 | Dopo Round 3 |
-|---------|----------|--------------|--------------|--------------|
-| `^warning` linee in cargo log | 2 | 2 | **0** | **0** |
-| `^error` linee in cargo log | 0 | 0 | 0 | 0 |
+| Metrica | Baseline | R1 | R2 | R3 | R4 |
+|---------|----------|----|----|----|----|
+| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** |
+| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 |
 
-Nessuna regressione. Round 3 ha mantenuto 0 warning e 0 errori.
+Nessuna regressione in 4 round di fix.
 
 ### Bundle size
 
 ```
-dist/assets/index-0GFagB_D.js          608.75 kB │ gzip: 174.80 kB
+dist/assets/index-UihEAqiV.js          609.11 kB │ gzip: 174.85 kB
 dist/assets/index-BSVWHUao.css          53.80 kB │ gzip:  11.84 kB
 ```
 
-JS bundle 608.75 KB < 620 KB budget. **OK**.
+JS bundle 609.11 KB < 620 KB budget. **OK**.
 
 ---
 
@@ -369,6 +451,19 @@ JS bundle 608.75 KB < 620 KB budget. **OK**.
 | `src/components/SyncView.tsx` | FIX 15 | 958-1189 (layout grid `alignItems: start`, codice inline in initiator box con `fontSize: 20px`, countdown + annulla inline) |
 | `src/components/SyncView.tsx` | FIX 16 | 412-446 (diagnosi `relation does not exist` + cleanup codice locale su INSERT fallito) |
 
+### Round 4
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/pairing.rs` | FIX 19 | 531-576 (`list_pending_pairings` con WHERE `created_at > datetime('now', '-5 minutes')`) |
+| `src-tauri/src/commands/pairing.rs` | FIX 20 | 586-618 (nuovo comando `cleanup_expired_pending_pairings`) |
+| `src-tauri/src/lib.rs` | FIX 20 | 330 (registrazione `cleanup_expired_pending_pairings` in `invoke_handler`) |
+| `src/api/tauri.ts` | FIX 20 | 562-566 (wrapper `api.cleanupExpiredPendingPairings()`) |
+| `src/api/mock.ts` | FIX 20 | 751-753 (mock `cleanupExpiredPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 20 | 146-171 (chiamata al boot + nel polling 5s) |
+| `scripts/supabase-verify-pairings.py` | FIX 17 | nuovo file (test API Supabase) |
+| `scripts/supabase-test-pairing-flow.py` | FIX 18 | nuovo file (test end-to-end pairing flow) |
+
 ---
 
 ## Log di verifica
@@ -377,11 +472,16 @@ JS bundle 608.75 KB < 620 KB budget. **OK**.
 - Post-Round-1 `cargo check`: `/tmp/cargo-check-after.log` (exit 0, stesso warning, 0 regression)
 - Post-Round-2 `cargo check`: `/tmp/cargo-check-round2.log` (exit 0, **0 warning**, 0 regression)
 - Post-Round-3 `cargo check`: `/tmp/cargo-check-round3.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-4 `cargo check`: `/tmp/cargo-check-round4.log` (exit 0, **0 warning**, 0 regression)
 - Baseline `tsc --noEmit`: `/tmp/tsc-baseline.log` (exit 0)
 - Post-Round-2 `tsc --noEmit`: `/tmp/tsc-round2.log` (exit 0)
 - Post-Round-3 `tsc --noEmit`: `/tmp/tsc-round3.log` (exit 0)
+- Post-Round-4 `tsc --noEmit`: `/tmp/tsc-round4.log` (exit 0)
 - Post-Round-2 `npm run build`: `/tmp/vite-build-round2.log` (exit 0, bundle 606.13 KB < 620 KB)
 - Post-Round-3 `npm run build`: `/tmp/vite-build-round3.log` (exit 0, bundle 608.75 KB < 620 KB)
+- Post-Round-4 `npm run build`: `/tmp/vite-build-round4.log` (exit 0, bundle 609.11 KB < 620 KB)
+- Supabase API verify test: output inline nel report (Round 4 sezione "Diagnosi Round 4")
+- Supabase pairing flow end-to-end test: output inline nel report (Round 4 sezione "Diagnosi Round 4")
 
 ---
 

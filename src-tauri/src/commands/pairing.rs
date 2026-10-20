@@ -530,6 +530,13 @@ pub fn pairing_cancel(
 
 /// Lista dei codici pairing pending (in corso, initiator side).
 /// Per UI: mostra "codice attivo: 12345678, scade tra 3 min".
+///
+/// M3a.3 fix post-review — Filtra SOLO i codici non scaduti (created_at >
+/// NOW() - 5 min). I codici scaduti restano nel DB ma non vengono mostrati
+/// nella UI (verranno puliti dal cleanup schedulato — vedi
+/// `cleanup_expired_pending_pairings`). Questo risolve il bug "il codice
+/// rimane sempre in pending": se l'utente chiude l'app prima dello scadere
+/// del countdown, al riavvio il codice vecchio non viene più mostrato.
 #[tauri::command]
 pub fn list_pending_pairings(
     state: State<'_, crate::DbState>,
@@ -542,9 +549,16 @@ pub fn list_pending_pairings(
         if !table_exists {
             return Ok(Vec::new()); // DB pre-v2.5
         }
+        // M3a.3 fix post-review — Filtra solo codici non scaduti (< 5 min).
+        // SQLite `datetime('now', '-5 minutes')` ritorna timestamp UTC in
+        // formato ISO 8601 (stesso formato usato da `datetime('now')` nelle
+        // INSERT). Confronto string-based funziona perché il formato è
+        // lessicograficamente ordinabile.
         let mut stmt = conn.prepare(
             "SELECT code, peer_key_initiator, created_at
-             FROM sync_pairings_pending ORDER BY created_at DESC",
+             FROM sync_pairings_pending
+             WHERE created_at > datetime('now', '-5 minutes')
+             ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(PairingPending {
@@ -567,6 +581,40 @@ pub struct PairingPending {
     pub code: String,
     pub peer_key_initiator: String,
     pub created_at: String,
+}
+
+/// M3a.3 fix post-review — Pulisce i codici pairing pending scaduti dal DB
+/// locale (`sync_pairings_pending`). Scaduti = `created_at < NOW() - 5 min`.
+///
+/// Chiamato dal frontend:
+///  - Al boot dell'app (App.tsx) per pulire codici lasciati da sessioni
+///    precedenti chiuse male (es. utente ha chiuso l'app prima dello
+///    scadere del countdown, il cleanup automatico non è partito).
+///  - Ogni 60 secondi dal polling di SyncView, insieme al cleanup Supabase
+///    `cleanupExpiredPairings`.
+///
+/// Ritorna il numero di righe eliminate (per logging).
+#[tauri::command]
+pub fn cleanup_expired_pending_pairings(
+    state: State<'_, crate::DbState>,
+) -> AppResult<i64> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_pairings_pending' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Ok(0); // DB pre-v2.5
+        }
+        let n = conn.execute(
+            "DELETE FROM sync_pairings_pending WHERE created_at < datetime('now', '-5 minutes')",
+            [],
+        )?;
+        if n > 0 {
+            log::info!("[M3a.5] cleanup_expired_pending_pairings: {} codice/i scaduto/i rimossi", n);
+        }
+        Ok(n as i64)
+    })
 }
 
 /// Aggiorna last_seen di un pairing (chiamato ogni volta che il

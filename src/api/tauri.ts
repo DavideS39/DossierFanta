@@ -554,9 +554,16 @@ export const tauriApi = {
   pairingCancel: (code: string) =>
     invoke<void>("pairing_cancel", { code }),
 
-  /** M3a.5 — Lista codici pairing pending (in corso, initiator side). */
+  /** M3a.5 — Lista codici pairing pending (in corso, initiator side).
+   *  M3a.3 fix post-review — Filtra SOLO codici non scaduti (< 5 min). */
   listPendingPairings: () =>
     invoke<PairingPending[]>("list_pending_pairings"),
+
+  /** M3a.3 fix post-review — Pulisce i codici pairing pending scaduti dal DB
+   *  locale (created_at < NOW() - 5 min). Chiamato al boot + ogni 60s dal
+   *  SyncView. Ritorna il numero di righe eliminate. */
+  cleanupExpiredPendingPairings: () =>
+    invoke<number>("cleanup_expired_pending_pairings"),
 
   /** M3a.4 — Aggiorna last_seen di un pairing (chiamato su ogni sync-update-received). */
   touchPairingLastSeen: (peerKeyOther: string) =>

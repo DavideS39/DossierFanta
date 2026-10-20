@@ -146,10 +146,23 @@ export function SyncView(): React.ReactElement {
   // --- Boot effect: refresh + polling 5s per status realtime + cleanup expired pairings ---
   useEffect(() => {
     void refresh();
+    // M3a.3 fix post-review — Cleanup al boot dei codici pairing pending
+    // scaduti dal DB locale. Risolve il bug "il codice rimane sempre in
+    // pending": se l'utente ha chiuso l'app prima dello scadere del countdown,
+    // al riavvio i vecchi codici vengono puliti subito.
+    void api.cleanupExpiredPendingPairings().catch((err) => {
+      console.warn("[SyncView] cleanupExpiredPendingPairings (boot) fallito:", err);
+    });
     pollTimer.current = setInterval(() => {
       void refresh();
       // M3a.5 — cleanup codici pairing scaduti su Supabase (>5min)
       void cleanupExpiredPairings(5);
+      // M3a.3 fix post-review — cleanup codici pairing scaduti dal DB locale
+      // (>5min). Frequenza 5s come il refresh, è un'operazione leggera
+      // (una DELETE WHERE created_at < ...).
+      void api.cleanupExpiredPendingPairings().catch((err) => {
+        console.warn("[SyncView] cleanupExpiredPendingPairings (polling) fallito:", err);
+      });
     }, 5000);
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
