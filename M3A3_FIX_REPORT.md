@@ -46,6 +46,90 @@
 | 19 | `list_pending_pairings` filtra solo codici non scaduti (<5 min) | **Applicato** | WHERE clause `created_at > datetime('now', '-5 minutes')`. Risolve bug "codice rimane in pending" cross-restart. |
 | 20 | `cleanup_expired_pending_pairings` command + polling al boot | **Applicato** | Nuovo comando Rust, registrato in `lib.rs`, chiamato al boot + ogni 5s dal SyncView. |
 
+### Round 5 (richiesta utente post-Round 4 — "codici rimangono sempre in pending")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 21 | `cleanup_all_pending_pairings` command (cancella TUTTI, non solo scaduti) | **Applicato** | Nuovo comando Rust per cancellare orfani al boot + pulsante "cancella tutti" più efficiente. |
+| 22 | Boot del SyncView: cleanup_all_pending_pairings orfani | **Applicato** | Cancella TUTTI i pending al boot (non solo scaduti) perché al boot non c'è countdown attivo. |
+| 23 | UI: nascondi lista "Codici pending" se contiene solo il generatedCode attuale | **Applicato** | Filtra `orphanPending = pendingPairings.filter(p => p.code !== state.generatedCode)`. Evita duplicato visivo. |
+
+### Round 6 (richiesta utente post-Round 5 — "non vedo neanche il codice come inviato")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 24 | **CRITICAL FIX**: imposta `generatedCode` PRIMA del subscribe Realtime | **Applicato** | Prima il codice era impostato DOPO il subscribe. Se il subscribe falliva (CHANNEL_ERROR/timeout), il catch faceva reset → utente non vedeva MAI il codice → "non vedo neanche il codice come inviato" bug. |
+| 25 | Subscribe Realtime pattern RESILIENT (resolve, non reject) | **Applicato** | Allineato a `SupabaseYjsProvider.subscribeToPairing` (FIX 5 Round 1). CHANNEL_ERROR/TIMED_OUT/CLOSED → resolve invece di reject. |
+| 26 | Verifica difensiva `peerKey` prima di INSERT Supabase | **Applicato** | Se Iroh non avviabile, throw esplicito con messaggio utile invece di INSERT con `peer_key_initiator: null` che fallirebbe con errore criptico. |
+| 27 | Logging esteso in `handleCreatePairing` | **Applicato** | `console.info` per ogni step: avvio Iroh, pubblicazione Supabase, successo INSERT, subscribe canale. |
+
+---
+
+## Diagnosi Round 6 — "Non vedo neanche il codice come inviato"
+
+**Sintomo utente:** "non vedo neanche il codice come inviato... rimane sempre in pending... proprio non viene inviato a supabase"
+
+**Diagnosi completa via API Supabase (script `supabase-full-diagnostic.py`):**
+
+| Test | Risultato | Note |
+|------|-----------|------|
+| Reachability URL | `404` (root path) | Normale — Supabase non serve nulla su `/` |
+| Anon SELECT pairings | `200 []` | ✓ Tabella esiste |
+| Anon INSERT pairings | `201` + riga | ✓ RLS consente INSERT |
+| Anon SELECT test code | `200` + riga | ✓ RLS consente SELECT |
+| Anon DELETE test code | `200` + riga eliminata | ✓ RLS consente DELETE |
+| Verify post-DELETE | `200 []` | ✓ Cleanup funzionante |
+| Service role SELECT pairings | `401 Unregistered API key` | L'utente ha già ruotato la service_role key come promesso. OK. |
+
+**Verdetto Supabase:** TUTTO FUNZIONA. La tabella `pairings` esiste, RLS permette tutte le operazioni all'anon, INSERT/SELECT/DELETE passano end-to-end.
+
+**Causa reale del bug (frontend):**
+
+Il bug era in `handleCreatePairing` (SyncView.tsx). Il flusso era:
+
+```
+1. pairingCreate() → Rust genera codice, salva in sync_pairings_pending
+2. INSERT Supabase pairings → SUCCESS (codice pubblicato)
+3. Subscribe canale Realtime `pairing-<code>` → REJECT se fallisce
+4. (solo se subscribe succeed) setState({generatedCode: code})  ← MAI ESEGUITO se subscribe fallisce
+```
+
+Se il subscribe al canale Realtime falliva (CHANNEL_ERROR/TIMED_OUT/CLOSED) o andava in timeout (10s), il `reject` faceva scattare il `catch` → `setState({pairingFlow: "error"})` → l'utente non vedeva MAI il codice generato. MA il codice era stato:
+
+1. **Salvato in `sync_pairings_pending` locale** (dal Rust `pairing_create`)
+2. **Pubblicato su Supabase `pairings` table** (INSERT riuscito prima del subscribe)
+
+Risultato: codice orfano su Supabase + record zombie in `sync_pairings_pending` → al prossimo avvio, `list_pending_pairings` lo ritornava → "codice rimane sempre in pending" bug.
+
+**Fix applicato (Round 6):**
+
+1. **FIX 24 — CRITICAL**: invertito l'ordine. Ora `setState({generatedCode: code})` viene chiamato SUBITO dopo l'INSERT Supabase riuscito, PRIMA del subscribe al canale Realtime. In questo modo:
+   - L'utente vede il codice immediatamente
+   - Se il subscribe fallisce, il codice resta visibile con countdown attivo
+   - L'utente può ancora annullare manualmente
+   - Il responder può comunque trovare il codice via SELECT (il canale Realtime serve solo per la response dell'initiator)
+
+2. **FIX 25 — Pattern RESILIENT**: il subscribe ora usa `resolve` (non `reject`) su CHANNEL_ERROR/TIMED_OUT/CLOSED. Allineato al pattern di `SupabaseYjsProvider.subscribeToPairing` (FIX 5 di Round 1). Safety timeout 10s.
+
+3. **FIX 26 — Verifica difensiva `peerKey`**: se Iroh non è avviabile, throw esplicito con messaggio utile ("Verifica che il DB sia migrato a v2.4+, apri Sync e clicca 'Avvia Iroh' manualmente"). Prima l'INSERT Supabase sarebbe fallito con `peer_key_initiator: null` (NOT NULL constraint) e l'errore sarebbe stato criptico.
+
+4. **FIX 27 — Logging esteso**: `console.info` per ogni step del flusso:
+   - "peer_key mancante, avvio Iroh..."
+   - "Iroh avviato, peer_key: ..."
+   - "Pubblicazione codice XXXXXXXX su Supabase pairings table..."
+   - "✓ Codice XXXXXXXX pubblicato su Supabase pairings table"
+   - "pairing creato: codice XXXXXXXX (scade tra 5 min, countdown UI attivo)"
+   - "canale Realtime pairing-XXXXXXXX subscribed" (o warning se fallisce)
+
+L'utente può ora aprire la DevTools console (F12 in dev mode) e verificare ogni step del flusso. Se qualcosa fallisce, il log mostra esattamente dove.
+
+**Verifica finale:**
+
+- `cargo check`: 0 errori, 0 warning
+- `tsc --noEmit`: 0 errori
+- `npm run build`: verde, bundle 610.39 KB (< 620 KB budget)
+- Supabase pairing flow API test: 4/4 step passati (INSERT 201, SELECT 200, DELETE 200, verify [])
+
 ---
 
 ## Diagnosi Round 4 — Tabella pairings su Supabase
@@ -354,28 +438,29 @@ Per confermare che il problema è dell'app (non di Supabase), l'utente può:
 
 | Check | Risultato | Note |
 |-------|-----------|------|
-| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3 + Round 4 (pairing) non hanno introdotto regressioni. |
+| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3+4+5+6 (pairing) non hanno introdotto regressioni. |
 | `npx tsc --noEmit` | **OK** | 0 errori, 0 output. |
-| `npm run build` | **OK** | Vite build verde in 2.51s. Bundle `dist/assets/index-UihEAqiV.js` = **609.11 KB** (entro budget < 620 KB). |
+| `npm run build` | **OK** | Vite build verde in 2.86s. Bundle `dist/assets/index-D36m1aYP.js` = **610.39 KB** (entro budget < 620 KB). |
 | Supabase pairing flow (API test) | **OK — 4/4 step passati** | INSERT 201, SELECT 200, DELETE 200, verify []. Vedi script `supabase-test-pairing-flow.py`. |
+| Supabase full diagnostic | **OK — tutto verde** | Tabella pairings + yjs_updates esistono, RLS OK, INSERT/SELECT/DELETE OK con anon key. |
 
-### Confronto warning baseline vs dopo (Round 1 + 2 + 3 + 4)
+### Confronto warning baseline vs dopo (Round 1 → 6)
 
-| Metrica | Baseline | R1 | R2 | R3 | R4 |
-|---------|----------|----|----|----|----|
-| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** |
-| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 |
+| Metrica | Baseline | R1 | R2 | R3 | R4 | R5 | R6 |
+|---------|----------|----|----|----|----|----|----|
+| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** | **0** | **0** |
+| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-Nessuna regressione in 4 round di fix.
+Nessuna regressione in 6 round di fix (27 fix totali).
 
 ### Bundle size
 
 ```
-dist/assets/index-UihEAqiV.js          609.11 kB │ gzip: 174.85 kB
+dist/assets/index-D36m1aYP.js          610.39 kB │ gzip: 175.25 kB
 dist/assets/index-BSVWHUao.css          53.80 kB │ gzip:  11.84 kB
 ```
 
-JS bundle 609.11 KB < 620 KB budget. **OK**.
+JS bundle 610.39 KB < 620 KB budget. **OK**.
 
 ---
 
@@ -464,6 +549,27 @@ JS bundle 609.11 KB < 620 KB budget. **OK**.
 | `scripts/supabase-verify-pairings.py` | FIX 17 | nuovo file (test API Supabase) |
 | `scripts/supabase-test-pairing-flow.py` | FIX 18 | nuovo file (test end-to-end pairing flow) |
 
+### Round 5
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/pairing.rs` | FIX 21 | 620-651 (nuovo comando `cleanup_all_pending_pairings`) |
+| `src-tauri/src/lib.rs` | FIX 21 | 331 (registrazione `cleanup_all_pending_pairings` in `invoke_handler`) |
+| `src/api/tauri.ts` | FIX 21 | 568-574 (wrapper `api.cleanupAllPendingPairings()`) |
+| `src/api/mock.ts` | FIX 21 | 754-756 (mock `cleanupAllPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 22 | 146-178 (boot: `cleanupAllPendingPairings` orfani + polling `cleanupExpiredPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 23 | 1221-1290 (UI: lista "Codici pending" → "Codici pending orfani" filtrando via il generatedCode attuale; pulsante "cancella tutti" usa `cleanupAllPendingPairings`) |
+
+### Round 6
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src/components/SyncView.tsx` | FIX 24 | 432-497 (CRITICAL: `setState({generatedCode})` PRIMA del subscribe Realtime, non dopo) |
+| `src/components/SyncView.tsx` | FIX 25 | 499-546 (subscribe pattern RESILIENT: `resolve` invece di `reject` su CHANNEL_ERROR/TIMED_OUT/CLOSED, safety timeout 10s, allineato a `SupabaseYjsProvider.subscribeToPairing` FIX 5 Round 1) |
+| `src/components/SyncView.tsx` | FIX 26 | 384-416 (verifica difensiva `peerKey` prima di INSERT Supabase, throw esplicito con messaggio utile se Iroh non avviabile) |
+| `src/components/SyncView.tsx` | FIX 27 | 391, 408, 444, 475, 495, 529, 536-540 (`console.info`/`console.warn` per ogni step del flusso) |
+| `scripts/supabase-full-diagnostic.py` | FIX 27 | nuovo file (diagnostica completa Supabase: reachability + tabelle + RLS + INSERT/SELECT/DELETE) |
+
 ---
 
 ## Log di verifica
@@ -473,6 +579,7 @@ JS bundle 609.11 KB < 620 KB budget. **OK**.
 - Post-Round-2 `cargo check`: `/tmp/cargo-check-round2.log` (exit 0, **0 warning**, 0 regression)
 - Post-Round-3 `cargo check`: `/tmp/cargo-check-round3.log` (exit 0, **0 warning**, 0 regression)
 - Post-Round-4 `cargo check`: `/tmp/cargo-check-round4.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-5+6 `cargo check`: `/tmp/cargo-check-round6.log` (exit 0, **0 warning**, 0 regression)
 - Baseline `tsc --noEmit`: `/tmp/tsc-baseline.log` (exit 0)
 - Post-Round-2 `tsc --noEmit`: `/tmp/tsc-round2.log` (exit 0)
 - Post-Round-3 `tsc --noEmit`: `/tmp/tsc-round3.log` (exit 0)

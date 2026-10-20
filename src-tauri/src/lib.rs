@@ -328,6 +328,7 @@ pub fn run() {
             commands::pairing::pairing_cancel,
             commands::pairing::list_pending_pairings,
             commands::pairing::cleanup_expired_pending_pairings,
+            commands::pairing::cleanup_all_pending_pairings,
             commands::pairing::touch_pairing_last_seen,
             commands::pairing::set_pairing_display_name,
             // sync_lan.rs (M3a B.9) — solo con feature `lan-only`

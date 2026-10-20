@@ -565,6 +565,14 @@ export const tauriApi = {
   cleanupExpiredPendingPairings: () =>
     invoke<number>("cleanup_expired_pending_pairings"),
 
+  /** M3a.3 fix post-review (Round 5) — Cancella TUTTI i codici pairing pending
+   *  dal DB locale, indipendentemente dall'età. Chiamato:
+   *   - Al boot del SyncView (cancella orfani da sessioni precedenti)
+   *   - Dal pulsante "cancella tutti" nella UI (più efficiente di N pairingCancel)
+   *  Ritorna il numero di righe eliminate. */
+  cleanupAllPendingPairings: () =>
+    invoke<number>("cleanup_all_pending_pairings"),
+
   /** M3a.4 — Aggiorna last_seen di un pairing (chiamato su ogni sync-update-received). */
   touchPairingLastSeen: (peerKeyOther: string) =>
     invoke<void>("touch_pairing_last_seen", { peerKeyOther }),

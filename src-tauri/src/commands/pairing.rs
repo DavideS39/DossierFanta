@@ -617,6 +617,39 @@ pub fn cleanup_expired_pending_pairings(
     })
 }
 
+/// M3a.3 fix post-review (Round 5) — Cancella TUTTI i codici pairing pending
+/// dal DB locale, indipendentemente dall'età. Diverso da `cleanup_expired_pending_pairings`
+/// che cancella solo i scaduti (>5 min).
+///
+/// Casi d'uso:
+///  - **Boot dell'app**: cancella TUTTI i pending orfani lasciati da sessioni
+///    precedenti. Al boot non c'è countdown UI attivo, quindi qualsiasi codice
+///    pending è orfano (l'initiator non può più ricevere risposte). Cancellarli
+///    tutti è safe e risolve il bug "codice rimane sempre in pending".
+///  - **Pulsante "cancella tutti" nella UI**: più efficiente di N chiamate
+///    `pairing_cancel` separate (una singola DELETE vs N DELETE).
+///
+/// Ritorna il numero di righe eliminate (per logging).
+#[tauri::command]
+pub fn cleanup_all_pending_pairings(
+    state: State<'_, crate::DbState>,
+) -> AppResult<i64> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_pairings_pending' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Ok(0); // DB pre-v2.5
+        }
+        let n = conn.execute("DELETE FROM sync_pairings_pending", [])?;
+        if n > 0 {
+            log::info!("[M3a.5] cleanup_all_pending_pairings: {} codice/i rimossi (boot/pulsante cancella tutti)", n);
+        }
+        Ok(n as i64)
+    })
+}
+
 /// Aggiorna last_seen di un pairing (chiamato ogni volta che il
 /// SupabaseYjsProvider riceve un update da quel pairing).
 #[tauri::command]

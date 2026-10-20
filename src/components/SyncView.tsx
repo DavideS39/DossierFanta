@@ -145,14 +145,21 @@ export function SyncView(): React.ReactElement {
 
   // --- Boot effect: refresh + polling 5s per status realtime + cleanup expired pairings ---
   useEffect(() => {
-    void refresh();
-    // M3a.3 fix post-review — Cleanup al boot dei codici pairing pending
-    // scaduti dal DB locale. Risolve il bug "il codice rimane sempre in
-    // pending": se l'utente ha chiuso l'app prima dello scadere del countdown,
-    // al riavvio i vecchi codici vengono puliti subito.
-    void api.cleanupExpiredPendingPairings().catch((err) => {
-      console.warn("[SyncView] cleanupExpiredPendingPairings (boot) fallito:", err);
+    // M3a.3 fix post-review (Round 5) — Al boot, cancella TUTTI i pending
+    // orfani lasciati da sessioni precedenti. Al boot non c'è countdown UI
+    // attivo, quindi qualsiasi codice pending è orfano (l'initiator non può
+    // più ricevere risposte). Cancellarli tutti è safe e risolve il bug
+    // "il codice rimane sempre in pending".
+    void api.cleanupAllPendingPairings().then((n) => {
+      if (n > 0) {
+        console.info(`[SyncView] cleanupAllPendingPairings (boot): ${n} codice/i orfano/i rimossi`);
+      }
+    }).catch((err) => {
+      console.warn("[SyncView] cleanupAllPendingPairings (boot) fallito:", err);
     });
+    // Cleanup Supabase-side (pairings table >5 min) — best effort.
+    void cleanupExpiredPairings(5).catch(() => {});
+    void refresh();
     pollTimer.current = setInterval(() => {
       void refresh();
       // M3a.5 — cleanup codici pairing scaduti su Supabase (>5min)
@@ -376,17 +383,36 @@ export function SyncView(): React.ReactElement {
     }));
     try {
       // 1. Assicurati che Iroh sia avviato (peer_key necessaria per pubblicare).
+      //    M3a.3 fix post-review (Round 6) — CRITICAL: se Iroh non è avviabile,
+      //    throw esplicito con messaggio chiaro. Senza peer_key, l'INSERT
+      //    Supabase fallirebbe (peer_key_initiator è NOT NULL) ma l'errore
+      //    sarebbe criptico. Meglio fallire prima con un messaggio utile.
       if (!state.peerKey) {
+        console.info("[SyncView] peer_key mancante, avvio Iroh...");
         await handleStartIroh();
         // handleStartIroh aggiorna state.peerKey via refresh(). Per ottenere
         // il nuovo valore senza race, chiamiamo getSyncIdentity().
         const id = await api.getSyncIdentity();
-        if (!id) {
-          throw new Error("Iroh non avviabile — impossibile creare pairing");
+        if (!id || !id.peerKey) {
+          throw new Error(
+            "Iroh non avviabile — impossibile creare pairing. " +
+            "Verifica che il DB sia migrato a v2.4+ (sync_identity table). " +
+            "Apri la schermata Sync e clicca 'Avvia Iroh' manualmente prima di generare un codice."
+          );
         }
         // Aggiorniamo state.localmente per il prossimo step.
+        // NOTA: mutate diretto è OK qui perché stiamo leggendo il valore
+        // aggiornato per usarlo subito dopo, non per triggerare re-render.
         state.peerKey = id.peerKey;
         state.identity = id;
+        console.info(`[SyncView] Iroh avviato, peer_key: ${id.peerKey.slice(0, 16)}...`);
+      }
+
+      // Verifica finale che peerKey sia valorizzato (defensive).
+      if (!state.peerKey) {
+        throw new Error(
+          "peer_key ancora null dopo handleStartIroh — impossibile creare pairing."
+        );
       }
 
       // 2. Chiama il comando Rust per generare il codice + revocare precedenti.
@@ -426,7 +452,15 @@ export function SyncView(): React.ReactElement {
       //    M3a.3 fix post-review — Diagnosi migliorata: log dettagliato se
       //    fallisce (es. tabella `pairings` non esiste → suggerimento di
       //    eseguire docs/supabase-setup-m3a3.sql).
+      //    M3a.3 fix post-review (Round 6) — CRITICAL FIX: imposta
+      //    generatedCode PRIMA del subscribe al canale Realtime. Prima il
+      //    codice era impostato DOPO il subscribe, ma se il subscribe
+      //    falliva (CHANNEL_ERROR/TIMED_OUT/timeout 10s) il catch faceva
+      //    il reset e l'utente non vedeva MAI il codice. Risultato: codice
+      //    pubblicato su Supabase + salvato localmente, MA UI vuota →
+      //    "codice rimane sempre in pending" bug.
       const supabase = getSupabaseClient();
+      console.info(`[SyncView] Pubblicazione codice ${pairingCode.code} su Supabase pairings table...`);
       const { error: insertErr } = await supabase
         .from("pairings")
         .insert({
@@ -457,45 +491,19 @@ export function SyncView(): React.ReactElement {
           `Pubblicazione su Supabase fallita: ${msg}${hint}`
         );
       }
+      console.info(`[SyncView] ✓ Codice ${pairingCode.code} pubblicato su Supabase pairings table`);
 
-      // 5. Subscribe al canale Realtime `pairing-<code>` per ascoltare la
-      //    risposta del responder (quando entra il codice e fa ECDH).
-      const channelName = `pairing-${pairingCode.code}`;
-      const channel = supabase.channel(channelName, {
-        config: { broadcast: { self: false } },
-      });
-      channel.on("broadcast", { event: "response" }, (msg) => {
-        const payload = msg.payload as { peerKeyResponder?: string };
-        if (payload?.peerKeyResponder) {
-          void handlePairingResponse(pairingCode.code, payload.peerKeyResponder);
-        }
-      });
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const t = setTimeout(() => {
-          if (!settled) {
-            settled = true;
-            reject(new Error("pairing channel subscribe timeout"));
-          }
-        }, 10000);
-        channel.subscribe((status: string) => {
-          if (settled) return;
-          if (status === "SUBSCRIBED") {
-            settled = true;
-            clearTimeout(t);
-            resolve();
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            settled = true;
-            clearTimeout(t);
-            reject(new Error(`pairing channel ${status}`));
-          }
-        });
-      });
-
-      // 6. Calcola expiresAt in ms epoch per il countdown UI.
+      // M3a.3 fix post-review (Round 6) — CRITICAL: imposta generatedCode +
+      // countdown SUBITO dopo l'INSERT Supabase riuscito, PRIMA del subscribe
+      // al canale Realtime. In questo modo:
+      //   - L'utente vede il codice immediatamente (UX corretta)
+      //   - Se il subscribe fallisce, il codice resta visibile con countdown
+      //     attivo — l'utente può ancora annullare manualmente
+      //   - Il responder può comunque fare SELECT pairings WHERE code = ?
+      //     perché l'INSERT è riuscito (il canale Realtime serve solo per
+      //     la response dell'initiator, non per il rendezvous)
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const secondsLeft = 5 * 60;
-
       setState((s) => ({
         ...s,
         pairingFlow: "awaiting_response",
@@ -506,6 +514,55 @@ export function SyncView(): React.ReactElement {
       console.info(
         `[SyncView] pairing creato: codice ${pairingCode.code} (scade tra 5 min, countdown UI attivo)`
       );
+
+      // 5. Subscribe al canale Realtime `pairing-<code>` per ascoltare la
+      //    risposta del responder (quando entra il codice e fa ECDH).
+      //    M3a.3 fix post-review (Round 6) — Pattern RESILIENT (non reject):
+      //    se il subscribe fallisce (CHANNEL_ERROR/TIMED_OUT/CLOSED) o va in
+      //    timeout, NON fallire il pairing. Il codice è già pubblicato su
+      //    Supabase, l'utente lo vede, e il responder può comunque fare
+      //    SELECT pairings + broadcast response (la response verrà persa
+      //    se il canale non è subscribed, ma l'utente può ritentare).
+      //    Allineato al pattern di SupabaseYjsProvider.subscribeToPairing
+      //    (FIX 5 di Round 1).
+      const channelName = `pairing-${pairingCode.code}`;
+      const channel = supabase.channel(channelName, {
+        config: { broadcast: { self: false } },
+      });
+      channel.on("broadcast", { event: "response" }, (msg) => {
+        const payload = msg.payload as { peerKeyResponder?: string };
+        if (payload?.peerKeyResponder) {
+          void handlePairingResponse(pairingCode.code, payload.peerKeyResponder);
+        }
+      });
+      await new Promise<void>((resolve) => {
+        let resolved = false;
+        const tryResolve = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        channel.subscribe((status: string) => {
+          if (status === "SUBSCRIBED") {
+            console.log(`[SyncView] canale Realtime ${channelName} subscribed`);
+            tryResolve();
+          } else if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            console.warn(
+              `[SyncView] canale Realtime ${channelName} status: ${status} — ` +
+              `il codice è ancora valido su Supabase, il responder può ancora ` +
+              `trovarlo via SELECT, ma la response real-time potrebbe non arrivare.`
+            );
+            tryResolve(); // NON reject — il codice resta visibile
+          }
+        });
+        // Safety timeout 10s — come SupabaseYjsProvider.
+        setTimeout(tryResolve, 10_000);
+      });
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -1211,41 +1268,76 @@ export function SyncView(): React.ReactElement {
           </div>
         )}
 
-        {/* Pending pairings list (initiator side, codes in attesa) */}
-        {state.pendingPairings.length > 0 && (
-          <div
-            style={{
-              marginTop: "8px",
-              padding: "8px 10px",
-              background: "rgba(184,134,11,0.06)",
-              border: "1px dashed var(--amber, #B8860B)",
-              fontSize: "11px",
-              color: "var(--ink-soft)",
-              fontFamily: "var(--font-body)",
-            }}
-          >
-            <strong>Codici pending ({state.pendingPairings.length}):</strong>{" "}
-            {state.pendingPairings.map((p) => p.code).join(", ")}
-            <button
-              type="button"
-              onClick={() => {
-                state.pendingPairings.forEach((p) => void handleCancelPairing(p.code));
-              }}
+        {/* M3a.3 fix post-review (Round 5) — Pending pairings list.
+            MOSTRA SOLO i pending DIVERSI dal generatedCode attuale (per
+            evitare duplicato visivo: il codice attivo è già mostrato nel
+            box "Genera codice" sopra con countdown). Se l'utente ha
+            solo il codice attualmente attivo, la lista è nascosta.
+            Se ha orfani da sessioni precedenti (raro dopo il boot cleanup),
+            la lista li mostra con pulsante "cancella tutti" che usa
+            cleanupAllPendingPairings (singola DELETE più efficiente di N
+            chiamate pairingCancel). */}
+        {(() => {
+          // Filtra via il generatedCode attuale (già mostrato sopra).
+          const orphanPending = state.pendingPairings.filter(
+            (p) => p.code !== state.generatedCode
+          );
+          if (orphanPending.length === 0) return null;
+          return (
+            <div
               style={{
-                marginLeft: "8px",
-                fontFamily: "var(--font-display)",
-                fontSize: "10px",
-                padding: "2px 6px",
-                background: "transparent",
-                color: "var(--red)",
-                border: "1px solid var(--red)",
-                cursor: "pointer",
+                marginTop: "8px",
+                padding: "8px 10px",
+                background: "rgba(184,134,11,0.06)",
+                border: "1px dashed var(--amber, #B8860B)",
+                fontSize: "11px",
+                color: "var(--ink-soft)",
+                fontFamily: "var(--font-body)",
               }}
             >
-              cancella tutti
-            </button>
-          </div>
-        )}
+              <strong>Codici pending orfani ({orphanPending.length}):</strong>{" "}
+              {orphanPending.map((p) => p.code).join(", ")}
+              <button
+                type="button"
+                onClick={async () => {
+                  // M3a.3 fix post-review (Round 5) — Usa cleanupAllPendingPairings
+                  // (singola DELETE) invece di N chiamate pairingCancel separate.
+                  // Più efficiente e atomico.
+                  try {
+                    const n = await api.cleanupAllPendingPairings();
+                    if (n > 0) {
+                      console.info(`[SyncView] cleanupAllPendingPairings (UI): ${n} codice/i rimossi`);
+                    }
+                    // Cleanup anche su Supabase per i codici orfani.
+                    const supabase = getSupabaseClient();
+                    await supabase.from("pairings").delete().in(
+                      "code",
+                      orphanPending.map((p) => p.code)
+                    );
+                    await refresh();
+                  } catch (err) {
+                    setState((s) => ({
+                      ...s,
+                      error: `Cancellazione tutti pending fallita: ${err instanceof Error ? err.message : String(err)}`,
+                    }));
+                  }
+                }}
+                style={{
+                  marginLeft: "8px",
+                  fontFamily: "var(--font-display)",
+                  fontSize: "10px",
+                  padding: "2px 6px",
+                  background: "transparent",
+                  color: "var(--red)",
+                  border: "1px solid var(--red)",
+                  cursor: "pointer",
+                }}
+              >
+                cancella tutti
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* --- M3a.4 — PAIRINGS salvati (canali cifrati) --- */}
