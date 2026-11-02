@@ -5,7 +5,7 @@ import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 // M2.2 — FIX A2 (F12): hook per sync live tra finestre. Quando il backend
 // emette `player-updated` (dopo save_scouting_note/save_auction_data/
 // set_player_status/assign_player), la main window refresha usePlayersStore
@@ -113,7 +113,9 @@ export function App() {
 
           // M3a.3 — SYNC BOOT AL ROOT. Skip in anteprima web (isDesktop=false)
           // e in finestra OS nativa (sync live vive solo nella main window).
-          if (isDesktop) {
+          // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() (rivalutata)
+          // invece di isDesktop (cachedato al boot) per evitare HMR race.
+          if (isTauriRuntime()) {
             try {
               syncCleanup = await bootSync();
             } catch (err) {

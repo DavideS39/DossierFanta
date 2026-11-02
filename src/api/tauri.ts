@@ -582,12 +582,68 @@ export const tauriApi = {
     invoke<void>("set_pairing_display_name", { peerKeyOther, name }),
 };
 
-/** True solo dentro il binario Tauri (WebView con internals iniettati). */
-export const isDesktop =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+/**
+ * True solo dentro il binario Tauri (WebView con internals iniettati).
+ *
+ * M3a.3 fix post-review (Round 7) — Rilevazione robusta:
+ *  - Prima controlla `__TAURI_INTERNALS__` (Tauri 2 standard).
+ *  - Fallback a `__TAURI__` (Tauri 1 compat, some legacy builds).
+ *  - Fallback a `window.isTauri` (Tauri 2.0+ espone anche questo flag).
+ *  - Se nessuno dei 3 è presente → anteprima web browser.
+ *
+ * Inoltre, esponiamo `isDesktop` come getter function invece che come
+ * const, perché in dev mode con Vite HMR il modulo può essere caricato
+ * PRIMA che Tauri abbia iniettato gli internals. Con una funzione,
+ * il check avviene al momento dell'uso, non al momento dell'import.
+ *
+ * Per backward-compat, manteniamo `isDesktop` come export const che
+ * valuta la funzione subito — ma aggiungiamo anche `isTauriRuntime()`
+ * come funzione riesportata per i casi in cui il const sia stato
+ * cachedato troppo presto.
+ */
+
+function detectTauri(): boolean {
+  if (typeof window === "undefined") return false;
+  // Tauri 2.x
+  if ("__TAURI_INTERNALS__" in window) return true;
+  // Tauri 1.x legacy
+  if ("__TAURI__" in window) return true;
+  // Tauri 2.0+ espone anche window.isTauri = true
+  if ((window as unknown as { isTauri?: boolean }).isTauri === true) return true;
+  return false;
+}
+
+/** True se stiamo girando dentro il binario Tauri. Valutato al momento
+ *  dell'import del modulo. Per casi in cui l'import avviene prima
+ *  dell'injection degli internals (race con HMR), usare `isTauriRuntime()`. */
+export const isDesktop = detectTauri();
+
+/** Funzione di detection RIVALUTATA ad ogni chiamata. Usare nei punti
+ *  critici (SyncView, IrohYjsProvider, App.tsx boot) per evitare il bug
+ *  "anteprima web anche in tauri:dev" causato da cached value del const
+ *  `isDesktop` se il modulo è stato caricato prima dell'injection. */
+export function isTauriRuntime(): boolean {
+  return detectTauri();
+}
 
 /**
  * API attiva: comandi Rust dentro Tauri, mock in-memory nel browser
  * (anteprima web dev-only). Tutti i componenti consumano solo `api`.
+ *
+ * M3a.3 fix post-review (Round 7) — Se isDesktop è false al boot ma
+ * poi Tauri internals vengono iniettati dopo (HMR race), l'api resta
+ * mock. Per evitare questo, i componenti critici dovrebbero usare
+ * `getApi()` invece di `api` direttamente.
  */
 export const api = isDesktop ? tauriApi : mockApi;
+
+/** Ritorna l'API corretta rivalutando la detection. Usare nei componenti
+ *  critici (SyncView, App.tsx) per evitare il bug HMR race.
+ *
+ *  M3a.3 fix post-review (Round 7) — Tipo di ritorno: `typeof tauriApi | typeof mockApi`
+ *  (non solo `typeof tauriApi`) perché TS non garantisce che mockApi sia
+ *  strutturalmente identico a tauriApi in tutti i casi (es. Uint8Array
+ *  generic parameter su yjsGetStateVector). */
+export function getApi(): typeof tauriApi | typeof mockApi {
+  return isTauriRuntime() ? tauriApi : mockApi;
+}

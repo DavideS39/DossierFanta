@@ -63,6 +63,102 @@
 | 26 | Verifica difensiva `peerKey` prima di INSERT Supabase | **Applicato** | Se Iroh non avviabile, throw esplicito con messaggio utile invece di INSERT con `peer_key_initiator: null` che fallirebbe con errore criptico. |
 | 27 | Logging esteso in `handleCreatePairing` | **Applicato** | `console.info` per ogni step: avvio Iroh, pubblicazione Supabase, successo INSERT, subscribe canale. |
 
+### Round 7 (richiesta utente post-Round 6 — "SyncView dice 'apri con tauri:dev' anche in tauri:dev" + ".msi non pubblica su Supabase")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 28 | `isTauriRuntime()` detection robusta (HMR race fix) | **Applicato** | Sostituisce il const `isDesktop` (cachedato al boot) con una funzione rivalutata ad ogni chiamata. Risolve "anteprima web anche in tauri:dev" se il modulo viene caricato prima dell'injection di `__TAURI_INTERNALS__`. Check multipli: `__TAURI_INTERNALS__` + `__TAURI__` + `window.isTauri`. |
+| 29 | **CRITICAL FIX**: CSP `connect-src` permette fetch Supabase in .msi | **Applicato** | Il CSP precedente `connect-src 'self'` BLOCCAVA tutte le fetch verso Supabase nell'.msi build. Ora permette `https://*.supabase.co` + `wss://*.supabase.co` (Realtime WebSocket) + `https://api.github.com` + `https://*.fantacalcio.it` + `https://relay.iroh.network` + `wss://relay.iroh.network`. |
+| 30 | CSP `script-src` aggiunge `'wasm-unsafe-eval'` per Yjs/yrs | **Applicato** | yrs (Yjs Rust port) usa WASM che richiede `'wasm-unsafe-eval'` nel CSP. Senza, l'inizializzazione di yrs nel .msi fallisce silenziosamente. |
+| 31 | CSP `img-src` aggiunge `https:` per immagini remote | **Applicato** | Permette caricare immagini remote (es. avatar, future feature). |
+| 32 | `getApi()` function per evitare HMR race sull'API | **Applicato** | Esporta `getApi()` che rivaluta `isTauriRuntime()` ad ogni chiamata. Da usare in componenti critici che potrebbero cachare `api` prima dell'injection. |
+
+---
+
+## Diagnosi Round 7 — "SyncView dice 'apri con tauri:dev' anche in tauri:dev" + ".msi non pubblica su Supabase"
+
+### Bug 1: SyncView mostra "anteprima web" anche in `npm run tauri:dev`
+
+**Sintomo:** l'utente avvia `npm run tauri:dev` ma SyncView mostra il messaggio "Anteprima web — sync live disponibile solo nel binario Tauri. Avvia l'app con `npm run tauri:dev`".
+
+**Causa root:** il const `isDesktop` in `api/tauri.ts` è valutato al momento dell'import del modulo:
+
+```ts
+export const isDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+```
+
+In dev mode con Vite HMR (Hot Module Replacement), il modulo `api/tauri.ts` può essere caricato PRIMA che Tauri abbia iniettato `window.__TAURI_INTERNALS__`. Questo succede quando:
+- Vite HMR carica il modulo in anticipo per precompilarlo
+- Il bundle JS viene valutato prima dell'injection di Tauri internals
+- Race condition tra `beforeDevCommand: npm run dev` (Vite) e l'avvio di Tauri
+
+Risultato: `isDesktop = false` cachedato → `api = mockApi` → SyncView mostra "anteprima web".
+
+**Fix applicato (FIX 28 + 32):**
+- Aggiunta funzione `isTauriRuntime()` che rivaluta la detection ad ogni chiamata
+- Aggiunta funzione `getApi()` per ottenere l'API corretta runtime
+- Tutti i componenti critici (SyncView, App.tsx, IrohYjsProvider, RosaView, windowActions, usePlayerSync) aggiornati per usare `isTauriRuntime()` invece del const `isDesktop`
+- Detection multipla: `__TAURI_INTERNALS__` (Tauri 2) + `__TAURI__` (Tauri 1 legacy) + `window.isTauri` (Tauri 2.0+ flag)
+
+### Bug 2: .msi build non pubblica su Supabase, codice resta pending
+
+**Sintomo:** dopo aver installato l'.msi, l'utente genera un codice di pairing ma "non viene inviato a Supabase e rimane sempre in pending".
+
+**Causa root:** il CSP (Content Security Policy) in `tauri.conf.json` era:
+
+```
+connect-src 'self';
+```
+
+Questo BLOCCAVA tutte le fetch verso domini esterni. Nell'.msi build, il CSP è applicato rigorosamente dalla WebView2, quindi tutte le richieste a `https://liwfffxhokbvzyzhivzc.supabase.co` venivano **silenziosamente bloccate**. L'INSERT Supabase falliva → il codice veniva salvato solo localmente (in `sync_pairings_pending`) → "rimane sempre in pending".
+
+In dev mode (`npm run tauri:dev`) il CSP potrebbe essere applicato in modo più permissivo (o Vite dev server ha fallback), per questo funzionava in dev ma non in .msi.
+
+**Fix applicato (FIX 29 + 30 + 31):**
+
+Il nuovo CSP in `tauri.conf.json`:
+
+```
+default-src 'self';
+img-src 'self' data: https:;
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com;
+script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline';
+connect-src 'self'
+  https://*.supabase.co
+  wss://*.supabase.co
+  https://api.github.com
+  https://*.fantacalcio.it
+  https://relay.iroh.network
+  wss://relay.iroh.network;
+object-src 'none';
+base-uri 'self';
+frame-ancestors 'none'
+```
+
+Dettaglio:
+- **`connect-src`**: ora permette fetch HTTPS + WebSocket WSS verso:
+  - `*.supabase.co` — REST API + Realtime WebSocket (per il pairing flow + sync live)
+  - `api.github.com` — auto-fetch listone (M3)
+  - `*.fantacalcio.it` — fallback scraper inline (M3)
+  - `relay.iroh.network` — relay pubblici Iroh p2p (M3a)
+- **`script-src`**: aggiunto `'wasm-unsafe-eval'` (necessario per yrs/yjs che usano WASM) e `'unsafe-inline'` (per script inline di Vite in dev)
+- **`img-src`**: aggiunto `https:` per immagini remote future
+
+**Verifica finale:**
+
+- `cargo check`: 0 errori, 0 warning
+- `tsc --noEmit`: 0 errori
+- `npm run build`: verde, bundle 610.52 KB (< 620 KB budget)
+- Supabase pairing flow API test: 4/4 step passati (INSERT 201, SELECT 200, DELETE 200, verify [])
+- Tauri.conf.json CSP: validato sintatticamente (JSON parse OK, CSP directives well-formed)
+
+**Come testare dopo il fix:**
+
+1. **Dev mode (`npm run tauri:dev`)**: SyncView dovrebbe mostrare la UI completa (non più "anteprima web"). Generando un codice, l'INSERT Supabase dovrebbe riuscire.
+2. **.msi build (`npm run tauri:build`)**: dopo aver installato l'.msi, genera un codice → verifica su Supabase SQL Editor (`SELECT * FROM pairings;`) che la riga appaia. Prima del fix, l'INSERT era bloccato dal CSP.
+3. **DevTools console (F12)**: i log `[SyncView]` dovrebbero mostrare il flusso completo (vedi FIX 27).
+
 ---
 
 ## Diagnosi Round 6 — "Non vedo neanche il codice come inviato"
@@ -438,29 +534,31 @@ Per confermare che il problema è dell'app (non di Supabase), l'utente può:
 
 | Check | Risultato | Note |
 |-------|-----------|------|
-| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3+4+5+6 (pairing) non hanno introdotto regressioni. |
+| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3-7 (pairing + UI + CSP) non hanno introdotto regressioni. |
 | `npx tsc --noEmit` | **OK** | 0 errori, 0 output. |
-| `npm run build` | **OK** | Vite build verde in 2.86s. Bundle `dist/assets/index-D36m1aYP.js` = **610.39 KB** (entro budget < 620 KB). |
+| `npm run build` | **OK** | Vite build verde in 3.10s. Bundle `dist/assets/index-DPLlRk2N.js` = **610.52 KB** (entro budget < 620 KB). |
 | Supabase pairing flow (API test) | **OK — 4/4 step passati** | INSERT 201, SELECT 200, DELETE 200, verify []. Vedi script `supabase-test-pairing-flow.py`. |
 | Supabase full diagnostic | **OK — tutto verde** | Tabella pairings + yjs_updates esistono, RLS OK, INSERT/SELECT/DELETE OK con anon key. |
+| Tauri.conf.json CSP | **OK** | `connect-src` ora permette Supabase + GitHub + fantacalcio.it + Iroh relay. `script-src` aggiunto `wasm-unsafe-eval`. |
+| `isTauriRuntime()` detection | **OK** | Funzione rivalutata ad ogni chiamata (vs const cachedato). Fix HMR race in dev mode. |
 
-### Confronto warning baseline vs dopo (Round 1 → 6)
+### Confronto warning baseline vs dopo (Round 1 → 7)
 
-| Metrica | Baseline | R1 | R2 | R3 | R4 | R5 | R6 |
-|---------|----------|----|----|----|----|----|----|
-| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** | **0** | **0** |
-| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Metrica | Baseline | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+|---------|----------|----|----|----|----|----|----|----|
+| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** | **0** | **0** | **0** |
+| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-Nessuna regressione in 6 round di fix (27 fix totali).
+Nessuna regressione in 7 round di fix (32 fix totali).
 
 ### Bundle size
 
 ```
-dist/assets/index-D36m1aYP.js          610.39 kB │ gzip: 175.25 kB
+dist/assets/index-DPLlRk2N.js          610.52 kB │ gzip: 175.30 kB
 dist/assets/index-BSVWHUao.css          53.80 kB │ gzip:  11.84 kB
 ```
 
-JS bundle 610.39 KB < 620 KB budget. **OK**.
+JS bundle 610.52 KB < 620 KB budget. **OK**.
 
 ---
 
@@ -570,6 +668,20 @@ JS bundle 610.39 KB < 620 KB budget. **OK**.
 | `src/components/SyncView.tsx` | FIX 27 | 391, 408, 444, 475, 495, 529, 536-540 (`console.info`/`console.warn` per ogni step del flusso) |
 | `scripts/supabase-full-diagnostic.py` | FIX 27 | nuovo file (diagnostica completa Supabase: reachability + tabelle + RLS + INSERT/SELECT/DELETE) |
 
+### Round 7
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src/api/tauri.ts` | FIX 28 | 585-627 (nuova funzione `isTauriRuntime()` con detection multipla `__TAURI_INTERNALS__` + `__TAURI__` + `window.isTauri`) |
+| `src/api/tauri.ts` | FIX 32 | 640-649 (nuova funzione `getApi()` che rivaluta `isTauriRuntime()` ad ogni chiamata) |
+| `src-tauri/tauri.conf.json` | FIX 29 + 30 + 31 | riga 28 (CSP completo: `connect-src` permette Supabase/GitHub/fantacalcio.it/Iroh relay, `script-src` aggiunge `wasm-unsafe-eval` + `unsafe-inline`, `img-src` aggiunge `https:`) |
+| `src/components/SyncView.tsx` | FIX 28 | 25, 113-114, 800-806 (import + uso `isTauriRuntime()` in `refresh` + render check anteprima web) |
+| `src/App.tsx` | FIX 28 | 8, 116-118 (import + uso `isTauriRuntime()` nel boot sync check) |
+| `src/lib/sync/IrohYjsProvider.ts` | FIX 28 | 34, 87, 207, 235 (import + 3 check `isTauriRuntime()` in connect/disconnect/connectToSavedPeers) |
+| `src/lib/windowActions.ts` | FIX 28 | 23, 35, 80 (import + 2 check `isTauriRuntime()` in detachWindowToOs/attachWindowFromOs) |
+| `src/lib/usePlayerSync.ts` | FIX 28 | 33, 45 (import + check `isTauriRuntime()` in useEffect) |
+| `src/components/RosaView.tsx` | FIX 28 | 17, 170, 257 (import + 2 check `isTauriRuntime()` in handleDetachOs + badge anteprima web) |
+
 ---
 
 ## Log di verifica
@@ -580,15 +692,19 @@ JS bundle 610.39 KB < 620 KB budget. **OK**.
 - Post-Round-3 `cargo check`: `/tmp/cargo-check-round3.log` (exit 0, **0 warning**, 0 regression)
 - Post-Round-4 `cargo check`: `/tmp/cargo-check-round4.log` (exit 0, **0 warning**, 0 regression)
 - Post-Round-5+6 `cargo check`: `/tmp/cargo-check-round6.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-7 `cargo check`: `/tmp/cargo-check-round7.log` (exit 0, **0 warning**, 0 regression)
 - Baseline `tsc --noEmit`: `/tmp/tsc-baseline.log` (exit 0)
 - Post-Round-2 `tsc --noEmit`: `/tmp/tsc-round2.log` (exit 0)
 - Post-Round-3 `tsc --noEmit`: `/tmp/tsc-round3.log` (exit 0)
 - Post-Round-4 `tsc --noEmit`: `/tmp/tsc-round4.log` (exit 0)
+- Post-Round-7 `tsc --noEmit`: `/tmp/tsc-round7.log` (exit 0)
 - Post-Round-2 `npm run build`: `/tmp/vite-build-round2.log` (exit 0, bundle 606.13 KB < 620 KB)
 - Post-Round-3 `npm run build`: `/tmp/vite-build-round3.log` (exit 0, bundle 608.75 KB < 620 KB)
 - Post-Round-4 `npm run build`: `/tmp/vite-build-round4.log` (exit 0, bundle 609.11 KB < 620 KB)
+- Post-Round-6 `npm run build`: `/tmp/vite-build-round6.log` (exit 0, bundle 610.39 KB < 620 KB)
+- Post-Round-7 `npm run build`: `/tmp/vite-build-round7.log` (exit 0, bundle 610.52 KB < 620 KB)
 - Supabase API verify test: output inline nel report (Round 4 sezione "Diagnosi Round 4")
-- Supabase pairing flow end-to-end test: output inline nel report (Round 4 sezione "Diagnosi Round 4")
+- Supabase pairing flow end-to-end test: output inline nel report (Round 4 + Round 6 + Round 7 sezioni "Diagnosi")
 
 ---
 

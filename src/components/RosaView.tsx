@@ -14,7 +14,7 @@ import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 import type { CreatePlayerInput, Player, Status, UpdatePlayerInput } from "@/types/player";
 
 type FormState =
@@ -166,7 +166,8 @@ export function RosaView() {
   const handleDetachOs = async (id: string) => {
     // v2.3.2 — in anteprima web (mock) le finestre OS non esistono: toast
     // informativo invece di un errore Tauri.
-    if (!isDesktop) {
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (!isTauriRuntime()) {
       setToast("Le finestre OS native sono disponibili solo nell'app desktop. In anteprima web usa il Window Manager in-app (click sulla card).");
       return;
     }
@@ -253,7 +254,7 @@ export function RosaView() {
             </h1>
             <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido · auto-fetch</p>
           </div>
-          {!isDesktop && (
+          {!isTauriRuntime() && (
             <span className="df-mockbadge" title="Stai vedendo l'app nel browser con dati dimostrativi in-memory. Nell'app desktop i dati vivono in SQLite locale.">
               anteprima web · mock
             </span>

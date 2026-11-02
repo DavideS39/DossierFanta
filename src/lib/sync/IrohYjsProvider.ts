@@ -31,8 +31,7 @@
 
 import * as Y from "yjs";
 import type { SyncProvider } from "./SyncProvider";
-import { api } from "@/api/tauri";
-import { isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 import type { SyncUpdateReceivedEvent } from "@/types/sync";
 
 /**
@@ -85,7 +84,8 @@ export class IrohYjsProvider implements SyncProvider {
 
   async connect(): Promise<void> {
     if (this.connected) return; // idempotente
-    if (!isDesktop) {
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (!isTauriRuntime()) {
       console.info("[IrohYjsProvider] anteprima web — skip Iroh start");
       return;
     }
@@ -203,7 +203,8 @@ export class IrohYjsProvider implements SyncProvider {
       this.ydoc.off("update", this.ydocUpdateHandler);
       this.ydocUpdateHandler = null;
     }
-    if (isDesktop) {
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (isTauriRuntime()) {
       try {
         await api.irohStopNode();
       } catch (err) {
@@ -231,7 +232,8 @@ export class IrohYjsProvider implements SyncProvider {
    * traversal timeout), logga warning e continua con il prossimo.
    */
   async connectToSavedPeers(peerKeys: string[]): Promise<void> {
-    if (!isDesktop) return;
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (!isTauriRuntime()) return;
     for (const key of peerKeys) {
       try {
         const connected = await api.irohConnectByPeerKeyV2(key);

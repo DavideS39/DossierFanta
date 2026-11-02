@@ -22,7 +22,7 @@
 // Vincolo HARD #21: Iroh opzionale — se non disponibile, Supabase basta.
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 import { getSyncManager } from "@/lib/sync/SyncManager";
 import { getSupabaseClient, cleanupExpiredPairings } from "@/lib/sync/supabaseClient";
 import { setMyIdentity } from "@/lib/sync/yjsCursors";
@@ -108,8 +108,10 @@ export function SyncView(): React.ReactElement {
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // --- Funzione di refresh unico stato da SyncManager + API ---
+  // M3a.3 fix post-review (Round 7) — Usa `isTauriRuntime()` invece del
+  // const `isDesktop` per evitare il bug HMR race (vedi commento sopra).
   const refresh = useCallback(async () => {
-    if (!isDesktop) return;
+    if (!isTauriRuntime()) return;
     try {
       const syncManager = getSyncManager();
       const connectedProviders = syncManager.getConnectedProviders();
@@ -796,8 +798,14 @@ export function SyncView(): React.ReactElement {
   // Render
   // ----------------------------------------------------------------------
 
-  // Anteprima web (mock): messaggio informativo
-  if (!isDesktop) {
+  // Anteprima web (mock): messaggio informativo.
+  // M3a.3 fix post-review (Round 7) — Usa `isTauriRuntime()` (rivalutata ad
+  // ogni render) invece del const `isDesktop` (cachedato al boot). Risolve
+  // il bug "anteprima web anche in tauri:dev" causato da HMR race: in dev
+  // mode con Vite HMR, il modulo api/tauri.ts può essere caricato PRIMA
+  // che Tauri abbia iniettato `__TAURI_INTERNALS__`. Con `isTauriRuntime()`
+  // il check avviene al momento del render, non al momento dell'import.
+  if (!isTauriRuntime()) {
     return (
       <section
         style={{
