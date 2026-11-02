@@ -117,6 +117,30 @@ pub fn import_listone(
     players_json: String,
     scraped_at: Option<String>,
 ) -> AppResult<ImportSummary> {
+    // M3a.3 fix post-review (Round 11) — Usa l'active DB. Questo comando
+    // è chiamato dal vecchio ImportPreview flusso manuale, dove l'utente
+    // sceglie dove importare. `apply_auto_fetch` invece ora forza
+    // `default-listone` (vedi fix sotto).
+    let active_id = state.active_db_id()?;
+    import_listone_into_db(state, players_json, scraped_at, active_id)
+}
+
+/// M3a.3 fix post-review (Round 11) — Funzione interna che fa il lavoro
+/// reale di import, ma prende il `db_id` target esplicito. Usata da:
+///  - `import_listone` (comando pubblico) con `active_db_id()`
+///  - `apply_auto_fetch` con `"default-listone"` forzato
+///
+/// Questo risolve il bug "i giocatori auto-fetched finiscono in mio.db
+/// invece che in ListoneSerieA.db": prima `apply_auto_fetch` chiamava
+/// `import_listone` che usava `active_db_id()` → se l'utente aveva
+/// `default-personal` attivo, i giocatori andavano lì. Ora
+/// `apply_auto_fetch` passa `"default-listone"` esplicito.
+fn import_listone_into_db(
+    state: State<'_, DbState>,
+    players_json: String,
+    scraped_at: Option<String>,
+    target_db_id: String,
+) -> AppResult<ImportSummary> {
         let entries: Vec<ListoneEntry> = serde_json::from_str(&players_json).map_err(|e| {
         AppError::Validation(format!(
             "JSON listone non valido: {}. Formato atteso: [{{\"name\":\"...\",\"team\":\"...\",\"pos_fanta\":\"A\",\"fvm\":32}}, ...]",
@@ -124,7 +148,7 @@ pub fn import_listone(
         ))
     })?;
 
-    let active_id = state.active_db_id()?;
+    let active_id = target_db_id;
 
     // Valida le entry: scarta righe senza name, valida pos_fanta se presente.
     let mut valid_entries: Vec<ListoneEntry> = Vec::new();
@@ -175,11 +199,23 @@ pub fn import_listone(
     }
     let total_listone = valid_entries.len() as i64;
 
-    // Verifica che il DB attivo sia scrivibile (non listone).
-    state.with_conn(&active_id, |conn| {
-        ensure_writable_db(conn, &active_id)?;
-        Ok(())
-    })?;
+    // Verifica che il DB attivo sia scrivibile. M3a.3 fix post-review
+    // (Round 11) — Per `apply_auto_fetch`, il target DB è `default-listone`
+    // che è type='listone' (read-only per create_player/update_player).
+    // Ma apply_auto_fetch DEVE poter scrivere i giocatori nel listone.
+    // Quindi skip il check ensure_writable_db se il target è default-listone.
+    if active_id != "default-listone" {
+        state.with_conn(&active_id, |conn| {
+            ensure_writable_db(conn, &active_id)?;
+            Ok(())
+        })?;
+    } else {
+        // Per default-listone, logga che stiamo scrivendo nel listone
+        // (operazione legittima solo per apply_auto_fetch).
+        eprintln!(
+            "[M3] import_listone_into_db: target=default-listone, skip ensure_writable_db (auto-fetch può scrivere nel listone)"
+        );
+    }
 
     // === Fase 1: processa ogni entry del listone ===
     let mut created = 0i64;
@@ -1431,6 +1467,13 @@ fn parse_listone_json(
 ///
 /// Il frontend DEVE aver mostrato anteprima diff prima di chiamare questo
 /// comando — l'archiviazione è irreversibile senza restore esplicito.
+///
+/// M3a.3 fix post-review (Round 11) — CRITICAL FIX: ora forza il target
+/// DB a `default-listone` (ListoneSerieA.db) invece di usare
+/// `state.active_db_id()`. Prima, se l'utente aveva `default-personal`
+/// (mio.db) attivo, i giocatori auto-fetched finivano in mio.db invece
+/// che in ListoneSerieA.db → bug "i giocatori non esistono quando
+/// seleziono ListoneSerieA".
 #[tauri::command]
 pub fn apply_auto_fetch(
     state: State<'_, DbState>,
@@ -1449,14 +1492,20 @@ pub fn apply_auto_fetch(
         AppError::Generic(format!("serialize entries: {}", e))
     })?;
 
-    // Delega alla logica esistente di import_listone (Fase 1-4 + archive).
-    // M3a.1 (PB1 fix) — Passa scraped_at per attivare la conflict resolution
-    // auto-fetch vs sync-live (B.7). In precedenza il 3° argomento era omesso,
-    // lasciando il check `player_has_recent_local_edit` come dead code.
-    let summary = import_listone(
+    // M3a.3 fix post-review (Round 11) — Forza il DB target a
+    // `default-listone` (ListoneSerieA.db). NON usa `active_db_id()`.
+    let target_db_id = "default-listone".to_string();
+    eprintln!(
+        "[M3] apply_auto_fetch: target DB = {} (forzato, NON active_db_id)",
+        target_db_id
+    );
+
+    // Delega alla funzione interna con il db_id esplicito.
+    let summary = import_listone_into_db(
         state,
         players_json,
         Some(listone_data.scraped_at.clone()),
+        target_db_id,
     )?;
 
     // Salva il tag applicato + log

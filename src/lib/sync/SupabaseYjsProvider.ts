@@ -172,10 +172,6 @@ export class SupabaseYjsProvider implements SyncProvider {
     });
 
     // M3a.3 fix post-review (Round 11) — Listener per inviti DB condiviso.
-    // Quando un peer vuole condividere un DB, invia un broadcast con
-    // event="db_invitation" + payload={kind, dbId, dbName, peerKeyInitiator}.
-    // Questo listener emette un evento custom che il SyncView (o App.tsx)
-    // ascolta per mostrare il dialog di accettazione.
     channel.on("broadcast", { event: "db_invitation" }, ({ payload }) => {
       try {
         const p = payload as { kind?: string; dbId?: string; dbName?: string; peerKeyInitiator?: string };
@@ -186,8 +182,6 @@ export class SupabaseYjsProvider implements SyncProvider {
         console.info(
           `[SupabaseYjsProvider] db_invitation ricevuto da ${p.peerKeyInitiator?.slice(0, 16) || "?"}...: dbId=${p.dbId}, dbName=${p.dbName}`
         );
-        // Emette evento custom sul documento Tauri per farlo arrivare al frontend.
-        // Usiamo un dispatch CustomEvent sul window per semplicità.
         if (typeof window !== "undefined") {
           window.dispatchEvent(
             new CustomEvent("dossierfanta-db-invitation", {
@@ -278,13 +272,7 @@ export class SupabaseYjsProvider implements SyncProvider {
   }
 
   /**
-   * M3a.3 fix post-review (Round 11) — Invia un invito DB condiviso al peer
-   * associato a `peerKeyOther`. Il peer ricevente mostrerà un dialog di
-   * accettazione. Se accetta, chiamerà `api.acceptSharedDatabaseInvitation`.
-   *
-   * Usa il canale Realtime del pairing esistente (event="db_invitation").
-   * NON cifrato (il payload contiene solo dbId + dbName + peerKeyInitiator,
-   * nessun dato sensibile).
+   * M3a.3 fix post-review (Round 11) — Invia un invito DB condiviso al peer.
    */
   async sendDbInvitation(
     peerKeyOther: string,
@@ -295,7 +283,7 @@ export class SupabaseYjsProvider implements SyncProvider {
     const entry = this.channels.get(peerKeyOther);
     if (!entry) {
       console.warn(
-        `[SupabaseYjsProvider] sendDbInvitation: nessun canale per peer ${peerKeyOther.slice(0, 16)}... — pairing non attivo?`
+        `[SupabaseYjsProvider] sendDbInvitation: nessun canale per peer ${peerKeyOther.slice(0, 16)}...`
       );
       return false;
     }
@@ -303,22 +291,14 @@ export class SupabaseYjsProvider implements SyncProvider {
       entry.channel.send({
         type: "broadcast",
         event: "db_invitation",
-        payload: {
-          kind: "db_invitation",
-          dbId,
-          dbName,
-          peerKeyInitiator,
-        },
+        payload: { kind: "db_invitation", dbId, dbName, peerKeyInitiator },
       });
       console.info(
-        `[SupabaseYjsProvider] sendDbInvitation: inviato a ${peerKeyOther.slice(0, 16)}... dbId=${dbId} dbName=${dbName}`
+        `[SupabaseYjsProvider] sendDbInvitation: inviato a ${peerKeyOther.slice(0, 16)}...`
       );
       return true;
     } catch (err) {
-      console.error(
-        `[SupabaseYjsProvider] sendDbInvitation fallito per peer ${peerKeyOther.slice(0, 16)}...:`,
-        err
-      );
+      console.error(`[SupabaseYjsProvider] sendDbInvitation fallito:`, err);
       return false;
     }
   }

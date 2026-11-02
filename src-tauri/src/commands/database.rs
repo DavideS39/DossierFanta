@@ -440,49 +440,23 @@ pub fn get_active_database(state: State<'_, DbState>) -> AppResult<DatabaseMeta>
 // M3a.3 fix post-review (Round 11) — DB condivisi con invito cross-peer
 // ----------------------------------------------------------------------
 
-/// Output di `create_shared_database`. Contiene il `db_id` UUID generato
-/// + il `peer_key_other` con cui condividere. Il frontend usa questi dati
-/// per inviare un messaggio "db_invitation" sul canale Realtime del pairing.
+/// Output di `create_shared_database`.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedDatabaseInvitation {
-    /// UUID del DB appena creato (stesso su entrambi i peer dopo accept).
     pub db_id: String,
-    /// Nome del DB (es. "ioemarco.db").
     pub db_name: String,
-    /// peer_key del peer con cui condividere (per il frontend, per sapere
-    /// su quale canale Realtime inviare l'invito).
     pub peer_key_other: String,
-    /// peer_key dell'initiator (me) — incluso nell'invito per info.
     pub peer_key_initiator: String,
 }
 
 /// Crea un nuovo database CONDIVISO e prepara l'invito per il peer.
-///
-/// Flusso:
-///  1. Genera UUID univoco per il DB
-///  2. INSERT in `databases` con type='shared', owner='me'
-///  3. Apre una nuova Connection allo stesso file SQLite
-///  4. Ritorna `SharedDatabaseInvitation` con db_id + db_name + peer_key_other
-///
-/// Il frontend poi:
-///  - Usa il canale Realtime del pairing con `peer_key_other` per inviare
-///    un messaggio "db_invitation" con {db_id, db_name, peer_key_initiator}
-///  - L'altro peer riceve l'invito → mostra dialog → se accetta,
-///    chiama `accept_shared_database_invitation(db_id, db_name)`
 #[tauri::command]
 pub fn create_shared_database(
     state: State<'_, DbState>,
     name: String,
     peer_key_other: String,
 ) -> AppResult<SharedDatabaseInvitation> {
-    eprintln!(
-        "[M3a.3] create_shared_database: name={}, peer_key_other={}...",
-        name,
-        peer_key_other.get(..16).unwrap_or(&peer_key_other)
-    );
-
-    // Normalizza il nome (stessa logica di create_database).
     let name = {
         let trimmed = name.trim();
         if trimmed.is_empty() {
@@ -496,28 +470,17 @@ pub fn create_shared_database(
             format!("{}.db", trimmed)
         }
     };
-
     if peer_key_other.trim().is_empty() {
         return Err(AppError::Validation(
             "peer_key_other è obbligatorio per creare un DB condiviso".to_string(),
         ));
     }
-
     let id = db::new_uuid();
-    let owner = "me";
-
-    // Path del file SQLite (cached in DbState.db_path).
     let db_path = {
-        let p = state
-            .db_path
-            .lock()
-            .map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
+        let p = state.db_path.lock().map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
         p.clone()
     };
-
-    // INSERT nella tabella `databases`.
     let _meta = state.with_conn("default-personal", |conn| {
-        // Check name unique (case-insensitive)
         let exists: bool = conn
             .query_row(
                 "SELECT 1 FROM databases WHERE LOWER(name) = LOWER(?1) LIMIT 1",
@@ -526,59 +489,31 @@ pub fn create_shared_database(
             )
             .unwrap_or(false);
         if exists {
-            return Err(AppError::Validation(format!(
-                "Esiste già un database di nome {:?}",
-                name
-            )));
+            return Err(AppError::Validation(format!("Esiste già un database di nome {:?}", name)));
         }
-
         conn.execute(
             r#"INSERT INTO databases (id, name, type, owner, schema_ver)
-               VALUES (?1, ?2, 'shared', ?3, 3)"#,
-            params![&id, &name, owner],
+               VALUES (?1, ?2, 'shared', 'me', 3)"#,
+            params![&id, &name],
         )?;
-
-        let meta = conn.query_row(
-            &format!("{} WHERE id = ?1", DB_META_SELECT),
-            params![&id],
-            row_to_meta,
-        )?;
-        Ok(meta)
+        Ok::<_, AppError>(())
     })?;
-
-    // Apri una nuova Connection allo stesso file e inseriscila nella mappa.
     let new_conn = db::open_db_file(&db_path)?;
     {
-        let mut map = state
-            .connections
-            .lock()
-            .map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
+        let mut map = state.connections.lock().map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
         map.insert(id.clone(), new_conn);
     }
-
-    // Recupera la mia peer_key per includerla nell'invito.
     let my_peer_key = state.with_conn("default-personal", |conn| {
         let table_exists: bool = conn
             .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_identity' LIMIT 1")?
             .exists([])?;
-        if !table_exists {
-            return Ok(String::new()); // sync_identity non esiste
-        }
+        if !table_exists { return Ok(String::new()); }
         let pk: String = conn
-            .query_row(
-                "SELECT peer_key FROM sync_identity WHERE id = 1 LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT peer_key FROM sync_identity WHERE id = 1 LIMIT 1", [], |r| r.get(0))
             .unwrap_or_default();
         Ok(pk)
     })?;
-
-    eprintln!(
-        "[M3a.3] create_shared_database: ✓ DB creato id={}, name={}",
-        id, name
-    );
-
+    log::info!("[M3a.3] create_shared_database: ✓ DB creato id={}, name={}", id, name);
     Ok(SharedDatabaseInvitation {
         db_id: id,
         db_name: name,
@@ -587,114 +522,58 @@ pub fn create_shared_database(
     })
 }
 
-/// Accetta un invito a un DB condiviso. Crea lo stesso DB (stesso UUID)
-/// sul peer ricevente, così le modifiche via Yjs sync si propagano
-/// correttamente (Yjs usa il `db_id` come chiave nelle Y.Map).
-///
-/// Chiamato dal frontend quando l'utente clicca "Accetta" nel dialog
-/// di invito DB condiviso.
+/// Accetta un invito a un DB condiviso. Crea lo stesso DB (stesso UUID).
 #[tauri::command]
 pub fn accept_shared_database_invitation(
     state: State<'_, DbState>,
     db_id: String,
     db_name: String,
 ) -> AppResult<DatabaseMeta> {
-    eprintln!(
-        "[M3a.3] accept_shared_database_invitation: db_id={}, db_name={}",
-        db_id, db_name
-    );
-
     if db_id.trim().is_empty() {
         return Err(AppError::Validation("db_id è obbligatorio".to_string()));
     }
     if db_name.trim().is_empty() {
         return Err(AppError::Validation("db_name è obbligatorio".to_string()));
     }
-
-    // Path del file SQLite.
     let db_path = {
-        let p = state
-            .db_path
-            .lock()
-            .map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
+        let p = state.db_path.lock().map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
         p.clone()
     };
-
-    // INSERT nella tabella `databases` con lo STESSO UUID del peer initiator.
-    // type='shared', owner='peer' (marker: questo DB è stato creato da un invito).
     let meta = state.with_conn("default-personal", |conn| {
-        // Check se il DB esiste già (idempotente — se l'utente accetta 2 volte).
         let exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM databases WHERE id = ?1 LIMIT 1",
-                params![&db_id],
-                |_| Ok(true),
-            )
+            .query_row("SELECT 1 FROM databases WHERE id = ?1 LIMIT 1", params![&db_id], |_| Ok(true))
             .unwrap_or(false);
         if exists {
-            // Già esiste — ritorna il meta esistente senza re-insert.
-            let meta = conn.query_row(
-                &format!("{} WHERE id = ?1", DB_META_SELECT),
-                params![&db_id],
-                row_to_meta,
-            )?;
+            let meta = conn.query_row(&format!("{} WHERE id = ?1", DB_META_SELECT), params![&db_id], row_to_meta)?;
             return Ok(meta);
         }
-
-        // Check name unique (case-insensitive) — se esiste già un DB con
-        // questo nome, aggiungi suffisso "_shared" per evitare conflitto.
         let mut final_name = db_name.clone();
         let mut suffix = 1;
         loop {
             let name_exists: bool = conn
-                .query_row(
-                    "SELECT 1 FROM databases WHERE LOWER(name) = LOWER(?1) LIMIT 1",
-                    params![&final_name],
-                    |_| Ok(true),
-                )
+                .query_row("SELECT 1 FROM databases WHERE LOWER(name) = LOWER(?1) LIMIT 1", params![&final_name], |_| Ok(true))
                 .unwrap_or(false);
-            if !name_exists {
-                break;
-            }
+            if !name_exists { break; }
             suffix += 1;
             final_name = format!("{}_{}", db_name.trim_end_matches(".db"), suffix);
             if suffix > 100 {
-                return Err(AppError::Generic(format!(
-                    "Impossibile trovare un nome univoco per il DB condiviso (tentativo {})",
-                    suffix
-                )));
+                return Err(AppError::Generic(format!("Impossibile trovare un nome univoco (tentativo {})", suffix)));
             }
         }
-
         conn.execute(
             r#"INSERT INTO databases (id, name, type, owner, schema_ver)
                VALUES (?1, ?2, 'shared', 'peer', 3)"#,
             params![&db_id, &final_name],
         )?;
-
-        let meta = conn.query_row(
-            &format!("{} WHERE id = ?1", DB_META_SELECT),
-            params![&db_id],
-            row_to_meta,
-        )?;
+        let meta = conn.query_row(&format!("{} WHERE id = ?1", DB_META_SELECT), params![&db_id], row_to_meta)?;
         Ok(meta)
     })?;
-
-    // Apri una nuova Connection.
     let new_conn = db::open_db_file(&db_path)?;
     {
-        let mut map = state
-            .connections
-            .lock()
-            .map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
+        let mut map = state.connections.lock().map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
         map.insert(db_id.clone(), new_conn);
     }
-
-    eprintln!(
-        "[M3a.3] accept_shared_database_invitation: ✓ DB accettato id={}, name={}",
-        meta.id, meta.name
-    );
-
+    log::info!("[M3a.3] accept_shared_database_invitation: ✓ DB accettato id={}, name={}", meta.id, meta.name);
     Ok(meta)
 }
 

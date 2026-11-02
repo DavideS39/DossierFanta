@@ -28,6 +28,7 @@ import { ImportPreview as ImportPreviewModal } from "@/components/ImportPreview"
 // M3a.3 fix post-review (Round 11) — Per inviare inviti DB condiviso via Supabase Realtime
 import { getSyncManager } from "@/lib/sync/SyncManager";
 import { SupabaseYjsProvider } from "@/lib/sync/SupabaseYjsProvider";
+import type { Pairing } from "@/types/sync";
 
 interface Props {
   onClose: () => void;
@@ -73,6 +74,94 @@ export function DatabaseManager({ onClose }: Props) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // M3a.3 fix post-review (Round 11) — Per DB condiviso nel form "Crea nuovo database".
+  // Quando l'utente seleziona type="shared" nel dropdown, appare un menu a tendina
+  // con i peer pairati (con nome). L'utente seleziona con chi condividere.
+  const [pairings, setPairings] = useState<Pairing[]>([]);
+  const [selectedPeerKey, setSelectedPeerKey] = useState<string>("");
+  // Stato per il dialog di accettazione invito DB condiviso (listener globale).
+  const [pendingInvitation, setPendingInvitation] = useState<{
+    dbId: string;
+    dbName: string;
+    peerKeyInitiator: string;
+  } | null>(null);
+  const [accepting, setAccepting] = useState(false);
+
+  // M3a.3 fix post-review (Round 11) — Carica i pairings al boot + quando
+  // si apre il form "Crea nuovo database" con type=selected. Usati per
+  // popolare il dropdown dei peer conosciuti.
+  useEffect(() => {
+    let cancelled = false;
+    const loadPairings = async () => {
+      try {
+        const list = await api.listPairings();
+        if (!cancelled) {
+          setPairings(list);
+          // Seleziona il primo peer di default se non già selezionato
+          if (list.length > 0 && !selectedPeerKey) {
+            setSelectedPeerKey(list[0].peerKeyOther);
+          }
+        }
+      } catch (err) {
+        console.warn("[DatabaseManager] listPairings fallito:", err);
+      }
+    };
+    void loadPairings();
+    const timer = setInterval(() => void loadPairings(), 10000); // refresh ogni 10s
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listener per inviti DB condiviso in arrivo (CustomEvent dispatch dal SupabaseYjsProvider).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        kind: string;
+        dbId: string;
+        dbName: string;
+        peerKeyInitiator: string;
+      };
+      if (detail?.kind === "db_invitation" && detail.dbId && detail.dbName) {
+        console.info(
+          `[DatabaseManager] Invito DB condiviso ricevuto: dbId=${detail.dbId}, dbName=${detail.dbName}, da=${detail.peerKeyInitiator.slice(0, 16)}...`
+        );
+        setPendingInvitation({
+          dbId: detail.dbId,
+          dbName: detail.dbName,
+          peerKeyInitiator: detail.peerKeyInitiator,
+        });
+      }
+    };
+    window.addEventListener("dossierfanta-db-invitation", handler);
+    return () => window.removeEventListener("dossierfanta-db-invitation", handler);
+  }, []);
+
+  // Handler per accettare invito DB condiviso.
+  const handleAcceptInvitation = async () => {
+    if (!pendingInvitation) return;
+    setAccepting(true);
+    setError(null);
+    try {
+      const meta = await api.acceptSharedDatabaseInvitation(
+        pendingInvitation.dbId,
+        pendingInvitation.dbName
+      );
+      console.info(
+        `[DatabaseManager] ✓ DB condiviso accettato: id=${meta.id}, name=${meta.name}`
+      );
+      setPendingInvitation(null);
+      await refresh();
+      await refreshMeta();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const [deleteTarget, setDeleteTarget] = useState<DatabaseMeta | null>(null);
   const [deleteChecked, setDeleteChecked] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -81,20 +170,6 @@ export function DatabaseManager({ onClose }: Props) {
   // ListoneInlineCard (stessa interfaccia di prima, ma in modale invece di
   // inline espansa sotto la riga — più pulito e compatto).
   const [listoneModalOpen, setListoneModalOpen] = useState(false);
-
-  // M3a.3 fix post-review (Round 11) — DB condiviso con invito.
-  // Stato per il modal di creazione DB condiviso.
-  const [showShareCreate, setShowShareCreate] = useState(false);
-  const [shareName, setShareName] = useState("");
-  const [sharePeerKey, setSharePeerKey] = useState("");
-  const [sharing, setSharing] = useState(false);
-  // Stato per il dialog di accettazione invito DB condiviso (listener globale).
-  const [pendingInvitation, setPendingInvitation] = useState<{
-    dbId: string;
-    dbName: string;
-    peerKeyInitiator: string;
-  } | null>(null);
-  const [accepting, setAccepting] = useState(false);
 
   // M2.1 B6: stato del banner dismissibile
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(loadBannerDismissed());
@@ -109,6 +184,68 @@ export function DatabaseManager({ onClose }: Props) {
       setError("Il nome è obbligatorio");
       return;
     }
+    // M3a.3 fix post-review (Round 11) — Se type=shared, valida che un peer
+    // sia selezionato dal dropdown. Poi usa createSharedDatabase + invia invito.
+    if (newType === "shared") {
+      if (!selectedPeerKey.trim()) {
+        setError(
+          pairings.length === 0
+            ? "Nessun peer pairato disponibile. Fai prima il pairing dalla schermata Sync."
+            : "Seleziona un peer con cui condividere il database."
+        );
+        return;
+      }
+      setCreating(true);
+      setError(null);
+      try {
+        // 1. Crea il DB condiviso lato Rust → ritorna SharedDatabaseInvitation.
+        const invitation = await api.createSharedDatabase(newName.trim(), selectedPeerKey.trim());
+        console.info(
+          `[DatabaseManager] DB condiviso creato: dbId=${invitation.dbId}, dbName=${invitation.dbName}`
+        );
+        // 2. Invia l'invito al peer via Supabase Realtime.
+        const syncManager = getSyncManager();
+        const supabaseProvider = syncManager.getProvider("supabase") as
+          | SupabaseYjsProvider
+          | undefined;
+        if (supabaseProvider && "sendDbInvitation" in supabaseProvider) {
+          const sent = await supabaseProvider.sendDbInvitation(
+            invitation.peerKeyOther,
+            invitation.dbId,
+            invitation.dbName,
+            invitation.peerKeyInitiator
+          );
+          if (sent) {
+            console.info("[DatabaseManager] ✓ Invito DB condiviso inviato al peer");
+          } else {
+            console.warn(
+              "[DatabaseManager] Invito DB condiviso NON inviato — pairing non attivo?"
+            );
+            setError(
+              "DB condiviso creato, ma invito NON inviato al peer. Verifica che il pairing sia attivo."
+            );
+          }
+        } else {
+          console.warn(
+            "[DatabaseManager] SupabaseYjsProvider non disponibile — invito NON inviato"
+          );
+          setError(
+            "DB condiviso creato, ma Supabase provider non disponibile per inviare l'invito."
+          );
+        }
+        setNewName("");
+        setNewType("personal");
+        setSelectedPeerKey("");
+        setShowCreate(false);
+        await refreshMeta();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+    // type=personal o listone: usa il path originale.
     setCreating(true);
     setError(null);
     try {
@@ -153,116 +290,6 @@ export function DatabaseManager({ onClose }: Props) {
   const handleDismissBanner = () => {
     setBannerDismissed(true);
     saveBannerDismissed(true);
-  };
-
-  // M3a.3 fix post-review (Round 11) — Listener per inviti DB condiviso.
-  // Ascolta il CustomEvent emesso dal SupabaseYjsProvider quando un peer
-  // invia un messaggio "db_invitation" sul canale Realtime del pairing.
-  // Mostra il dialog di accettazione.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        kind: string;
-        dbId: string;
-        dbName: string;
-        peerKeyInitiator: string;
-      };
-      if (detail?.kind === "db_invitation" && detail.dbId && detail.dbName) {
-        console.info(
-          `[DatabaseManager] Invito DB condiviso ricevuto: dbId=${detail.dbId}, dbName=${detail.dbName}, da=${detail.peerKeyInitiator.slice(0, 16)}...`
-        );
-        setPendingInvitation({
-          dbId: detail.dbId,
-          dbName: detail.dbName,
-          peerKeyInitiator: detail.peerKeyInitiator,
-        });
-      }
-    };
-    window.addEventListener("dossierfanta-db-invitation", handler);
-    return () => window.removeEventListener("dossierfanta-db-invitation", handler);
-  }, []);
-
-  // M3a.3 fix post-review (Round 11) — Handler per creare DB condiviso + invito.
-  const handleCreateShared = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!shareName.trim()) {
-      setError("Il nome del DB condiviso è obbligatorio");
-      return;
-    }
-    if (!sharePeerKey.trim()) {
-      setError("La peer key del peer con cui condividere è obbligatoria");
-      return;
-    }
-    setSharing(true);
-    setError(null);
-    try {
-      // 1. Crea il DB condiviso lato Rust → ritorna SharedDatabaseInvitation.
-      const invitation = await api.createSharedDatabase(shareName.trim(), sharePeerKey.trim());
-      console.info(
-        `[DatabaseManager] DB condiviso creato: dbId=${invitation.dbId}, dbName=${invitation.dbName}`
-      );
-      // 2. Invia l'invito al peer via Supabase Realtime.
-      const syncManager = getSyncManager();
-      const supabaseProvider = syncManager.getProvider("supabase") as
-        | SupabaseYjsProvider
-        | undefined;
-      if (supabaseProvider && "sendDbInvitation" in supabaseProvider) {
-        const sent = await supabaseProvider.sendDbInvitation(
-          invitation.peerKeyOther,
-          invitation.dbId,
-          invitation.dbName,
-          invitation.peerKeyInitiator
-        );
-        if (sent) {
-          console.info("[DatabaseManager] ✓ Invito DB condiviso inviato al peer");
-        } else {
-          console.warn(
-            "[DatabaseManager] Invito DB condiviso NON inviato — pairing non attivo?"
-          );
-          setError(
-            "DB condiviso creato, ma invito NON inviato al peer. Verifica che il pairing sia attivo e riprova."
-          );
-        }
-      } else {
-        console.warn(
-          "[DatabaseManager] SupabaseYjsProvider non disponibile — invito NON inviato"
-        );
-        setError(
-          "DB condiviso creato, ma Supabase provider non disponibile per inviare l'invito."
-        );
-      }
-      setShareName("");
-      setSharePeerKey("");
-      setShowShareCreate(false);
-      await refreshMeta();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSharing(false);
-    }
-  };
-
-  // M3a.3 fix post-review (Round 11) — Handler per accettare invito DB condiviso.
-  const handleAcceptInvitation = async () => {
-    if (!pendingInvitation) return;
-    setAccepting(true);
-    setError(null);
-    try {
-      const meta = await api.acceptSharedDatabaseInvitation(
-        pendingInvitation.dbId,
-        pendingInvitation.dbName
-      );
-      console.info(
-        `[DatabaseManager] ✓ DB condiviso accettato: id=${meta.id}, name=${meta.name}`
-      );
-      setPendingInvitation(null);
-      await refresh();
-      await refreshMeta();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAccepting(false);
-    }
   };
 
   // M3a.3 — Refresh autofetch status al boot per mostrare "ultimo aggiornamento"
@@ -486,7 +513,15 @@ export function DatabaseManager({ onClose }: Props) {
                 </div>
                 <select
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value as DatabaseType)}
+                  onChange={(e) => {
+                    const t = e.target.value as DatabaseType;
+                    setNewType(t);
+                    // M3a.3 fix post-review (Round 11) — Quando si seleziona
+                    // "shared", pre-seleziona il primo peer pairato se disponibile.
+                    if (t === "shared" && !selectedPeerKey && pairings.length > 0) {
+                      setSelectedPeerKey(pairings[0].peerKeyOther);
+                    }
+                  }}
                   className="tacc-input"
                 >
                   <option value="personal">Personale</option>
@@ -494,77 +529,82 @@ export function DatabaseManager({ onClose }: Props) {
                   {/* "listone" non creabile da UI — solo via import_listone */}
                 </select>
               </div>
+              {/* M3a.3 fix post-review (Round 11) — Quando type=shared, mostra
+                  il dropdown dei peer pairati (con nome) invece del campo
+                  peerkey manuale. Se non ci sono peer pairati, mostra un
+                  messaggio che invita a fare prima il pairing. */}
+              {newType === "shared" && (
+                <div className="space-y-1">
+                  {pairings.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "8px 10px",
+                        background: "rgba(184,134,11,0.06)",
+                        border: "1px dashed var(--amber, #B8860B)",
+                        fontSize: "11px",
+                        color: "var(--ink-soft)",
+                        fontFamily: "var(--font-body)",
+                      }}
+                    >
+                      ⚠ Nessun peer pairato disponibile. Per condividere un DB,
+                      fai prima il pairing dalla schermata Sync (genera codice
+                      di pairing sull'altro PC, inseriscilo qui).
+                    </div>
+                  ) : (
+                    <>
+                      <label
+                        style={{
+                          fontFamily: "var(--font-display)",
+                          fontSize: "11px",
+                          color: "var(--ink-soft)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        Condividi con:
+                      </label>
+                      <select
+                        value={selectedPeerKey}
+                        onChange={(e) => setSelectedPeerKey(e.target.value)}
+                        className="tacc-input"
+                        style={{ width: "100%" }}
+                      >
+                        {pairings.map((p) => (
+                          <option key={p.peerKeyOther} value={p.peerKeyOther}>
+                            {p.displayName || `${p.peerKeyOther.slice(0, 16)}...`}
+                          </option>
+                        ))}
+                      </select>
+                      <p
+                        style={{
+                          fontFamily: "var(--font-body)",
+                          fontSize: "11px",
+                          color: "var(--ink-soft)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Il DB verrà creato localmente e un invito verrà inviato
+                        al peer selezionato. L'altro utente vedrà un dialog
+                        "Vuoi accettare il DB condiviso?".
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <button type="submit" disabled={creating} className="tacc-btn tacc-btn--primary">
-                  {creating ? "Creazione…" : "Crea"}
+                  {creating
+                    ? (newType === "shared" ? "Creazione + invito…" : "Creazione…")
+                    : (newType === "shared" ? "Crea e invita" : "Crea")}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreate(false);
                     setError(null);
-                  }}
-                  className="tacc-btn"
-                >
-                  Annulla
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* M3a.3 fix post-review (Round 11) — Pulsante "Crea DB condiviso".
-              Apre un modal dove l'utente inserisce il nome del DB + la peer
-              key del peer con cui condividere. Crea il DB + invia l'invito. */}
-          {!showShareCreate ? (
-            <button
-              type="button"
-              onClick={() => setShowShareCreate(true)}
-              className="tacc-btn"
-              style={{ marginTop: "8px", borderColor: "var(--blue, #2C4A6B)", color: "var(--blue, #2C4A6B)" }}
-              title="Crea un nuovo database condiviso con un peer pairato"
-            >
-              + Crea DB condiviso
-            </button>
-          ) : (
-            <form onSubmit={handleCreateShared} className="border border-ink/30 bg-paper-dim p-3 space-y-3" style={{ marginTop: "8px", borderColor: "var(--blue, #2C4A6B)" }}>
-              <div className="text-[11px] uppercase tracking-wider" style={{ fontFamily: "var(--font-display)", color: "var(--blue, #2C4A6B)" }}>
-                Nuovo DB condiviso
-              </div>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  placeholder="Nome DB (es. ioemarco — .db aggiunto in automatico)"
-                  value={shareName}
-                  onChange={(e) => setShareName(e.target.value)}
-                  className="tacc-input"
-                  autoFocus
-                />
-                <input
-                  type="text"
-                  placeholder="Peer key del peer con cui condividere (incolla qui)"
-                  value={sharePeerKey}
-                  onChange={(e) => setSharePeerKey(e.target.value)}
-                  className="tacc-input"
-                  style={{ fontFamily: "var(--font-mono, var(--font-body))", fontSize: "11px" }}
-                />
-              </div>
-              <p className="text-xs text-ink-soft" style={{ fontFamily: "var(--font-body)" }}>
-                Il DB verrà creato localmente e un invito verrà inviato al peer.
-                L'altro utente vedrà un dialog "Vuoi accettare il DB condiviso?".
-                Se accetta, il DB apparirà anche sulla sua app con lo stesso UUID,
-                e le modifiche verranno sincronizzate live.
-              </p>
-              <div className="flex items-center gap-2">
-                <button type="submit" disabled={sharing} className="tacc-btn tacc-btn--primary">
-                  {sharing ? "Creazione + invito…" : "Crea e invita"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowShareCreate(false);
-                    setError(null);
-                    setShareName("");
-                    setSharePeerKey("");
+                    setNewName("");
+                    setNewType("personal");
+                    setSelectedPeerKey("");
                   }}
                   className="tacc-btn"
                 >
@@ -915,7 +955,7 @@ export function DatabaseManager({ onClose }: Props) {
                 }}
               >
                 <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", color: "var(--ink)" }}>
-                  📁 {pendingInvitation.dbName}
+                  {pendingInvitation.dbName}
                 </div>
                 <div style={{ fontFamily: "var(--font-mono, var(--font-body))", fontSize: "10px", color: "var(--ink-soft)", marginTop: "4px", wordBreak: "break-all" }}>
                   UUID: {pendingInvitation.dbId}

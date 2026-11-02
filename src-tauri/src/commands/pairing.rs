@@ -73,9 +73,6 @@ use crate::commands::{AppError, AppResult};
 
 /// Pairing persistito in `sync_pairings` table.
 /// Ritornato da `list_pairings` e `pairing_complete`/`pairing_join`.
-///
-/// M3a.3 fix post-review (Round 10) — `#[serde(rename_all = "camelCase")]`
-/// per far matchare snake_case Rust → camelCase TS (vedi SyncIdentity).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pairing {
@@ -109,8 +106,6 @@ pub struct PairingCode {
 }
 
 /// Output di `pairing_join` (responder) e `pairing_complete` (initiator).
-///
-/// M3a.3 fix post-review (Round 10) — `#[serde(rename_all = "camelCase")]`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairingResult {
@@ -584,8 +579,6 @@ pub fn list_pending_pairings(
 }
 
 /// Codice pairing pending (in corso).
-///
-/// M3a.3 fix post-review (Round 10) — `#[serde(rename_all = "camelCase")]`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairingPending {
