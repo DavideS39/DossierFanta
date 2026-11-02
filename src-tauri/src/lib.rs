@@ -257,6 +257,9 @@ pub fn run() {
             commands::database::delete_database,
             commands::database::set_active_database,
             commands::database::get_active_database,
+            // M3a.3 fix post-review (Round 11) — DB condivisi con invito
+            commands::database::create_shared_database,
+            commands::database::accept_shared_database_invitation,
             // players.rs (M1 + M2 refactor)
             commands::players::list_players,
             commands::players::create_player,

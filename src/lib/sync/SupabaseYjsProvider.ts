@@ -171,6 +171,40 @@ export class SupabaseYjsProvider implements SyncProvider {
       }
     });
 
+    // M3a.3 fix post-review (Round 11) — Listener per inviti DB condiviso.
+    // Quando un peer vuole condividere un DB, invia un broadcast con
+    // event="db_invitation" + payload={kind, dbId, dbName, peerKeyInitiator}.
+    // Questo listener emette un evento custom che il SyncView (o App.tsx)
+    // ascolta per mostrare il dialog di accettazione.
+    channel.on("broadcast", { event: "db_invitation" }, ({ payload }) => {
+      try {
+        const p = payload as { kind?: string; dbId?: string; dbName?: string; peerKeyInitiator?: string };
+        if (!p || p.kind !== "db_invitation" || !p.dbId || !p.dbName) {
+          console.warn("[SupabaseYjsProvider] db_invitation payload invalid:", p);
+          return;
+        }
+        console.info(
+          `[SupabaseYjsProvider] db_invitation ricevuto da ${p.peerKeyInitiator?.slice(0, 16) || "?"}...: dbId=${p.dbId}, dbName=${p.dbName}`
+        );
+        // Emette evento custom sul documento Tauri per farlo arrivare al frontend.
+        // Usiamo un dispatch CustomEvent sul window per semplicità.
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("dossierfanta-db-invitation", {
+              detail: {
+                kind: "db_invitation",
+                dbId: p.dbId,
+                dbName: p.dbName,
+                peerKeyInitiator: p.peerKeyInitiator ?? "",
+              },
+            })
+          );
+        }
+      } catch (err) {
+        console.error("[SupabaseYjsProvider] db_invitation handler fallito:", err);
+      }
+    });
+
     // Subscribe con safety timeout 10s. M3a.3 fix post-review — NON reject
     // su CHANNEL_ERROR/TIMED_OUT/CLOSED: risolvi comunque e lascia che la
     // prima `broadcastAndPersist` fallisca (verrà loggata come warn). In
@@ -241,6 +275,52 @@ export class SupabaseYjsProvider implements SyncProvider {
    */
   async addPairing(pairing: Pairing): Promise<void> {
     await this.subscribeToPairing(pairing);
+  }
+
+  /**
+   * M3a.3 fix post-review (Round 11) — Invia un invito DB condiviso al peer
+   * associato a `peerKeyOther`. Il peer ricevente mostrerà un dialog di
+   * accettazione. Se accetta, chiamerà `api.acceptSharedDatabaseInvitation`.
+   *
+   * Usa il canale Realtime del pairing esistente (event="db_invitation").
+   * NON cifrato (il payload contiene solo dbId + dbName + peerKeyInitiator,
+   * nessun dato sensibile).
+   */
+  async sendDbInvitation(
+    peerKeyOther: string,
+    dbId: string,
+    dbName: string,
+    peerKeyInitiator: string
+  ): Promise<boolean> {
+    const entry = this.channels.get(peerKeyOther);
+    if (!entry) {
+      console.warn(
+        `[SupabaseYjsProvider] sendDbInvitation: nessun canale per peer ${peerKeyOther.slice(0, 16)}... — pairing non attivo?`
+      );
+      return false;
+    }
+    try {
+      entry.channel.send({
+        type: "broadcast",
+        event: "db_invitation",
+        payload: {
+          kind: "db_invitation",
+          dbId,
+          dbName,
+          peerKeyInitiator,
+        },
+      });
+      console.info(
+        `[SupabaseYjsProvider] sendDbInvitation: inviato a ${peerKeyOther.slice(0, 16)}... dbId=${dbId} dbName=${dbName}`
+      );
+      return true;
+    } catch (err) {
+      console.error(
+        `[SupabaseYjsProvider] sendDbInvitation fallito per peer ${peerKeyOther.slice(0, 16)}...:`,
+        err
+      );
+      return false;
+    }
   }
 
   /**

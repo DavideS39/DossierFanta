@@ -129,6 +129,42 @@ export interface DatabaseMeta {
   schema_ver: number;
 }
 
+/**
+ * M3a.3 fix post-review (Round 11) — Output di `create_shared_database`.
+ * Contiene il `dbId` UUID generato + `dbName` + `peerKeyOther` con cui
+ * condividere. Il frontend usa questi dati per inviare un messaggio
+ * "db_invitation" sul canale Realtime del pairing.
+ *
+ * Mirror di Rust `SharedDatabaseInvitation` (database.rs).
+ */
+export interface SharedDatabaseInvitation {
+  /** UUID del DB appena creato (stesso su entrambi i peer dopo accept). */
+  dbId: string;
+  /** Nome del DB (es. "ioemarco.db"). */
+  dbName: string;
+  /** peer_key del peer con cui condividere. */
+  peerKeyOther: string;
+  /** peer_key dell'initiator (me) — incluso nell'invito per info. */
+  peerKeyInitiator: string;
+}
+
+/**
+ * M3a.3 fix post-review (Round 11) — Payload del messaggio "db_invitation"
+ * inviato via Supabase Realtime sul canale del pairing. Il peer ricevente
+ * mostra un dialog "Vuoi accettare il DB condiviso X?" e se l'utente
+ * accetta, chiama `acceptSharedDatabaseInvitation(dbId, dbName)`.
+ */
+export interface DbInvitationPayload {
+  /** Tipo di messaggio (sempre "db_invitation"). */
+  kind: "db_invitation";
+  /** UUID del DB da creare sul peer ricevente. */
+  dbId: string;
+  /** Nome del DB (es. "ioemarco.db"). */
+  dbName: string;
+  /** peer_key dell'initiator che ha creato il DB. */
+  peerKeyInitiator: string;
+}
+
 // ----------------------------------------------------------------------
 // M2 — listone + archiviazione automatica
 // ----------------------------------------------------------------------

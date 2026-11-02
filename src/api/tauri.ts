@@ -31,6 +31,8 @@ import type {
   ScoutingNote,
   Status,
   UpdatePlayerInput,
+  // M3a.3 fix post-review (Round 11) — DB condivisi con invito
+  SharedDatabaseInvitation,
 } from "@/types/player";
 // M3a — Tipi sync_* mirror Rust (src-tauri/src/commands/sync.rs)
 import type {
@@ -76,6 +78,21 @@ export const tauriApi = {
 
   /** Ritorna i metadati del DB attualmente attivo. */
   getActiveDatabase: () => invoke<DatabaseMeta>("get_active_database"),
+
+  // ===== M3a.3 fix post-review (Round 11) — DB condivisi con invito =====
+
+  /** Crea un nuovo database CONDIVISO e prepara l'invito per il peer.
+   *  Ritorna SharedDatabaseInvitation con db_id + db_name + peer_key_other.
+   *  Il frontend usa poi il canale Realtime del pairing per inviare
+   *  l'invito al peer. */
+  createSharedDatabase: (name: string, peerKeyOther: string) =>
+    invoke<SharedDatabaseInvitation>("create_shared_database", { name, peerKeyOther }),
+
+  /** Accetta un invito a un DB condiviso. Crea lo stesso DB (stesso UUID)
+   *  sul peer ricevente. Chiamato quando l'utente clicca "Accetta" nel
+   *  dialog di invito DB condiviso. */
+  acceptSharedDatabaseInvitation: (dbId: string, dbName: string) =>
+    invoke<DatabaseMeta>("accept_shared_database_invitation", { dbId, dbName }),
 
   // ===== players (M1 + M2 refactor) =====
 

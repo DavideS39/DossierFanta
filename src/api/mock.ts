@@ -217,6 +217,30 @@ export const mockApi = {
     return databases.find((d) => d.id === activeDbId)!;
   },
 
+  // M3a.3 fix post-review (Round 11) — DB condivisi con invito (mock)
+  async createSharedDatabase(name: string, peerKeyOther: string) {
+    await delay();
+    return {
+      dbId: "mock-shared-db-id-" + Date.now(),
+      dbName: name,
+      peerKeyOther,
+      peerKeyInitiator: "mock-my-peer-key",
+    };
+  },
+
+  async acceptSharedDatabaseInvitation(dbId: string, dbName: string) {
+    await delay();
+    return {
+      id: dbId,
+      name: dbName,
+      type: "shared" as const,
+      owner: "peer",
+      created_at: new Date().toISOString(),
+      last_sync: null,
+      schema_ver: 3,
+    };
+  },
+
   async listPlayers(filters?: ListFilters | null) {
     await delay();
     return applyFilters(players, filters ?? null).map((p) => ({ ...p }));
