@@ -726,7 +726,15 @@ pub fn iroh_disconnect_peer(peer_key: String) -> AppResult<()> {
 /// Ritornata da `get_sync_identity`. Usata dal frontend SyncView per mostrare
 /// "La tua identità: ● marco (peer key: abc23-... [copia])" e per il restore
 /// al boot (se `Some`, l'app auto-avvia Iroh con la SecretKey salvata).
+///
+/// M3a.3 fix post-review (Round 10) — CRITICAL FIX: aggiunto
+/// `#[serde(rename_all = "camelCase")]` per far matchare i nomi campi Rust
+/// (snake_case: `peer_key`) con i nomi campi TypeScript (camelCase: `peerKey`).
+/// Senza questo attribute, serde serializza in JSON come `{"peer_key": "..."}`
+/// ma il frontend TS si aspetta `{"peerKey": "..."}` → `id.peerKey` risulta
+/// `undefined` → bug "Iroh non avviabile" anche se Iroh era partito bene.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncIdentity {
     /// NodeId Iroh (formato base32). Scambiata out-of-band con i peer.
     pub peer_key: String,
@@ -907,7 +915,11 @@ pub fn set_sync_display_name(
 /// Ritorna i record di `sync_peers` con `trusted = 1`. Il frontend
 /// SyncView chiama questo al boot, dopo `iroh_start_node`, per riconnettere
 /// automaticamente i peer della sessione precedente.
+///
+/// M3a.3 fix post-review (Round 10) — `#[serde(rename_all = "camelCase")]`
+/// per far matchare snake_case Rust → camelCase TS (vedi SyncIdentity).
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrustedPeer {
     pub peer_id: String,
     pub display_name: Option<String>,
