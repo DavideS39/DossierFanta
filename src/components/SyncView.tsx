@@ -242,36 +242,55 @@ export function SyncView(): React.ReactElement {
   }, [state.generatedCodeExpiresAt, state.generatedCode]);
 
   // --- Avvia Iroh manualmente (se peer_key non ancora creata) ---
+  // M3a.3 fix post-review (Round 8) — Logging esteso per diagnosticare
+  // perché Iroh non si avvia. L'utente vedeva "peer_key mancante" 7 volte
+  // perché handleStartIroh falliva silenziosamente e l'utente cliccava
+  // ripetutamente "Genera codice" senza feedback.
   const handleStartIroh = useCallback(async () => {
+    console.info("[SyncView] handleStartIroh: avvio in corso...");
     setState((s) => ({ ...s, busy: true, error: null }));
     try {
       // irohStartNode genera la SecretKey (se non esiste) e la salva in
       // sync_identity, poi avvia il nodo Iroh. Il provider IrohYjsProvider
       // deve essere registrato qui (App.tsx non l'ha fatto al boot perché
       // non c'era ancora sync_identity).
+      console.info("[SyncView] handleStartIroh: chiamata api.irohStartNode()...");
       const peerKey = await api.irohStartNode();
+      console.info(`[SyncView] handleStartIroh: irohStartNode OK, peerKey=${peerKey.slice(0, 16)}...`);
       setMyIdentity(peerKey, undefined);
       // Registra dinamicamente IrohYjsProvider nel SyncManager.
       const syncManager = getSyncManager();
       // Se non è già registrato, lo istanziamo ora.
       if (!syncManager.getProvider("iroh")) {
+        console.info("[SyncView] handleStartIroh: registro IrohYjsProvider nel SyncManager...");
         const provider = new IrohYjsProvider(ydoc);
         syncManager.addProvider(provider);
         await provider.connect();
+        console.info("[SyncView] handleStartIroh: IrohYjsProvider connesso");
       }
       // Auto-connect trusted peers salvati.
       const trusted = await api.listTrustedPeers();
       if (trusted.length > 0) {
+        console.info(`[SyncView] handleStartIroh: auto-connect ${trusted.length} trusted peers...`);
         const irohProvider = syncManager.getProvider<IrohYjsProvider>("iroh");
         if (irohProvider) {
           void irohProvider.connectToSavedPeers(trusted.map((p) => p.peerId));
         }
       }
+      console.info("[SyncView] handleStartIroh: refresh stato...");
       await refresh();
+      console.info("[SyncView] handleStartIroh: ✓ completato con successo");
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[SyncView] handleStartIroh: ✗ ERRORE:", err);
+      console.error("[SyncView] handleStartIroh: messaggio errore:", errMsg);
+      // Log stack trace se disponibile per debug
+      if (err instanceof Error && err.stack) {
+        console.error("[SyncView] handleStartIroh: stack trace:", err.stack);
+      }
       setState((s) => ({
         ...s,
-        error: `Avvio Iroh fallito: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Avvio Iroh fallito: ${errMsg}`,
       }));
     } finally {
       setState((s) => ({ ...s, busy: false }));
@@ -1076,6 +1095,7 @@ export function SyncView(): React.ReactElement {
               disabled={
                 state.pairingFlow === "creating" ||
                 state.pairingFlow === "completing" ||
+                state.busy ||  // M3a.3 fix post-review (Round 8) — disable durante handleStartIroh
                 !!state.generatedCode  // M3a.3 fix post-review — 1 solo codice alla volta (UI-side guard)
               }
               style={{
@@ -1089,13 +1109,16 @@ export function SyncView(): React.ReactElement {
                 cursor:
                   state.pairingFlow === "creating" ||
                   state.pairingFlow === "completing" ||
+                  state.busy ||
                   !!state.generatedCode
                     ? "not-allowed"
                     : "pointer",
-                opacity: state.generatedCode ? 0.4 : 1,
+                opacity: state.generatedCode || state.busy ? 0.4 : 1,
               }}
             >
-              {state.pairingFlow === "creating"
+              {state.busy
+                ? "avvio Iroh in corso…"
+                : state.pairingFlow === "creating"
                 ? "generazione…"
                 : "Genera codice di pairing"}
             </button>

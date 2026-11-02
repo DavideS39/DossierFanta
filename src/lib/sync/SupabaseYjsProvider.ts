@@ -25,9 +25,10 @@
 // Vincolo HARD #20 (esteso): yjs_updates contiene SOLO bytes AES-GCM cifrati.
 
 import * as Y from "yjs";
-import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import { type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import type { SyncProvider } from "./SyncProvider";
 import { SYNC_CONFIG } from "./syncConfig";
+import { getSupabaseClient } from "./supabaseClient";
 import { api } from "@/api/tauri";
 import type { Pairing } from "@/types/sync";
 
@@ -68,14 +69,12 @@ export class SupabaseYjsProvider implements SyncProvider {
 
   constructor(ydoc: Y.Doc) {
     this.ydoc = ydoc;
-    this.client = createClient(
-      SYNC_CONFIG.supabase.url,
-      SYNC_CONFIG.supabase.anonKey,
-      {
-        auth: { persistSession: false, autoRefreshToken: false },
-        realtime: { params: { eventsPerSecond: 50 } },
-      }
-    );
+    // M3a.3 fix post-review (Round 8) — Usa il singleton getSupabaseClient()
+    // invece di createClient() per evitare il warning GoTrueClient
+    // "Multiple GoTrueClient instances detected". Il singleton è condiviso
+    // con il pairing flow (SyncView) — same client, same WebSocket, same
+    // auth state. Evita undefined behavior con storage key condivisa.
+    this.client = getSupabaseClient();
   }
 
   get isConnected(): boolean {
