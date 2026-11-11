@@ -379,6 +379,12 @@ pub struct UpdatePlayerInput {
 /// - `fascia`: una delle 5 fasce, o null
 /// - `db_id`: filtro per DB logico (M2). None → active_db_id, "all" → tutti i DB.
 /// - `limit` / `offset`: paginazione (default 500 / 0)
+/// - `sort_by`: M4 — 'priority' | 'fascia' | 'name' | 'medv' | 'fvm' | 'fmil_spesi' | 'updated_at'
+///   (default: 'priority'). Specifica il campo di ordinamento.
+/// - `sort_dir`: M4 — 'asc' | 'desc' (default: 'desc' per priority/fvm/medv/fmil_spesi/updated_at,
+///   'asc' per name/fascia).
+/// - `tags`: M4 — Vec<String> di label. Il player deve avere TUTTI i tag (AND logico).
+///   JOIN con player_tags via EXISTS subquery (una per tag).
 #[derive(Debug, Deserialize, Default)]
 pub struct ListFilters {
     #[serde(default)]
@@ -397,6 +403,13 @@ pub struct ListFilters {
     pub limit: Option<i64>,
     #[serde(default)]
     pub offset: Option<i64>,
+    // M4 (v2.6) — sorting multi-campo + tag filter
+    #[serde(default)]
+    pub sort_by: Option<String>,
+    #[serde(default)]
+    pub sort_dir: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
 }
 
 // ----------------------------------------------------------------------
@@ -491,9 +504,70 @@ fn resolve_db_filter(state: &State<'_, DbState>, db_id: &Option<String>) -> Resu
     }
 }
 
-/// Elenca i giocatori con filtri opzionali. Ordinamento: priority DESC,
-/// name ASC (case-insensitive). Questo dà priorità visiva ai giocatori
-/// con priorità alta, allineamento con la UX scout.
+/// M4 — Costruisce la clausola ORDER BY per `list_players`.
+///
+/// Valori ammessi per `sort_by`:
+///   - 'priority'    (default): priorità 0-5
+///   - 'fascia':     Top/Semitop/Medio/Regolarista/Scommessa (alfabetico)
+///   - 'name':       nome del giocatore
+///   - 'medv':       FantaMedia MV
+///   - 'fvm':        FantaValoreMedio
+///   - 'fmil_spesi': f₥ Fantamilioni spesi
+///   - 'updated_at': data ultima modifica
+///
+/// Default direction:
+///   - 'priority', 'fvm', 'medv', 'fmil_spesi', 'updated_at' → DESC (più alto prima)
+///   - 'name', 'fascia' → ASC (alfabetico)
+///
+/// In caso di valori non ammessi, fallback al default (priority DESC, name ASC).
+/// L'SQL risultante è una stringa costante (nessuna interpolazione di input
+/// utente → sicura da SQL injection).
+fn build_sort_clause(sort_by: Option<&str>, sort_dir: Option<&str>) -> String {
+    let dir = match sort_dir.map(|s| s.to_lowercase()).as_deref() {
+        Some("asc") => "ASC",
+        Some("desc") => "DESC",
+        _ => "", // resolve below per-field
+    };
+    match sort_by {
+        Some("name") => {
+            let d = if dir.is_empty() { "ASC" } else { dir };
+            format!(" ORDER BY name COLLATE NOCASE {}", d)
+        }
+        Some("fascia") => {
+            let d = if dir.is_empty() { "ASC" } else { dir };
+            format!(" ORDER BY fascia COLLATE NOCASE {}, name COLLATE NOCASE ASC", d)
+        }
+        Some("medv") => {
+            let d = if dir.is_empty() { "DESC" } else { dir };
+            // NULLS last per medv (i giocatori senza medv in fondo).
+            format!(" ORDER BY medv IS NULL, medv {}", d)
+        }
+        Some("fvm") => {
+            let d = if dir.is_empty() { "DESC" } else { dir };
+            format!(" ORDER BY fvm IS NULL, fvm {}", d)
+        }
+        Some("fmil_spesi") => {
+            let d = if dir.is_empty() { "DESC" } else { dir };
+            format!(" ORDER BY fmil_spesi IS NULL, fmil_spesi {}", d)
+        }
+        Some("updated_at") => {
+            let d = if dir.is_empty() { "DESC" } else { dir };
+            format!(" ORDER BY updated_at IS NULL, updated_at {}", d)
+        }
+        Some("priority") => {
+            let d = if dir.is_empty() { "DESC" } else { dir };
+            format!(" ORDER BY priority {}, name COLLATE NOCASE ASC", d)
+        }
+        _ => {
+            // Default storico: priority DESC, name ASC.
+            " ORDER BY priority DESC, name COLLATE NOCASE ASC".to_string()
+        }
+    }
+}
+
+/// Elenca i giocatori con filtri opzionali. Ordinamento di default:
+/// priority DESC, name ASC (case-insensitive). M4 aggiunge sorting
+/// multi-campo via `sort_by` + `sort_dir` e filtro per tag (AND logico).
 #[tauri::command]
 pub fn list_players(
     state: State<'_, DbState>,
@@ -544,7 +618,27 @@ pub fn list_players(
         bind_values.push(SqlValue::Text(fc.clone()));
     }
 
-    sql.push_str(" ORDER BY priority DESC, name COLLATE NOCASE ASC LIMIT ? OFFSET ?");
+    // M4 — Filtro per tag (AND logico): per ogni tag nella lista, il player
+    // deve avere una riga corrispondente in player_tags. EXISTS subquery è
+    // più efficiente di JOIN + GROUP BY + HAVING COUNT per piccoli set di tag.
+    if let Some(tags) = &f.tags {
+        for t in tags {
+            let t = t.trim();
+            if t.is_empty() {
+                continue;
+            }
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM player_tags t WHERE t.player_id = players.id AND t.label = ? COLLATE NOCASE)",
+            );
+            bind_values.push(SqlValue::Text(t.to_string()));
+        }
+    }
+
+    // M4 — Sorting multi-campo. Default: priority DESC, name ASC.
+    // sort_by valori ammessi: priority, fascia, name, medv, fvm, fmil_spesi, updated_at.
+    let sort_clause = build_sort_clause(f.sort_by.as_deref(), f.sort_dir.as_deref());
+    sql.push_str(&sort_clause);
+    sql.push_str(" LIMIT ? OFFSET ?");
     bind_values.push(SqlValue::Integer(limit));
     bind_values.push(SqlValue::Integer(offset));
 
@@ -582,10 +676,15 @@ pub fn list_players(
 }
 
 /// Conta i giocatori, con gli stessi filtri di `list_players` (ignora
-/// limit/offset). Utile per mostrare un contatore in UI.
+/// limit/offset + sort_by/sort_dir che non influenzano il conteggio).
+/// M4 — applica anche il filtro tag (AND logico) così il contatore
+/// "143 risultati" nella FilterBar riflette i tag attivi.
 #[tauri::command]
 pub fn count_players(state: State<'_, DbState>, filters: Option<ListFilters>) -> AppResult<i64> {
     let f = filters.unwrap_or_default();
+    validate_pos_fanta(&f.pos_fanta)?;
+    validate_fascia(&f.fascia)?;
+    validate_status(&f.status)?;
     let active_id = state.active_db_id()?;
     let db_filter = match f.db_id.as_deref() {
         None => Some(active_id),
@@ -617,6 +716,20 @@ pub fn count_players(state: State<'_, DbState>, filters: Option<ListFilters>) ->
     if let Some(fc) = &f.fascia {
         sql.push_str(" AND fascia = ?");
         bind_values.push(SqlValue::Text(fc.clone()));
+    }
+
+    // M4 — Filtro tag (AND logico), identico a list_players.
+    if let Some(tags) = &f.tags {
+        for t in tags {
+            let t = t.trim();
+            if t.is_empty() {
+                continue;
+            }
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM player_tags t WHERE t.player_id = players.id AND t.label = ? COLLATE NOCASE)",
+            );
+            bind_values.push(SqlValue::Text(t.to_string()));
+        }
     }
 
     let conn_key = db_filter.unwrap_or_else(|| "default-personal".to_string());

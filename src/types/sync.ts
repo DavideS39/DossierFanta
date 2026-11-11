@@ -114,6 +114,19 @@ export interface AuctionDataSyncInput {
   syncNodeId?: string | null;
 }
 
+/**
+ * M4 (v2.6) — Input per save_tag_from_sync. Mirror di Rust `TagSyncInput`
+ * (commands/tags.rs). Usato dal listener yTags.observe per persistere i
+ * tag ricevuti via CRDT Yjs.
+ */
+export interface TagSyncInput {
+  id: string;
+  playerId: string;
+  label: string;
+  color?: string | null;
+  syncNodeId?: string | null;
+}
+
 // ----------------------------------------------------------------------
 // Eventi Tauri (payload degli event listener)
 // ----------------------------------------------------------------------

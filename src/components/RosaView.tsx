@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { PlayerList } from "@/components/PlayerList";
-import { SearchBar } from "@/components/SearchBar";
-import { RoleFilter } from "@/components/RoleFilter";
+// M4 (v2.6) — FilterBar sostituisce SearchBar + RoleFilter (integra search +
+// filtri tag + ruolo + stato + sort + filtri salvati + espandi note + counter).
+import { FilterBar } from "@/components/FilterBar";
 import { StatsBar } from "@/components/StatsBar";
 import { PlayerForm } from "@/components/PlayerForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
@@ -111,6 +112,9 @@ export function RosaView() {
     void api.listOsPlayerWindows().then(setDetachedToOs).catch(() => {
       // ignore — il backend potrebbe non essere pronto
     });
+    // M4 (v2.6) — boot load: filtri salvati + tag labels (per filter bar).
+    void usePlayersStore.getState().loadSavedFilters();
+    void usePlayersStore.getState().refreshTagLabels();
   }, [refresh, refreshMeta, refreshDbs, setDetachedToOs]);
 
   // Refresh meta dopo ogni mutazione di lista
@@ -318,25 +322,28 @@ export function RosaView() {
       {/* Stats */}
       <StatsBar />
 
-      {/* Toolbar: search + role filter + filtro DB (striscia paper v2.3.2) */}
-      <div className="df-toolbar">
-        <SearchBar />
-        <RoleFilter />
-        <DbFilterSelect
-          value={dbFilter}
-          onChange={setDbFilter}
-        />
-        <label
-          className="df-arch-toggle"
-          title="Mostra anche i giocatori archiviati (read-only)"
-        >
-          <input
-            type="checkbox"
-            checked={includeArchive}
-            onChange={(e) => setIncludeArchive(e.target.checked)}
+      {/* Toolbar M4 (v2.6): FilterBar (search + tag + ruolo + stato + sort +
+          filtri salvati + espandi note + counter) + DbFilterSelect + toggle archivio.
+          Sostituisce la vecchia coppia SearchBar + RoleFilter. */}
+      <div className="df-toolbar df-toolbar--m4">
+        <FilterBar />
+        <div className="df-toolbar__extras">
+          <DbFilterSelect
+            value={dbFilter}
+            onChange={setDbFilter}
           />
-          includi archivio
-        </label>
+          <label
+            className="df-arch-toggle"
+            title="Mostra anche i giocatori archiviati (read-only)"
+          >
+            <input
+              type="checkbox"
+              checked={includeArchive}
+              onChange={(e) => setIncludeArchive(e.target.checked)}
+            />
+            includi archivio
+          </label>
+        </div>
       </div>
 
       {/* Lista giocatori (scrollable) — scrivania con vignettatura */}

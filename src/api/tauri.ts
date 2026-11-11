@@ -33,6 +33,10 @@ import type {
   UpdatePlayerInput,
   // M3a.3 fix post-review (Round 11) — DB condivisi con invito
   SharedDatabaseInvitation,
+  // M4 (v2.6) — Tag & Filtri
+  Tag,
+  Filter,
+  TagLabelCount,
 } from "@/types/player";
 // M3a — Tipi sync_* mirror Rust (src-tauri/src/commands/sync.rs)
 import type {
@@ -49,6 +53,8 @@ import type {
   PairingCode,
   PairingResult,
   PairingPending,
+  // M4 (v2.6) — Tag sync input
+  TagSyncInput,
 } from "@/types/sync";
 
 export const tauriApi = {
@@ -416,6 +422,74 @@ export const tauriApi = {
   /** Persiste auction_data ricevuta dal sync CRDT (UPSERT). */
   saveAuctionDataFromSync: (input: AuctionDataSyncInput) =>
     invoke<void>("save_auction_data_from_sync", { input }),
+
+  // ===== M4 (v2.6) — Tag & Filtri =====
+
+  /**
+   * Crea un tag-timbro associato a un giocatore. Colore HSL derivato da
+   * hash(label) (stesso testo = stesso colore, sempre). created_by='me'.
+   * Rifiuta su giocatori del DB listone (read-only).
+   */
+  createTag: (playerId: string, label: string) =>
+    invoke<Tag>("create_tag", { playerId, label }),
+
+  /**
+   * Elenca i tag di un giocatore (se playerId specificato) o TUTTI i tag
+   * (se playerId=null, per la filter bar autocomplete).
+   */
+  listTags: (playerId?: string | null) =>
+    invoke<Tag[]>("list_tags", { playerId: playerId ?? null }),
+
+  /** Elimina un tag per id. Idempotente (no errore se non esiste). */
+  deleteTag: (id: string) => invoke<boolean>("delete_tag", { id }),
+
+  /**
+   * Ritorna tutte le label DISTINCT di tag con conteggio (quanti player
+   * hanno quel tag). Per la filter bar: "rigorista (3)  ex-Milan (5)".
+   */
+  listAllTagLabels: () => invoke<TagLabelCount[]>("list_all_tag_labels"),
+
+  /**
+   * Persiste un tag ricevuto dal sync CRDT Yjs. created_by='sync-live'.
+   * NON emette evento (anti-loop A→B→A, come savePlayerFromSync).
+   */
+  saveTagFromSync: (input: TagSyncInput) =>
+    invoke<void>("save_tag_from_sync", { input }),
+
+  // ===== M4 — Filtri salvati =====
+
+  /**
+   * Salva un filtro con nome. criteria_json è una stringa JSON con i
+   * criteri {tags, role, status, sort_by, sort_dir, search}. Se esiste
+   * già un filtro con lo stesso name, viene sovrascritto.
+   */
+  saveFilter: (name: string, criteriaJson: string) =>
+    invoke<Filter>("save_filter", { name, criteriaJson }),
+
+  /** Elenca tutti i filtri salvati, ordinati per name ASC. */
+  listFilters: () => invoke<Filter[]>("list_filters"),
+
+  /** Elimina un filtro salvato per id. Idempotente. */
+  deleteFilter: (id: string) => invoke<boolean>("delete_filter", { id }),
+
+  /**
+   * Applica un filtro salvato: ritorna la lista di player_id che matchano
+   * i criteri salvati. Tags filter: AND logico.
+   */
+  applyFilter: (id: string) => invoke<string[]>("apply_filter", { id }),
+
+  // ===== M4 — Autocomplete posReale (Deliverable 10) =====
+
+  /**
+   * Ritorna i valori DISTINCT di pos_real per giocatori dello stesso
+   * pos_fanta. Per la <datalist> nel PlayerForm che suggerisce ruoli
+   * reali già usati (es. "Punta centrale", "Ala destra").
+   */
+  listPosRealeValues: (dbId: string | null, posFanta: string) =>
+    invoke<string[]>("list_pos_reale_values", {
+      dbId: dbId ?? null,
+      posFanta,
+    }),
 
   // ===== M3a B.9 — Fallback WebSocket LAN-only (solo feature flag `lan-only`) =====
   // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,

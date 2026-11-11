@@ -1,10 +1,11 @@
 // src/lib/sync/yjsDocuments.ts — Yjs frontend bridge (M3a.3 — B.2 + Deliverable 5).
 //
 // Singleton Y.Doc condiviso tra tutte le finestre (main + OS native).
-// Tiene 4 collection sincronizzate:
+// Tiene 5 collection sincronizzate:
 //  - players       (Y.Map<player_id, Y.Map<field, value>>)
 //  - scouting_notes (Y.Array<Y.Map>)
 //  - auction_data   (Y.Map<player_id, Y.Map<field, value>>)
+//  - tags           (Y.Map<tag_id, Y.Map<field, value>>) — M4 (v2.6)
 //  - cursors        (Y.Map<user_id, LiveCursor> — vedi yjsCursors.ts)
 //
 // M3a.3 (Deliverable 5 — PB4-A risolto architetturalmente):
@@ -35,6 +36,27 @@
 //    origin esterno). Questo è l'anti-loop nativo di Yjs — molto più robusto
 //    del flag manuale.
 //
+// M4 (v2.6) — Aggiunta della collection `tags` con lo stesso pattern:
+//   Path LOCALE: usePlayersStore.createTag → create_tag commit (created_by='me')
+//     → updateYDocTag(tag) → yTags.set(tag.id, ...) SENZA origin
+//     → Y.Doc 'update' → provider broadcast
+//     → listener yTags.observe: transaction.local === true → SKIP
+//
+//   Path REMOTO: peer riceve update via sync-update-received
+//     → Y.applyUpdate(ydoc, bytes, this)
+//     → listener yTags.observe: transaction.local === false → PROCEED
+//       → save_tag_from_sync (created_by='sync-live')
+//
+//   Delete: usePlayersStore.deleteTag → delete_tag SQLite
+//     → removeYDocTag(id) → yTags.delete(id) SENZA origin → broadcast
+//     → listener remoto: yTags.observe → key removed → save_tag_from_sync? NO,
+//       la delete è locale esplicita (Vincolo HARD #1): il peer ricevente
+//       DEVE fare delete_tag a sua volta esplicitamente. Non propaghiamo
+//       la delete via Yjs (come per i player): il tag resta sul peer
+//       remoto finché non lo cancella a sua volta.
+//       In futuro si può aggiungere un campo `deleted: true` nel Y.Map del
+//       tag per tombstone-based sync, ma per M4 la delete è locale.
+//
 // Vincolo HARD #13: Sync-live NON sostituisce SQLite come source of truth.
 // SQLite rimane authoritativo, Yjs è transport + merge layer.
 
@@ -44,6 +66,8 @@ import type {
   PlayerSyncInput,
   ScoutingNoteSyncInput,
   AuctionDataSyncInput,
+  // M4 (v2.6) — tag sync input
+  TagSyncInput,
 } from "@/types/sync";
 
 // ----------------------------------------------------------------------
@@ -61,6 +85,9 @@ export const yNotes = ydoc.getArray<Y.Map<unknown>>("scouting_notes");
 
 /** Y.Map<player_id, Y.Map<field, value>> — stato CRDT di auction_data. */
 export const yAuction = ydoc.getMap<Y.Map<unknown>>("auction_data");
+
+/** Y.Map<tag_id, Y.Map<field, value>> — stato CRDT dei tag (M4 v2.6). */
+export const yTags = ydoc.getMap<Y.Map<unknown>>("tags");
 
 /** Y.Map<user_id, LiveCursor> — stato CRDT dei cursori (vedi yjsCursors.ts). */
 export const yCursors = ydoc.getMap<unknown>("cursors");
@@ -166,6 +193,61 @@ export function updateYDocAuctionData(auction: AuctionDataSyncInput): void {
         yAuc.set(k, v);
       }
     }
+  });
+}
+
+// ----------------------------------------------------------------------
+// M4 (v2.6) — Tag bridge functions
+// ----------------------------------------------------------------------
+
+/**
+ * Applica un update di un tag al Y.Doc locale.
+ *
+ * Da chiamare DOPO che `create_tag` ha committato su SQLite con
+ * `created_by='me'`. La trasmissione ai peer remoti è gestita dal
+ * SyncManager + provider (Supabase + Iroh) che ascoltano `ydoc.on('update')`.
+ *
+ * Anti-loop: il listener `yTags.observe` userà `transaction.local` per
+ * distinguere edit locali (skip persistenza) da edit remoti (persisti con
+ * `save_tag_from_sync`).
+ */
+export function updateYDocTag(tag: TagSyncInput): void {
+  ydoc.transact(() => {
+    let yTag = yTags.get(tag.id);
+    if (!yTag) {
+      yTag = new Y.Map();
+      yTags.set(tag.id, yTag);
+    }
+    const fields: Array<[string, unknown]> = [
+      ["player_id", tag.playerId],
+      ["label", tag.label],
+      ["color", tag.color],
+      ["sync_node_id", tag.syncNodeId],
+    ];
+    for (const [k, v] of fields) {
+      if (v !== undefined && v !== null) {
+        yTag.set(k, v);
+      }
+    }
+  });
+  // Non broadcast manuale qui — i provider ascoltano ydoc.on('update').
+}
+
+/**
+ * Rimuove un tag dal Y.Doc locale (delete locale esplicita).
+ *
+ * Da chiamare DOPO che `delete_tag` ha committato su SQLite.
+ *
+ * NOTA: la delete NON è un'operazione CRDT natively per Y.Map (Yjs è
+ * add-only converge-friendly ma la delete è "last-writer" semantics).
+ * Per M4 la delete del tag è considerata locale esplicita (come per i
+ * player, Vincolo HARD #1): il peer remoto DEVE fare delete_tag a sua
+ * volta. In futuro si può aggiungere un campo `deleted: true` per
+ * tombstone-based sync.
+ */
+export function removeYDocTag(tagId: string): void {
+  ydoc.transact(() => {
+    yTags.delete(tagId);
   });
 }
 
@@ -286,11 +368,43 @@ export function initYjsBridge(): () => void {
   };
   yAuction.observe(auctionHandler);
 
+  // M4 (v2.6) — Listener yTags.observe → persisti tag remoti (skip locali).
+  // Anti-loop identico a yPlayers/yAuction: transaction.local === true → skip
+  // (la persistenza è già fatta da create_tag con created_by='me').
+  // transaction.local === false → save_tag_from_sync (created_by='sync-live').
+  const tagsHandler = (event: Y.YMapEvent<Y.Map<unknown>>) => {
+    if (event.transaction.local) return; // skip edit locali
+    for (const [key, change] of event.keys.entries()) {
+      // change.action: 'add' | 'update' | 'delete'
+      // Per 'delete': NON persistiamo (la delete è locale esplicita, Vincolo
+      // HARD #1: il peer remoto DEVE fare delete_tag a sua volta).
+      if (change.action === "delete") continue;
+      const yTag = yTags.get(key);
+      if (!yTag) continue;
+      const input: TagSyncInput = {
+        id: key,
+        playerId: String(yTag.get("player_id") ?? ""),
+        label: String(yTag.get("label") ?? ""),
+        color: (yTag.get("color") as string | undefined) ?? null,
+        syncNodeId: (yTag.get("sync_node_id") as string | undefined) ?? null,
+      };
+      if (!input.label) {
+        console.warn("[yjsBridge] save_tag_from_sync skip: label vuoto per tag", key);
+        continue;
+      }
+      api.saveTagFromSync(input).catch((err) => {
+        console.error("[yjsBridge] saveTagFromSync fallito:", err);
+      });
+    }
+  };
+  yTags.observe(tagsHandler);
+
   // Cleanup function — chiamare su app unmount.
   return () => {
     yPlayers.unobserve(playersHandler);
     yNotes.unobserve(notesHandler);
     yAuction.unobserve(auctionHandler);
+    yTags.unobserve(tagsHandler);
   };
 }
 

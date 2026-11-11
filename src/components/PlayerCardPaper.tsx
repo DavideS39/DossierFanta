@@ -32,6 +32,14 @@ import { paperFor, hashString, type PaperVariant } from "@/assets/paper";
 import { Stamp } from "./Stamp";
 import { GlossaryTooltip } from "./GlossaryTooltip";
 import { StatusToggle } from "./StatusToggle";
+// M4 (v2.6) — tag + badge completezza
+import { TagStamp } from "./TagStamp";
+import {
+  computeScoutingCompleteness,
+  completenessBadgeColor,
+  completenessTooltip,
+} from "@/lib/scoutingCompleteness";
+import { usePlayersStore } from "@/stores/usePlayersStore";
 
 interface Props {
   player: Player;
@@ -72,6 +80,20 @@ export function PlayerCardPaper({
 
   const [statusMenu, setStatusMenu] = useState<{ x: number; y: number } | null>(null);
 
+  // M4 (v2.6) — Tag del player dallo store + azione toggle filtro.
+  const playerTags = usePlayersStore((s) => s.tagsByPlayer[player.id] ?? []);
+  const toggleTagFilter = usePlayersStore((s) => s.toggleTagFilter);
+  const activeTagFilters = usePlayersStore((s) => s.activeTagFilters);
+
+  // M4 — Badge completezza: al momento passiamo solo il player (senza auctionData
+  // per non fare fetch aggiuntivo su ogni card — l'approssimazione è accettabile
+  // per M4 base: i campi auction_data risultano sempre "non compilati" nel badge).
+  // In M4.G si potrà fetchare auction_data in batch per tutti i player visibili.
+  const completeness = useMemo(
+    () => computeScoutingCompleteness(player, null),
+    [player],
+  );
+
   const handleCardClick = () => {
     if (archived) return;
     onSelect();
@@ -83,6 +105,12 @@ export function PlayerCardPaper({
     e.stopPropagation();
     e.preventDefault();
     setStatusMenu({ x: e.clientX, y: e.clientY + 14 });
+  };
+
+  const handleTagClick = (label: string) => {
+    if (archived) return;
+    // TagStamp fa già stopPropagation internamente sul suo onClick wrapper.
+    toggleTagFilter(label);
   };
 
   const safeStyle = {
@@ -194,6 +222,33 @@ export function PlayerCardPaper({
           <Stat term="med" label="M" value={player.med !== null ? player.med.toFixed(2) : "—"} />
           <Stat term="medv" label="MV" value={player.medv !== null ? player.medv.toFixed(2) : "—"} accent={player.medv !== null && player.medv >= 6.5} />
         </div>
+
+        {/* M4 (v2.6) — Tag del player come timbri rotati + badge completezza.
+            Click su un tag → attiva filtro nella FilterBar (toggle AND).
+            Vincolo #20: niente overhaul grafico, CSS base del TagStamp. */}
+        {(playerTags.length > 0 || !archived) && (
+          <div className="pcard-tags">
+            {playerTags.map((t) => (
+              <TagStamp
+                key={t.id}
+                tag={t}
+                size="sm"
+                onClick={() => handleTagClick(t.label)}
+                selected={activeTagFilters.includes(t.label)}
+                title={`${t.label} — click per filtrare la Rosa per questo tag`}
+              />
+            ))}
+            {/* Badge completezza scouting: verde ≥60%, ambra <60%. */}
+            <span
+              className={`pcard-completeness ${completeness.complete ? "is-complete" : "is-incomplete"}`}
+              title={completenessTooltip(completeness)}
+              style={{ color: completenessBadgeColor(completeness) }}
+              aria-label={`Completezza scouting ${completeness.percent}%`}
+            >
+              {completeness.percent}%
+            </span>
+          </div>
+        )}
 
         <div className="pcard-foot">
           {dbLabel && <span className="pcard-dbchip">» {dbLabel}</span>}

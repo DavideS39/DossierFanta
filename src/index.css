@@ -1,11 +1,14 @@
 /* Import design system taccuino (variabili CSS, componenti, texture)
    DEVE precedere @tailwind per rispettare la regola CSS di @import.
    M2.1: importa anche taccuino-realistic.css per texture 4-layer + ombre
-   multilayer + Z levels + chrome WM + status toggle menu. */
+   multilayer + Z levels + chrome WM + status toggle menu.
+   M4 (v2.6): importa m4-tags-filtri.css per TagStamp, FilterBar, badge
+   completezza, expand-notes toggle. */
 @import "./styles/taccuino.css";
 @import "./styles/taccuino-realistic.css";
 @import "./styles/scrivania.css";
 @import "./styles/window-fogli.css";
+@import "./styles/m4-tags-filtri.css";
 
 @tailwind base;
 @tailwind components;

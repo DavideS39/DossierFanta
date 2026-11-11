@@ -72,6 +72,8 @@ import { usePlayerSync } from "@/lib/usePlayerSync";
 import { GlossaryTooltip } from "./GlossaryTooltip";
 import { Stamp } from "./Stamp";
 import { fmtFmil } from "@/lib/format";
+// M4 (v2.6) — TagInput per aggiungere/rimuovere tag dal PlayerForm.
+import { TagInput } from "./TagInput";
 
 interface Props {
   /** Se passato, modalità edit (pre-popolato). Se null, modalità create. */
@@ -158,6 +160,40 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
 
   // Tab attiva nel pannello SCOUTING
   const [scoutingTab, setScoutingTab] = useState<"data" | "link">("data");
+
+  // M4 (v2.6) — Autocomplete posReale: valori DISTINCT di pos_real per
+  // giocatori dello stesso pos_fanta del player corrente. Fetch dal
+  // comando list_pos_reale_values (Rust). Aggiornato quando il player
+  // cambia (in particolare quando cambia pos_fanta).
+  const [posRealeValues, setPosRealeValues] = useState<string[]>([]);
+  useEffect(() => {
+    if (!player || !player.pos_fanta) {
+      setPosRealeValues([]);
+      return;
+    }
+    let cancelled = false;
+    api.listPosRealeValues(player.db_id ?? null, player.pos_fanta)
+      .then((rows) => {
+        if (!cancelled) setPosRealeValues(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPosRealeValues([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [player?.id, player?.pos_fanta, player?.db_id]);
+
+  // M4 (v2.6) — Tag del player (subscription reattiva al store).
+  // Re-render automatico quando i tag cambiano (create/delete via TagInput).
+  // Boot fetch iniziale per assicurarsi che i tag siano caricati anche se
+  // il player è aperto in finestra WM prima del refresh della lista principale.
+  const tagsForPlayer = usePlayersStore((s) => s.tagsByPlayer[player?.id ?? ""] ?? []);
+  useEffect(() => {
+    if (player?.id) {
+      void usePlayersStore.getState().loadTagsForPlayer(player.id);
+    }
+  }, [player?.id]);
 
   // M2.2 — FIX A2 (F12): ascolta `player-updated` per il player in edit.
   // Quando il backend emette l'evento (dopo save_scouting_note /
@@ -482,7 +518,17 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
           className="tacc-input"
           placeholder="Ruolo reale (es. Punta centrale / Ala destra)"
           style={{ fontSize: "0.75rem", marginBottom: "0.4rem" }}
+          list="pos-reale-values"
+          autoComplete="off"
         />
+        {/* M4 (v2.6) — Autocomplete posReale: datalist popolata con i valori
+            DISTINCT di pos_real per giocatori dello stesso pos_fanta.
+            Comando Rust: list_pos_reale_values. */}
+        <datalist id="pos-reale-values">
+          {posRealeValues.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
 
         {/* Riga 3: priorità slider + stats compatte */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", alignItems: "center" }}>
@@ -926,6 +972,42 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
           <div style={{ fontSize: "0.6rem", color: "var(--ink-soft)", marginTop: "0.3rem", fontStyle: "italic" }}>
             ↳ auto-toggle: aggiungi una nota → status passa a SCOUTATO automaticamente
           </div>
+        </div>
+      )}
+
+      {/* ============ M4 (v2.6) — TAG TIMBRO box ============
+          Mostra i tag del player come TagStamp + TagInput per aggiungerli.
+          Testo libero, autocomplete da label già usate. */}
+      {player && (
+        <div
+          style={{
+            margin: "0 1rem 0.6rem",
+            padding: "0.5rem 0.7rem",
+            backgroundColor: "rgba(43, 27, 18, 0.03)",
+            borderLeft: "3px solid var(--ink-soft)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "0.65rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--ink-soft)",
+              marginBottom: "0.35rem",
+            }}
+          >
+            » TAG TIMBRO (testo libero, filtro per categoria)
+          </div>
+          <TagInput
+            playerId={player.id}
+            tags={tagsForPlayer}
+            onChanged={() => {
+              // Refresh dei tag del player nel store + le label (per filter bar)
+              void usePlayersStore.getState().loadTagsForPlayer(player.id);
+              void usePlayersStore.getState().refreshTagLabels();
+            }}
+          />
         </div>
       )}
 

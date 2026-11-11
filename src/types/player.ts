@@ -99,7 +99,44 @@ export interface ListFilters {
   include_archive?: boolean | null; // M2: se true, include archived
   limit?: number | null;
   offset?: number | null;
+  // M4 (v2.6) — sorting multi-campo + tag filter
+  sort_by?: SortBy | null;
+  sort_dir?: SortDir | null;
+  tags?: string[] | null;
 }
+
+/** M4 — Campi di ordinamento per list_players. Mirror lato TS di Rust `build_sort_clause`. */
+export type SortBy =
+  | "priority"
+  | "fascia"
+  | "name"
+  | "medv"
+  | "fvm"
+  | "fmil_spesi"
+  | "updated_at";
+
+export type SortDir = "asc" | "desc";
+
+/** M4 — Etichette umane per i campi di ordinamento (UI dropdown). */
+export const SORT_BY_LABELS: Record<SortBy, string> = {
+  priority: "Priorità",
+  fascia: "Fascia",
+  name: "Nome",
+  medv: "MV",
+  fvm: "FVM",
+  fmil_spesi: "f₥ spesi",
+  updated_at: "Data modifica",
+};
+
+export const SORT_BY_VALUES: SortBy[] = [
+  "priority",
+  "fascia",
+  "name",
+  "medv",
+  "fvm",
+  "fmil_spesi",
+  "updated_at",
+];
 
 /** Metadati DB restituiti da get_db_info (M1 + M2 extension). */
 export interface DbInfo {
@@ -334,4 +371,51 @@ export interface AutoFetchStatus {
   cache_path: string;
   /** Ultime 5 entry di aggiornamento. */
   update_log: UpdateLogEntry[];
+}
+
+// ----------------------------------------------------------------------
+// M4 (v2.6) — Tag & Filtri: tipi mirror Rust (commands/tags.rs)
+// ----------------------------------------------------------------------
+
+/** Rappresentazione di un tag-timbro associato a un giocatore. */
+export interface Tag {
+  id: string;
+  player_id: string;
+  label: string;
+  /** HSL string CSS: "hsl(42, 45%, 35%)". Derivata da hash(label) lato Rust. */
+  color: string | null;
+  created_at: string;
+  created_by: string; // 'me' | 'sync-live'
+  last_sync_at: string | null;
+  sync_node_id: string | null;
+}
+
+/** Riga di `player_filters`: un filtro salvato con nome. */
+export interface Filter {
+  id: string;
+  name: string;
+  /** JSON string con i criteri: {tags, role, status, sort_by, sort_dir, search} */
+  criteria_json: string;
+  created_at: string;
+}
+
+/** Conteggio di tag per label (per la filter bar: "rigorista (3)"). */
+export interface TagLabelCount {
+  label: string;
+  count: number;
+}
+
+/**
+ * M4 — Criteri serializzati in `Filter.criteria_json`.
+ * Usato per (de)serializzare i filtri salvati in modo type-safe.
+ * Non è il mirror esatto di un tipo Rust: Rust memorizza solo il JSON string.
+ */
+export interface FilterCriteria {
+  tags?: string[];
+  role?: PosFanta | null;
+  status?: Status | null;
+  fascia?: Fascia | null;
+  search?: string | null;
+  sort_by?: SortBy | null;
+  sort_dir?: SortDir | null;
 }

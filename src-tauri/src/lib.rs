@@ -334,6 +334,17 @@ pub fn run() {
             commands::pairing::cleanup_all_pending_pairings,
             commands::pairing::touch_pairing_last_seen,
             commands::pairing::set_pairing_display_name,
+            // M4 (v2.6) — Tag & Filtri: tag CRUD + filtri salvati + sync + posReale autocomplete.
+            commands::tags::create_tag,
+            commands::tags::list_tags,
+            commands::tags::delete_tag,
+            commands::tags::list_all_tag_labels,
+            commands::tags::save_tag_from_sync,
+            commands::tags::save_filter,
+            commands::tags::list_filters,
+            commands::tags::delete_filter,
+            commands::tags::apply_filter,
+            commands::tags::list_pos_reale_values,
             // sync_lan.rs (M3a B.9) — solo con feature `lan-only`
             // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,
             // lan_discover_peers nuovo per mDNS discovery automatico.

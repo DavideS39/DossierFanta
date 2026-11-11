@@ -48,6 +48,23 @@ const nid = () => `mock-${(seq++).toString(16).padStart(4, "0")}`;
 
 // M2.1.1 — Map in-memory per auction_data + scouting_notes (mock browser)
 const auctionDataMock = new Map<string, AuctionData>();
+
+// M4 (v2.6) — Store in-memory per tag + filtri salvati (anteprima web).
+// Reset al refresh pagina (mock non persiste). Per il backend Rust questi
+// vivono in SQLite (tabelle player_tags, player_filters).
+const mockTagStore: import("@/types/player").Tag[] = [];
+const mockFilterStore: import("@/types/player").Filter[] = [];
+
+/** M4 mock — stesso algoritmo di Rust `hash_to_color`: FNV-1a 32-bit → hue % 360. */
+function mockHashToColor(label: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < label.length; i++) {
+    h ^= label.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  const hue = (h >>> 0) % 360;
+  return `hsl(${hue}, 45%, 35%)`;
+}
 const scoutingNotesMock = new Map<string, ScoutingNote[]>();
 let noteIdSeq = 1;
 
@@ -794,6 +811,130 @@ export const mockApi = {
   },
   async saveAuctionDataFromSync(_input: unknown): Promise<void> {
     // no-op
+  },
+
+  // ===== M4 (v2.6) — Tag & Filtri: stub mock per anteprima web =====
+  // Implementazione minimale in-memory: i tag vivono nel Map mockTagStore.
+  // Filter salvati in mockFilterStore. Entrambi vengono resettati al refresh
+  // pagina (l'anteprima web non persiste).
+
+  async createTag(playerId: string, label: string): Promise<import("@/types/player").Tag> {
+    await delay();
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("label è obbligatorio");
+    const tag: import("@/types/player").Tag = {
+      id: nid(),
+      player_id: playerId,
+      label: trimmed,
+      color: mockHashToColor(trimmed),
+      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+      created_by: "me",
+      last_sync_at: null,
+      sync_node_id: null,
+    };
+    mockTagStore.push(tag);
+    return tag;
+  },
+
+  async listTags(playerId?: string | null): Promise<import("@/types/player").Tag[]> {
+    await delay();
+    if (playerId === null || playerId === undefined) return [...mockTagStore];
+    return mockTagStore.filter((t) => t.player_id === playerId);
+  },
+
+  async deleteTag(id: string): Promise<boolean> {
+    await delay();
+    const before = mockTagStore.length;
+    const idx = mockTagStore.findIndex((t) => t.id === id);
+    if (idx >= 0) mockTagStore.splice(idx, 1);
+    return mockTagStore.length < before;
+  },
+
+  async listAllTagLabels(): Promise<import("@/types/player").TagLabelCount[]> {
+    await delay();
+    const map = new Map<string, Set<string>>();
+    for (const t of mockTagStore) {
+      if (!map.has(t.label)) map.set(t.label, new Set());
+      map.get(t.label)!.add(t.player_id);
+    }
+    return Array.from(map.entries())
+      .map(([label, set]) => ({ label, count: set.size }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  },
+
+  async saveTagFromSync(_input: unknown): Promise<void> {
+    // no-op in mock
+  },
+
+  async saveFilter(name: string, criteriaJson: string): Promise<import("@/types/player").Filter> {
+    await delay();
+    const existing = mockFilterStore.find((f) => f.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      existing.criteria_json = criteriaJson;
+      return { ...existing };
+    }
+    const filter: import("@/types/player").Filter = {
+      id: nid(),
+      name: name.trim(),
+      criteria_json: criteriaJson,
+      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+    };
+    mockFilterStore.push(filter);
+    return { ...filter };
+  },
+
+  async listFilters(): Promise<import("@/types/player").Filter[]> {
+    await delay();
+    return [...mockFilterStore].sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  async deleteFilter(id: string): Promise<boolean> {
+    await delay();
+    const before = mockFilterStore.length;
+    const idx = mockFilterStore.findIndex((f) => f.id === id);
+    if (idx >= 0) mockFilterStore.splice(idx, 1);
+    return mockFilterStore.length < before;
+  },
+
+  async applyFilter(id: string): Promise<string[]> {
+    await delay();
+    const filter = mockFilterStore.find((f) => f.id === id);
+    if (!filter) throw new Error("filtro non trovato");
+    const criteria = JSON.parse(filter.criteria_json) as {
+      tags?: string[];
+      role?: string;
+      status?: string;
+      search?: string;
+    };
+    return players
+      .filter((p) => {
+        if (criteria.role && p.pos_fanta !== criteria.role) return false;
+        if (criteria.status && p.status !== criteria.status) return false;
+        if (criteria.search) {
+          const s = criteria.search.toLowerCase();
+          if (!p.name.toLowerCase().includes(s) && !(p.team ?? "").toLowerCase().includes(s))
+            return false;
+        }
+        if (criteria.tags && criteria.tags.length > 0) {
+          const playerTagLabels = new Set(
+            mockTagStore.filter((t) => t.player_id === p.id).map((t) => t.label.toLowerCase()),
+          );
+          for (const want of criteria.tags) {
+            if (!playerTagLabels.has(want.toLowerCase())) return false;
+          }
+        }
+        return true;
+      })
+      .map((p) => p.id);
+  },
+
+  async listPosRealeValues(_dbId: string | null, posFanta: string): Promise<string[]> {
+    await delay();
+    const set = new Set<string>();
+    for (const p of players) {
+      if (p.pos_fanta === posFanta && p.pos_real) set.add(p.pos_real);
+    }
+    return Array.from(set).sort();
   },
 
   // M3a B.9 — Fallback WebSocket LAN-only (stub, mai attivo in anteprima)

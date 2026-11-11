@@ -9,6 +9,10 @@
 //!  - v2.5 (M3a.4 + M3a.5): `migrations/schema_v2.5.sql` — estensione additive per
 //!    `sync_pairings` (ECDH shared_secret + room_name derivata) +
 //!    `sync_pairings_pending` (codici 8-cifre pairing in corso).
+//!  - v2.5 + M4 (v2.6): append allo stesso `schema_v2.5.sql` di 3 nuove tabelle
+//!    additive — `player_tags`, `player_filters`, `player_links`. Lo user_version
+//!    resta 5 (no bump): la funzione `ensure_m4_tables` le crea
+//!    incondizionatamente a fine `open_and_migrate` (CREATE TABLE IF NOT EXISTS).
 //!
 //! M3a (B.1) — Migrazione tracciata via `PRAGMA user_version`:
 //!  - 0 (never migrated) → applica v2.2 + v2.3 + v2.4 + v2.5, set user_version=5
@@ -144,7 +148,69 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, SqlError> {
     )?;
     log::info!("ListoneSerieA.db ensured in databases table (idempotent).");
 
+    // M4 (v2.6) — Ensure delle 3 nuove tabelle tag/filtri/links.
+    // Il batch v2.5 sopra le include (append allo schema_v2.5.sql), ma i DB
+    // esistenti già a user_version=5 (M3a.4/5 già applicati) skippano il gate
+    // `current < 5` e non riceverebbero le nuove CREATE TABLE. Questa chiamata
+    // idempotente (CREATE TABLE IF NOT EXISTS) le crea su ogni boot, garantendo
+    // che i DB legacy ricevano le tabelle M4 senza bump di user_version.
+    // Vincolo HARD #19: schema v2.2-v2.4 invariati, v2.5 solo additive.
+    ensure_m4_tables(&conn)?;
+
     Ok(conn)
+}
+
+/// M4 (v2.6) — Crea le 3 tabelle additive del milestone M4 se non esistono già.
+///
+/// Tabelle:
+///  - `player_tags`    — tag-timbro testo libero per giocatore (multi-row).
+///  - `player_filters` — filtri salvati con nome (criteria_json).
+///  - `player_links`   — link esterni (FBref/Sofascore/Understat/Transfermarkt).
+///                       Schema only in M4; popolata in M4.5 (scraper).
+///
+/// Idempotente via `CREATE TABLE IF NOT EXISTS`. Sicura da chiamare su ogni
+/// boot. Pattern identico a v2.3/v2.4 (vedi commenti nello schema_v2.5.sql).
+fn ensure_m4_tables(conn: &Connection) -> Result<(), SqlError> {
+    // Player_tags: indice su player_id + label.
+    conn.execute_batch(
+        r#"CREATE TABLE IF NOT EXISTS player_tags (
+             id            TEXT PRIMARY KEY,
+             player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+             label         TEXT NOT NULL,
+             color         TEXT,
+             created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+             created_by    TEXT NOT NULL DEFAULT 'me',
+             last_sync_at  TEXT,
+             sync_node_id  TEXT
+           );
+           CREATE INDEX IF NOT EXISTS idx_tags_player ON player_tags(player_id);
+           CREATE INDEX IF NOT EXISTS idx_tags_label  ON player_tags(label);"#,
+    )?;
+    // Player_filters: filtri salvati con nome.
+    conn.execute_batch(
+        r#"CREATE TABLE IF NOT EXISTS player_filters (
+             id            TEXT PRIMARY KEY,
+             name          TEXT NOT NULL,
+             criteria_json TEXT NOT NULL,
+             created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+           );"#,
+    )?;
+    // Player_links: schema only in M4, popolata in M4.5.
+    conn.execute_batch(
+        r#"CREATE TABLE IF NOT EXISTS player_links (
+             player_id           TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+             fbref_url           TEXT,
+             sofascore_url       TEXT,
+             understat_url       TEXT,
+             transfermarkt_url   TEXT,
+             manual_links_json   TEXT,
+             fetched_at          TEXT,
+             last_sync_at        TEXT,
+             sync_node_id        TEXT
+           );"#,
+    )?;
+    log::info!("M4 tables ensured (player_tags, player_filters, player_links).");
+    Ok(())
 }
 
 /// Restituisce `PRAGMA user_version` (0 se mai settato).

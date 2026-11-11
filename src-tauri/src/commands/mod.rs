@@ -9,6 +9,8 @@ pub mod listone;
 pub mod pairing;
 pub mod players;
 pub mod sync;
+// M4 (v2.6) — Tag & Filtri: tag-timbro CRUD + filtri salvati + sync + posReale autocomplete.
+pub mod tags;
 pub mod windows;
 
 // M3a — B.9: modulo sync_lan solo se feature `lan-only` attiva.

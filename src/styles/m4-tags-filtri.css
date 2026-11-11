@@ -1,0 +1,492 @@
+/* ============================================================
+ * DossierFanta v2.6 — M4 (Tag & Filtri) styles
+ * ------------------------------------------------------------
+ * Stili per:
+ *  - TagStamp: timbro rotato hash-based (CSS base, no overhaul)
+ *  - TagInput: input + chip esistenti per PlayerForm
+ *  - FilterBar: toolbar filtri (search + tag + ruolo + stato + sort +
+ *    filtri salvati + espandi note + counter + reset)
+ *  - pcard-tags + pcard-completeness: sezione tag + badge completezza
+ *    sulla PlayerCardPaper
+ *  - expand-notes: body class che rimuove -webkit-line-clamp dalle
+ *    note-preview (toggle persistito in localStorage)
+ *
+ * Vincolo HARD #20: M4 NON fa overhaul grafico. I TagStamp usano CSS
+ * base (no SVG avanzato, no texture inchiostro realistica). M4.G farà
+ * l'overhaul. Per ora l'importante è che la STRUTTURA sia un timbro
+ * rotato, non un chip piatto.
+ * ============================================================ */
+
+/* ============================================================
+ * TagStamp — timbro rotato
+ * ============================================================ */
+
+.tag-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+  font-family: var(--font-display, "Special Elite", monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  border: 2px solid var(--tag-color, var(--ink, #2B1B12));
+  color: var(--tag-color, var(--ink, #2B1B12));
+  background: transparent;
+  opacity: 0.85;
+  /* 3 ombre inset randomiche per simulare assorbimento irregolare
+     dell'inchiostro (uneven coverage). M4.G sostituirà con SVG texture. */
+  box-shadow:
+    inset 1px 0 0 rgba(0, 0, 0, 0.08),
+    inset -1px 1px 0 rgba(0, 0, 0, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06);
+  outline: 1px solid var(--tag-color, var(--ink));
+  outline-offset: -1px;
+  outline-opacity: 0.5;
+  transform: rotate(var(--tag-rotation, 0deg));
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.tag-stamp--md {
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+.tag-stamp--sm {
+  font-size: 9px;
+  padding: 1px 6px;
+  /* I tag piccoli sulle card sono leggermente meno opachi per non
+     dominare visivamente la carta. */
+  opacity: 0.78;
+}
+
+.tag-stamp__label {
+  /* Single line, no wrap */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14ch;
+}
+
+.tag-stamp__remove {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0 2px;
+  opacity: 0.65;
+  font-family: var(--font-body, monospace);
+}
+
+.tag-stamp__remove:hover {
+  opacity: 1;
+  color: var(--red, #8B2E1F);
+}
+
+/* Hover — solo se clickable (filter bar). Raddrizza + scale 1.05. */
+.tag-stamp.is-clickable {
+  cursor: pointer;
+}
+
+.tag-stamp.is-clickable:hover {
+  transform: rotate(0deg) scale(1.05);
+  opacity: 1;
+}
+
+/* Selected state (filter bar): background tag-color opacity 0.3. */
+.tag-stamp.is-selected {
+  background: rgba(var(--tag-rgb, 43, 27, 18), 0.25);
+  opacity: 1;
+  border-width: 2px;
+}
+
+.tag-stamp.is-selected::before {
+  /* Mark di "filtro attivo" — piccolo ✓ prima del label */
+  content: "✓ ";
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.tag-stamp.is-selected.is-clickable:hover {
+  transform: rotate(0deg) scale(1.05);
+}
+
+/* Focus ring per accessibilità */
+.tag-stamp.is-clickable:focus-visible {
+  outline: 2px solid var(--blue, #2C4A6B);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+ * TagInput — input + chip esistenti
+ * ============================================================ */
+
+.tag-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tag-input__existing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 1.5rem;
+  align-items: center;
+}
+
+.tag-input__empty {
+  font-family: var(--font-body, monospace);
+  font-size: 0.65rem;
+  color: var(--ink-soft, #5A4632);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.tag-input__row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.tag-input__field {
+  flex: 1;
+  min-width: 180px;
+}
+
+.tag-input__add {
+  /* df-btn è già definito — estendo con override minimale */
+  flex-shrink: 0;
+}
+
+.tag-input__hint {
+  font-family: var(--font-body, monospace);
+  font-size: 0.6rem;
+  color: var(--ink-soft, #5A4632);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* ============================================================
+ * FilterBar — toolbar filtri M4
+ * ============================================================ */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  background: linear-gradient(
+    to bottom,
+    rgba(244, 236, 216, 0.6),
+    rgba(232, 222, 196, 0.4)
+  );
+  border-bottom: 1px solid rgba(43, 27, 18, 0.15);
+  border-top: 1px solid rgba(43, 27, 18, 0.08);
+}
+
+.filter-bar__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.filter-bar__row--top {
+  /* Riga con search + sort + saved + espandi + reset + counter */
+  gap: 0.7rem;
+}
+
+.filter-bar__row--filters {
+  /* Riga con tag + ruolo + stato — più compatta */
+  gap: 0.8rem;
+  padding-top: 0.2rem;
+  border-top: 1px dashed rgba(43, 27, 18, 0.1);
+}
+
+.filter-bar__search {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.filter-bar__icon {
+  font-size: 0.95rem;
+  color: var(--ink-soft, #5A4632);
+  opacity: 0.7;
+}
+
+.filter-bar__search-input {
+  flex: 1;
+}
+
+.filter-bar__label {
+  font-family: var(--font-display, "Special Elite", monospace);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft, #5A4632);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.filter-bar__sort,
+.filter-bar__saved {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.filter-bar__sort-select,
+.filter-bar__saved-select {
+  font-family: var(--font-body, monospace);
+  background: var(--paper, #F4ECD8);
+  border: 1px solid var(--ink-soft, #5A4632);
+  border-radius: 2px;
+  padding: 0.15rem 0.4rem;
+  color: var(--ink, #2B1B12);
+  cursor: pointer;
+}
+
+.filter-bar__sort-dir {
+  background: var(--paper, #F4ECD8);
+  border: 1px solid var(--ink-soft, #5A4632);
+  border-radius: 2px;
+  padding: 0.1rem 0.4rem;
+  font-family: var(--font-display, "Special Elite", monospace);
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--ink, #2B1B12);
+  min-width: 1.8rem;
+}
+
+.filter-bar__sort-dir:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.filter-bar__sort-dir:hover:not(:disabled) {
+  background: var(--ink, #2B1B12);
+  color: var(--paper, #F4ECD8);
+}
+
+.filter-bar__expand-toggle,
+.filter-bar__reset {
+  flex-shrink: 0;
+}
+
+.filter-bar__expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-body, monospace);
+  font-size: 0.65rem;
+  color: var(--ink-soft, #5A4632);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-bar__expand-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.filter-bar__counter {
+  margin-left: auto;
+  font-family: var(--font-display, "Special Elite", monospace);
+  font-size: 0.75rem;
+  color: var(--ink, #2B1B12);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.filter-bar__counter.is-loading {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.filter-bar__counter-active {
+  font-family: var(--font-body, monospace);
+  font-size: 0.65rem;
+  color: var(--ink-soft, #5A4632);
+  font-weight: normal;
+  font-style: italic;
+}
+
+.filter-bar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.filter-bar__group--tags {
+  flex: 1;
+  min-width: 240px;
+}
+
+.filter-bar__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.filter-bar__empty {
+  font-family: var(--font-body, monospace);
+  font-size: 0.65rem;
+  color: var(--ink-soft, #5A4632);
+  font-style: italic;
+  opacity: 0.65;
+}
+
+/* Modale "salva filtro corrente" */
+.filter-bar__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 30, 50, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.filter-bar__modal {
+  background: var(--paper, #F4ECD8);
+  border: 2px solid var(--ink, #2B1B12);
+  border-radius: 4px;
+  padding: 1rem 1.2rem;
+  max-width: 440px;
+  width: 90vw;
+  box-shadow:
+    0 1px 2px rgba(43, 27, 18, 0.2),
+    0 4px 8px rgba(43, 27, 18, 0.12),
+    0 12px 24px rgba(43, 27, 18, 0.08);
+}
+
+.filter-bar__modal h3 {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display, "Special Elite", monospace);
+  font-size: 0.95rem;
+  color: var(--ink, #2B1B12);
+}
+
+.filter-bar__modal-criteria {
+  font-family: var(--font-body, monospace);
+  font-size: 0.7rem;
+  color: var(--ink-soft, #5A4632);
+  margin: 0 0 0.8rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(43, 27, 18, 0.04);
+  border-left: 2px solid var(--ink-soft, #5A4632);
+  line-height: 1.4;
+}
+
+.filter-bar__modal-input {
+  width: 100%;
+  margin-bottom: 0.7rem;
+}
+
+.filter-bar__modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* ============================================================
+ * PlayerCardPaper — sezione tag + badge completezza
+ * ============================================================ */
+
+.pcard-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 0.35rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgba(43, 27, 18, 0.12);
+  min-height: 1.2rem;
+}
+
+.pcard-completeness {
+  margin-left: auto;
+  font-family: var(--font-display, "Special Elite", monospace);
+  font-size: 0.65rem;
+  font-weight: bold;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+  letter-spacing: 0.02em;
+  background: rgba(244, 236, 216, 0.7);
+  cursor: help;
+}
+
+.pcard-completeness.is-complete {
+  /* verde — sopra soglia (≥60%) */
+  background: rgba(74, 103, 65, 0.1);
+}
+
+.pcard-completeness.is-incomplete {
+  /* ambra — sotto soglia (<60%) */
+  background: rgba(184, 134, 11, 0.1);
+}
+
+/* ============================================================
+ * Expand notes — body class toggle
+ * ============================================================
+ *
+ * Quando l'utente attiva il toggle "espandi note" nella FilterBar,
+ * il body riceve la classe `expand-notes`. Tutte le .note-preview
+ * perdono il -webkit-line-clamp e mostrano il testo completo.
+ *
+ * Persistito in localStorage (chiave: dossierfanta.expandNotes).
+ */
+
+body.expand-notes .note-preview,
+body.expand-notes .pcard-note,
+body.expand-notes .quick-note-preview {
+  -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Default (senza expand-notes): troncamento a 3 righe.
+   Queste regole sono già definite nei file CSS delle singole componenti,
+   le riportiamo qui per robustezza in caso vengano rimosse altrove. */
+.note-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* ============================================================
+ * Toolbar M4 — la variante df-toolbar--m4 allarga il container
+ * ============================================================ */
+
+.df-toolbar--m4 {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.df-toolbar__extras {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.2rem 0.3rem 0;
+  border-top: 1px dashed rgba(43, 27, 18, 0.1);
+}
