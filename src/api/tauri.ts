@@ -31,12 +31,24 @@ import type {
   ScoutingNote,
   Status,
   UpdatePlayerInput,
+  // M3a.3 fix post-review (Round 11) — DB condivisi con invito
+  SharedDatabaseInvitation,
 } from "@/types/player";
 // M3a — Tipi sync_* mirror Rust (src-tauri/src/commands/sync.rs)
 import type {
   AuctionDataSyncInput,
   PlayerSyncInput,
   ScoutingNoteSyncInput,
+  // M3a.3 — nuovi tipi per sync_identity + trusted peers
+  SyncIdentity,
+  TrustedPeer,
+  // M3a.3 — tipo evento sync-update-received
+  SyncUpdateReceivedEvent,
+  // M3a.4 + M3a.5 — tipi pairing cifrato
+  Pairing,
+  PairingCode,
+  PairingResult,
+  PairingPending,
 } from "@/types/sync";
 
 export const tauriApi = {
@@ -66,6 +78,16 @@ export const tauriApi = {
 
   /** Ritorna i metadati del DB attualmente attivo. */
   getActiveDatabase: () => invoke<DatabaseMeta>("get_active_database"),
+
+  // ===== M3a.3 fix post-review (Round 11) — DB condivisi con invito =====
+
+  /** Crea un nuovo database CONDIVISO e prepara l'invito per il peer. */
+  createSharedDatabase: (name: string, peerKeyOther: string) =>
+    invoke<SharedDatabaseInvitation>("create_shared_database", { name, peerKeyOther }),
+
+  /** Accetta un invito a un DB condiviso. Crea lo stesso DB (stesso UUID). */
+  acceptSharedDatabaseInvitation: (dbId: string, dbName: string) =>
+    invoke<DatabaseMeta>("accept_shared_database_invitation", { dbId, dbName }),
 
   // ===== players (M1 + M2 refactor) =====
 
@@ -287,6 +309,15 @@ export const tauriApi = {
   getAutofetchStatus: () =>
     invoke<AutoFetchStatus>("get_autofetch_status"),
 
+  /**
+   * M3a.5 — Archivia tutti i giocatori con `*` nel nome (fuori serie A).
+   * Li sposta da `players` a `players_archive` con archived_reason='non_in_listone'.
+   * NON distruttivo — i dati sono preservati in last_known_data.
+   * Ritorna il count dei player archiviati.
+   */
+  archiveAsteriskPlayers: () =>
+    invoke<number>("archive_asterisk_players"),
+
   // ====================================================================
   // M3a — Sync live CRDT P2P (Yjs + Iroh). Design doc Cap.5.
   // Tutti i comandi sync_* esposti da src-tauri/src/commands/sync.rs.
@@ -342,6 +373,36 @@ export const tauriApi = {
   irohDisconnectPeer: (peerKey: string) =>
     invoke<void>("iroh_disconnect_peer", { peerKey }),
 
+  // --- M3a.3 — Peer key persistente + trusted peers ---
+
+  /** Ferma il nodo Iroh corrente (rilascia risorse QUIC). SecretKey resta salvata. */
+  irohStopNode: () =>
+    invoke<void>("iroh_stop_node"),
+
+  /**
+   * Versione 2 di irohConnectByPeerKey che accetta DbState e salva il peer
+   * come trusted in `sync_peers` dopo una connessione QUIC riuscita. Usa questo
+   * al posto di `irohConnectByPeerKey` per abilitare l'auto-connect al boot.
+   */
+  irohConnectByPeerKeyV2: (peerKey: string) =>
+    invoke<boolean>("iroh_connect_by_peer_key_v2", { peerKey }),
+
+  /** Ritorna l'identità sync persistita (peer_key + display_name), o null se non ancora creata. */
+  getSyncIdentity: () =>
+    invoke<SyncIdentity | null>("get_sync_identity"),
+
+  /** Imposta il display_name dell'identità sync corrente. */
+  setSyncDisplayName: (name: string) =>
+    invoke<void>("set_sync_display_name", { name }),
+
+  /** Lista peer fidati salvati (auto-connect al boot). */
+  listTrustedPeers: () =>
+    invoke<TrustedPeer[]>("list_trusted_peers"),
+
+  /** Rimuove un peer dalla lista trusted (NON lo delete, imposta trusted=0). */
+  removeTrustedPeer: (peerKey: string) =>
+    invoke<void>("remove_trusted_peer", { peerKey: peerKey }),
+
   // --- B.8 save_*_from_sync (con updated_by='sync-live' lato Rust) ---
 
   /** Persiste un player ricevuto dal sync CRDT. */
@@ -383,14 +444,218 @@ export const tauriApi = {
   /** M3a.1 — Cerca peer DossierFanta sulla LAN via mDNS. */
   lanDiscoverPeers: (timeoutMs?: number) =>
     invoke<string[]>("lan_discover_peers", { timeoutMs: timeoutMs ?? null }),
+
+  // ===== M3a.3 — Listener eventi Tauri (pattern listen congelato) =====
+  //
+  // Wrapper per `listen<T>("event-name", callback)`. Ritornano una `UnlistenFn`
+  // che il caller deve chiamare su cleanup. Incapsulano qui così i nomi degli
+  // eventi stanno in un solo file (evita typo in giro per il codebase).
+
+  /**
+   * Listener per `sync-update-received` (emesso dal subscribe loop Iroh o
+   * dal peer handler LAN quando arriva un update Yjs binario da un peer).
+   * Il caller deve chiamare l'unlisten ritornato su cleanup.
+   */
+  onSyncUpdateReceived: (
+    cb: (event: SyncUpdateReceivedEvent) => void
+  ): Promise<UnlistenFn> =>
+    listen<SyncUpdateReceivedEvent>("sync-update-received", (e) => {
+      try {
+        cb(e.payload);
+      } catch (err) {
+        console.error("[api.onSyncUpdateReceived] handler fallito:", err);
+      }
+    }),
+
+  /** Listener per `sync-peer-connected` (NeighborUp nel gossip swarm). */
+  onSyncPeerConnected: (
+    cb: (event: { peerKey: string }) => void
+  ): Promise<UnlistenFn> =>
+    listen<{ peerKey: string }>("sync-peer-connected", (e) => cb(e.payload)),
+
+  /** Listener per `sync-peer-disconnected` (NeighborDown nel gossip swarm). */
+  onSyncPeerDisconnected: (
+    cb: (event: { peerKey: string }) => void
+  ): Promise<UnlistenFn> =>
+    listen<{ peerKey: string }>("sync-peer-disconnected", (e) => cb(e.payload)),
+
+  // ===== M3a.4 + M3a.5 — Pairing cifrato (ECDH + AES-GCM) =====
+
+  /**
+   * Deriva la shared_secret (32 byte) dal mio SecretKey Iroh + their peer_key.
+   * Usa X25519 ECDH. La shared_secret è MATEMATICAMENTE la stessa che l'altro
+   * peer deriva dal suo SecretKey + la mia peer_key.
+   */
+  deriveSharedSecret: (theirPeerKey: string) =>
+    invoke<number[]>("derive_shared_secret", { theirPeerKey }).then((arr) =>
+      new Uint8Array(arr)
+    ),
+
+  /**
+   * Cifra `update` (Yjs bytes binari) con AES-256-GCM usando `shared_secret`.
+   * Output: `[nonce(12) || ciphertext || tag(16)]`.
+   */
+  encryptUpdate: (update: Uint8Array, sharedSecret: Uint8Array) =>
+    invoke<number[]>("encrypt_update", {
+      update: Array.from(update),
+      sharedSecret: Array.from(sharedSecret),
+    }).then((arr) => new Uint8Array(arr)),
+
+  /**
+   * Decifra `ciphertext` (formato `[nonce(12) || ciphertext || tag(16)]`)
+   * con AES-256-GCM usando `shared_secret`. Ritorna plaintext.
+   */
+  decryptUpdate: (ciphertext: Uint8Array, sharedSecret: Uint8Array) =>
+    invoke<number[]>("decrypt_update", {
+      ciphertext: Array.from(ciphertext),
+      sharedSecret: Array.from(sharedSecret),
+    }).then((arr) => new Uint8Array(arr)),
+
+  /** Lista tutti i pairings salvati (per boot auto-connect del SupabaseYjsProvider). */
+  listPairings: () =>
+    invoke<Pairing[]>("list_pairings"),
+
+  /**
+   * Salva un pairing (chiamato da pairing_complete/pairing_join, ma anche
+   * esponibile per UI manuale). Idempotente via INSERT OR REPLACE.
+   */
+  savePairing: (
+    peerKeyOther: string,
+    sharedSecret: Uint8Array,
+    roomName: string,
+    displayName?: string | null
+  ) =>
+    invoke<void>("save_pairing", {
+      peerKeyOther,
+      sharedSecret: Array.from(sharedSecret),
+      roomName,
+      displayName: displayName ?? null,
+    }),
+
+  /** Rimuove un pairing. NON tocca sync_peers — per rimuovere completamente,
+   *  chiama anche `removeTrustedPeer`. */
+  deletePairing: (peerKeyOther: string) =>
+    invoke<void>("delete_pairing", { peerKeyOther }),
+
+  /**
+   * M3a.5 — Initiator: genera un codice 8-cifre + lo salva localmente in
+   * sync_pairings_pending per tracking/crash-resume. La pubblicazione su
+   * Supabase `pairings` table è gestita dal frontend (chiama Supabase diretto).
+   */
+  pairingCreate: () =>
+    invoke<PairingCode>("pairing_create"),
+
+  /**
+   * M3a.5 — Responder: entra il codice 8-cifre, deriva shared_secret + room_name
+   * via ECDH, salva pairing localmente, ritorna PairingResult.
+   * Il frontend poi broadcast su Realtime `pairing-<code>`: { peer_key_responder: my }.
+   */
+  pairingJoin: (code: string, peerKeyInitiator: string) =>
+    invoke<PairingResult>("pairing_join", { code, peerKeyInitiator }),
+
+  /**
+   * M3a.5 — Initiator: quando riceve la risposta del responder via Realtime
+   * (peer_key_responder), chiama questo comando per completare il pairing.
+   * Deriva la stessa shared_secret del responder (ECDH), salva pairing,
+   * cleanup sync_pairings_pending locale.
+   */
+  pairingComplete: (code: string, peerKeyResponder: string) =>
+    invoke<PairingResult>("pairing_complete", { code, peerKeyResponder }),
+
+  /** M3a.5 — Cancella un codice pairing in corso (initiator side). */
+  pairingCancel: (code: string) =>
+    invoke<void>("pairing_cancel", { code }),
+
+  /** M3a.5 — Lista codici pairing pending (in corso, initiator side).
+   *  M3a.3 fix post-review — Filtra SOLO codici non scaduti (< 5 min). */
+  listPendingPairings: () =>
+    invoke<PairingPending[]>("list_pending_pairings"),
+
+  /** M3a.3 fix post-review — Pulisce i codici pairing pending scaduti dal DB
+   *  locale (created_at < NOW() - 5 min). Chiamato al boot + ogni 60s dal
+   *  SyncView. Ritorna il numero di righe eliminate. */
+  cleanupExpiredPendingPairings: () =>
+    invoke<number>("cleanup_expired_pending_pairings"),
+
+  /** M3a.3 fix post-review (Round 5) — Cancella TUTTI i codici pairing pending
+   *  dal DB locale, indipendentemente dall'età. Chiamato:
+   *   - Al boot del SyncView (cancella orfani da sessioni precedenti)
+   *   - Dal pulsante "cancella tutti" nella UI (più efficiente di N pairingCancel)
+   *  Ritorna il numero di righe eliminate. */
+  cleanupAllPendingPairings: () =>
+    invoke<number>("cleanup_all_pending_pairings"),
+
+  /** M3a.4 — Aggiorna last_seen di un pairing (chiamato su ogni sync-update-received). */
+  touchPairingLastSeen: (peerKeyOther: string) =>
+    invoke<void>("touch_pairing_last_seen", { peerKeyOther }),
+
+  /** M3a.4 — Imposta il display_name di un pairing (es. "Giorgio"). */
+  setPairingDisplayName: (peerKeyOther: string, name: string) =>
+    invoke<void>("set_pairing_display_name", { peerKeyOther, name }),
 };
 
-/** True solo dentro il binario Tauri (WebView con internals iniettati). */
-export const isDesktop =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+/**
+ * True solo dentro il binario Tauri (WebView con internals iniettati).
+ *
+ * M3a.3 fix post-review (Round 7) — Rilevazione robusta:
+ *  - Prima controlla `__TAURI_INTERNALS__` (Tauri 2 standard).
+ *  - Fallback a `__TAURI__` (Tauri 1 compat, some legacy builds).
+ *  - Fallback a `window.isTauri` (Tauri 2.0+ espone anche questo flag).
+ *  - Se nessuno dei 3 è presente → anteprima web browser.
+ *
+ * Inoltre, esponiamo `isDesktop` come getter function invece che come
+ * const, perché in dev mode con Vite HMR il modulo può essere caricato
+ * PRIMA che Tauri abbia iniettato gli internals. Con una funzione,
+ * il check avviene al momento dell'uso, non al momento dell'import.
+ *
+ * Per backward-compat, manteniamo `isDesktop` come export const che
+ * valuta la funzione subito — ma aggiungiamo anche `isTauriRuntime()`
+ * come funzione riesportata per i casi in cui il const sia stato
+ * cachedato troppo presto.
+ */
+
+function detectTauri(): boolean {
+  if (typeof window === "undefined") return false;
+  // Tauri 2.x
+  if ("__TAURI_INTERNALS__" in window) return true;
+  // Tauri 1.x legacy
+  if ("__TAURI__" in window) return true;
+  // Tauri 2.0+ espone anche window.isTauri = true
+  if ((window as unknown as { isTauri?: boolean }).isTauri === true) return true;
+  return false;
+}
+
+/** True se stiamo girando dentro il binario Tauri. Valutato al momento
+ *  dell'import del modulo. Per casi in cui l'import avviene prima
+ *  dell'injection degli internals (race con HMR), usare `isTauriRuntime()`. */
+export const isDesktop = detectTauri();
+
+/** Funzione di detection RIVALUTATA ad ogni chiamata. Usare nei punti
+ *  critici (SyncView, IrohYjsProvider, App.tsx boot) per evitare il bug
+ *  "anteprima web anche in tauri:dev" causato da cached value del const
+ *  `isDesktop` se il modulo è stato caricato prima dell'injection. */
+export function isTauriRuntime(): boolean {
+  return detectTauri();
+}
 
 /**
  * API attiva: comandi Rust dentro Tauri, mock in-memory nel browser
  * (anteprima web dev-only). Tutti i componenti consumano solo `api`.
+ *
+ * M3a.3 fix post-review (Round 7) — Se isDesktop è false al boot ma
+ * poi Tauri internals vengono iniettati dopo (HMR race), l'api resta
+ * mock. Per evitare questo, i componenti critici dovrebbero usare
+ * `getApi()` invece di `api` direttamente.
  */
 export const api = isDesktop ? tauriApi : mockApi;
+
+/** Ritorna l'API corretta rivalutando la detection. Usare nei componenti
+ *  critici (SyncView, App.tsx) per evitare il bug HMR race.
+ *
+ *  M3a.3 fix post-review (Round 7) — Tipo di ritorno: `typeof tauriApi | typeof mockApi`
+ *  (non solo `typeof tauriApi`) perché TS non garantisce che mockApi sia
+ *  strutturalmente identico a tauriApi in tutti i casi (es. Uint8Array
+ *  generic parameter su yjsGetStateVector). */
+export function getApi(): typeof tauriApi | typeof mockApi {
+  return isTauriRuntime() ? tauriApi : mockApi;
+}

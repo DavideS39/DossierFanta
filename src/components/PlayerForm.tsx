@@ -308,9 +308,12 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
         const inf = astaForm.infortuni || null;
         const fmax = astaForm.fmil_max.trim() ? parseInt(astaForm.fmil_max, 10) : null;
         const qn = astaForm.quick_note.trim() || null;
-        // M3a.1 (PB4) — Passa per lo store Zustand: dopo il commit SQLite,
-        // viene invocato bridgeAuctionDataUpdate che propaga il dato al Y.Doc
-        // locale + Iroh broadcast ai peer remoti.
+        // M3a.3 D5 (PB4-A fix) — Passa per lo store Zustand: dopo il commit
+        // SQLite, lo store invoca `updateYDocAuctionData` (sostituto del
+        // rimosso `bridgeAuctionDataUpdate`) che propaga il dato al Y.Doc
+        // locale [transazione LOCALE Yjs] + broadcast ai peer remoti via
+        // Iroh gossip / Supabase Realtime. L'anti-loop è nativo Yjs via
+        // `transaction.local` (non più flag `isApplyingLocalBridge`).
         await usePlayersStore.getState().saveAuctionData(player.id, tit, inf, fmax, qn);
 
         // Se assignForm è compilato e diverso da auctionData.assigned_to, assegna
@@ -350,8 +353,10 @@ export function PlayerForm({ player, onClose, onSubmit, embedded = false }: Prop
     if (!player) return;
     if (!newNote.content.trim()) return;
     try {
-      // M3a.1 (PB4) — saveScoutingNote via store Zustand per cablare il
-      // bridge Rust→Yjs (bridgeScoutingNoteAppend) DOPO il commit SQLite.
+      // M3a.3 D5 (PB4-A fix) — saveScoutingNote via store Zustand per
+      // cablare il bridge Rust→Yjs (`appendYDocScoutingNote`, sostituto del
+      // rimosso `bridgeScoutingNoteAppend`) DOPO il commit SQLite.
+      // Anti-loop nativo Yjs via `transaction.local` (no flag manuale).
       await usePlayersStore.getState().saveScoutingNote({
         player_id: player.id,
         kind: newNote.kind,

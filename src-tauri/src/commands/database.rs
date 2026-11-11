@@ -224,7 +224,31 @@ pub fn create_database(
     name: String,
     db_type: Option<String>,
 ) -> AppResult<DatabaseMeta> {
-    let name = name.trim().to_string();
+    // M3a.3 fix post-review — Normalizza il nome: DEVE terminare in `.db`
+    // (lowercase). Gestisce:
+    //   - "marco"        → "marco.db"
+    //   - "marco.db"     → "marco.db" (no-op)
+    //   - "marco.DB"     → "marco.db" (normalizza case estensione)
+    //   - "marco.Db"     → "marco.db"
+    //   - "marco.dB"     → "marco.db"
+    //   - "  marco  "    → "marco.db" (trim prima di normalizzare)
+    // Coerenza coi DB di default (`mio.db`, `ListoneSerieA.db`) e con la
+    // placeholder nel form frontend ("es. marco.db, listone-2026.db").
+    let name = {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("name è obbligatorio".to_string()));
+        }
+        let lower_ext = trimmed.to_lowercase();
+        let final_name = if lower_ext.ends_with(".db") {
+            // Strip le ultime 3 char (".db" / ".DB" / ".Db" / ".dB") e ri-aggiungi ".db"
+            let prefix = &trimmed[..trimmed.len() - 3];
+            format!("{}.db", prefix)
+        } else {
+            format!("{}.db", trimmed)
+        };
+        final_name
+    };
     if name.is_empty() {
         return Err(AppError::Validation("name è obbligatorio".to_string()));
     }
@@ -410,6 +434,147 @@ pub fn get_active_database(state: State<'_, DbState>) -> AppResult<DatabaseMeta>
         )?;
         Ok(meta)
     })
+}
+
+// ----------------------------------------------------------------------
+// M3a.3 fix post-review (Round 11) — DB condivisi con invito cross-peer
+// ----------------------------------------------------------------------
+
+/// Output di `create_shared_database`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedDatabaseInvitation {
+    pub db_id: String,
+    pub db_name: String,
+    pub peer_key_other: String,
+    pub peer_key_initiator: String,
+}
+
+/// Crea un nuovo database CONDIVISO e prepara l'invito per il peer.
+#[tauri::command]
+pub fn create_shared_database(
+    state: State<'_, DbState>,
+    name: String,
+    peer_key_other: String,
+) -> AppResult<SharedDatabaseInvitation> {
+    let name = {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("name è obbligatorio".to_string()));
+        }
+        let lower_ext = trimmed.to_lowercase();
+        if lower_ext.ends_with(".db") {
+            let prefix = &trimmed[..trimmed.len() - 3];
+            format!("{}.db", prefix)
+        } else {
+            format!("{}.db", trimmed)
+        }
+    };
+    if peer_key_other.trim().is_empty() {
+        return Err(AppError::Validation(
+            "peer_key_other è obbligatorio per creare un DB condiviso".to_string(),
+        ));
+    }
+    let id = db::new_uuid();
+    let db_path = {
+        let p = state.db_path.lock().map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
+        p.clone()
+    };
+    let _meta = state.with_conn("default-personal", |conn| {
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM databases WHERE LOWER(name) = LOWER(?1) LIMIT 1",
+                params![&name],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if exists {
+            return Err(AppError::Validation(format!("Esiste già un database di nome {:?}", name)));
+        }
+        conn.execute(
+            r#"INSERT INTO databases (id, name, type, owner, schema_ver)
+               VALUES (?1, ?2, 'shared', 'me', 3)"#,
+            params![&id, &name],
+        )?;
+        Ok::<_, AppError>(())
+    })?;
+    let new_conn = db::open_db_file(&db_path)?;
+    {
+        let mut map = state.connections.lock().map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
+        map.insert(id.clone(), new_conn);
+    }
+    let my_peer_key = state.with_conn("default-personal", |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_identity' LIMIT 1")?
+            .exists([])?;
+        if !table_exists { return Ok(String::new()); }
+        let pk: String = conn
+            .query_row("SELECT peer_key FROM sync_identity WHERE id = 1 LIMIT 1", [], |r| r.get(0))
+            .unwrap_or_default();
+        Ok(pk)
+    })?;
+    log::info!("[M3a.3] create_shared_database: ✓ DB creato id={}, name={}", id, name);
+    Ok(SharedDatabaseInvitation {
+        db_id: id,
+        db_name: name,
+        peer_key_other,
+        peer_key_initiator: my_peer_key,
+    })
+}
+
+/// Accetta un invito a un DB condiviso. Crea lo stesso DB (stesso UUID).
+#[tauri::command]
+pub fn accept_shared_database_invitation(
+    state: State<'_, DbState>,
+    db_id: String,
+    db_name: String,
+) -> AppResult<DatabaseMeta> {
+    if db_id.trim().is_empty() {
+        return Err(AppError::Validation("db_id è obbligatorio".to_string()));
+    }
+    if db_name.trim().is_empty() {
+        return Err(AppError::Validation("db_name è obbligatorio".to_string()));
+    }
+    let db_path = {
+        let p = state.db_path.lock().map_err(|e| AppError::Generic(format!("Mutex db_path: {}", e)))?;
+        p.clone()
+    };
+    let meta = state.with_conn("default-personal", |conn| {
+        let exists: bool = conn
+            .query_row("SELECT 1 FROM databases WHERE id = ?1 LIMIT 1", params![&db_id], |_| Ok(true))
+            .unwrap_or(false);
+        if exists {
+            let meta = conn.query_row(&format!("{} WHERE id = ?1", DB_META_SELECT), params![&db_id], row_to_meta)?;
+            return Ok(meta);
+        }
+        let mut final_name = db_name.clone();
+        let mut suffix = 1;
+        loop {
+            let name_exists: bool = conn
+                .query_row("SELECT 1 FROM databases WHERE LOWER(name) = LOWER(?1) LIMIT 1", params![&final_name], |_| Ok(true))
+                .unwrap_or(false);
+            if !name_exists { break; }
+            suffix += 1;
+            final_name = format!("{}_{}", db_name.trim_end_matches(".db"), suffix);
+            if suffix > 100 {
+                return Err(AppError::Generic(format!("Impossibile trovare un nome univoco (tentativo {})", suffix)));
+            }
+        }
+        conn.execute(
+            r#"INSERT INTO databases (id, name, type, owner, schema_ver)
+               VALUES (?1, ?2, 'shared', 'peer', 3)"#,
+            params![&db_id, &final_name],
+        )?;
+        let meta = conn.query_row(&format!("{} WHERE id = ?1", DB_META_SELECT), params![&db_id], row_to_meta)?;
+        Ok(meta)
+    })?;
+    let new_conn = db::open_db_file(&db_path)?;
+    {
+        let mut map = state.connections.lock().map_err(|e| AppError::Generic(format!("Mutex connections: {}", e)))?;
+        map.insert(db_id.clone(), new_conn);
+    }
+    log::info!("[M3a.3] accept_shared_database_invitation: ✓ DB accettato id={}, name={}", meta.id, meta.name);
+    Ok(meta)
 }
 
 // Helper interno: controlla che un giocatore esista.

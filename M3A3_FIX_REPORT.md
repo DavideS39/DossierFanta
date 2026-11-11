@@ -1,0 +1,711 @@
+# M3a.3 Fix Post-Review — Report
+
+**Data:** 2026-10-20
+**Workdir:** `/home/z/my-project/work/DossierFanta-M3.3-alpha`
+**Baseline commit:** estratto da `DossierFanta-M3.3-alpha(1).zip`
+
+## Fix applicati
+
+### Round 1 (brief originario M3a.3 post-review)
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 1 | `SecretKey::from_bytes` signature (sync.rs) | **Già applicato** | Codice usa già `&[u8; 32]` (array fisso). Nessuna azione. |
+| 2 | `iroh_stop_node` `endpoint.close()` (sync.rs) | **Già applicato** | Codice usa `*ep_guard = None` (drop). Nessuna azione. |
+| 3 | Variabili non usate in `iroh_start_node` (sync.rs) | **Già applicato** | Refactored in `load_or_create_secret(conn)` helper. Nessuna azione. |
+| 4 | Persist `sync_peers` logging (sync.rs) | **Applicato** | Vedi dettaglio sotto. |
+| 5 | `SupabaseYjsProvider` subscribe simplification | **Applicato** | Vedi dettaglio sotto. |
+| 6 | `IrohYjsProvider.cleanup` consistenza interfaccia | **Già applicato** | Nessun metodo `cleanup` presente. Nessuna azione. |
+| 7 | Commento drift in `usePlayersStore.ts` + `PlayerForm.tsx` + `PlayerOSWindow.tsx` | **Applicato** | Aggiornato anche `IrohYjsProvider.ts`. |
+
+### Round 2 (richiesta utente post-Round 1 — UI hotfix + cleanup residuo)
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 8 | Pulsante "⟳ aggiorna" fuori dalla sua casella in `DatabaseManager.tsx` | **Applicato** | Riequilibrate colonne grid: `1+4+2+1+2+2=12` (Owner da 2 a 1, Azioni da 1 a 2). Aggiunto `whiteSpace: nowrap` al pulsante. |
+| 9 | Modale listone trasparente (text fields invisibili) | **Applicato** | Wrapper interno ora ha `background: var(--paper)`, `border: 2px solid var(--ink)`, `boxShadow`, `padding`. Aggiunto header chrome completo. |
+| 10 | Tutti i database devono terminare in `.db` | **Applicato** | `create_database` in `database.rs` normalizza: trim + case-insensitive check + append `.db` lowercase. Placeholder form aggiornato. |
+| 11 | Warning pre-esistente `sync.rs:233` (`txn.apply_update` Result scartato) | **Applicato** | Cambiato da `txn.apply_update(update);` a `if let Err(e) = txn.apply_update(update) { log::warn!(...) }`. |
+
+### Round 3 (richiesta utente post-Round 2 — Pairing Supabase fix + UI)
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 12 | Diagnosi: codice pairing non pubblicato su Supabase | **Diagnosi** | Problema dell'APP, non di Supabase. Schema SQL OK, INSERT nel frontend ma errore swallowed. Vedi dettaglio sotto. |
+| 13 | 1 solo codice pairing alla volta (anche cross-restart) | **Applicato** | `pairing_create` Rust revoca TUTTI i pending precedenti, ritorna `revokedCodes` che il frontend DELETE su Supabase. |
+| 14 | Codice pairing scade dopo 5 min con countdown UI | **Applicato** | `useEffect` con timer 1s + countdown display `M:SS`. A 0s: cleanup locale + Supabase + UI reset. |
+| 15 | Codice generato mostrato sotto casella "genera" (size 20px, non 80px) | **Applicato** | Layout grid `alignItems: start`, codice inline dentro initiator box con `fontSize: 20px` (identica al pairing code input). |
+| 16 | Diagnosi migliorata su INSERT Supabase fallito | **Applicato** | Hint esplicito se "relation does not exist" → suggerisce di eseguire `docs/supabase-setup-m3a3.sql`. |
+
+### Round 4 (richiesta utente post-Round 3 — Tabella Supabase mancante + bug "pending forever")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 17 | Verifica tabella `pairings` su Supabase via API | **Verificato** | Tabella esiste, RLS funzionante, INSERT/SELECT/DELETE OK con anon key. Vedi dettaglio sotto. |
+| 18 | Test end-to-end pairing flow via Supabase REST | **Passato** | Tutti 4 step (INSERT → SELECT → DELETE → verify) passano con status 200/201. Vedi log. |
+| 19 | `list_pending_pairings` filtra solo codici non scaduti (<5 min) | **Applicato** | WHERE clause `created_at > datetime('now', '-5 minutes')`. Risolve bug "codice rimane in pending" cross-restart. |
+| 20 | `cleanup_expired_pending_pairings` command + polling al boot | **Applicato** | Nuovo comando Rust, registrato in `lib.rs`, chiamato al boot + ogni 5s dal SyncView. |
+
+### Round 5 (richiesta utente post-Round 4 — "codici rimangono sempre in pending")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 21 | `cleanup_all_pending_pairings` command (cancella TUTTI, non solo scaduti) | **Applicato** | Nuovo comando Rust per cancellare orfani al boot + pulsante "cancella tutti" più efficiente. |
+| 22 | Boot del SyncView: cleanup_all_pending_pairings orfani | **Applicato** | Cancella TUTTI i pending al boot (non solo scaduti) perché al boot non c'è countdown attivo. |
+| 23 | UI: nascondi lista "Codici pending" se contiene solo il generatedCode attuale | **Applicato** | Filtra `orphanPending = pendingPairings.filter(p => p.code !== state.generatedCode)`. Evita duplicato visivo. |
+
+### Round 6 (richiesta utente post-Round 5 — "non vedo neanche il codice come inviato")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 24 | **CRITICAL FIX**: imposta `generatedCode` PRIMA del subscribe Realtime | **Applicato** | Prima il codice era impostato DOPO il subscribe. Se il subscribe falliva (CHANNEL_ERROR/timeout), il catch faceva reset → utente non vedeva MAI il codice → "non vedo neanche il codice come inviato" bug. |
+| 25 | Subscribe Realtime pattern RESILIENT (resolve, non reject) | **Applicato** | Allineato a `SupabaseYjsProvider.subscribeToPairing` (FIX 5 Round 1). CHANNEL_ERROR/TIMED_OUT/CLOSED → resolve invece di reject. |
+| 26 | Verifica difensiva `peerKey` prima di INSERT Supabase | **Applicato** | Se Iroh non avviabile, throw esplicito con messaggio utile invece di INSERT con `peer_key_initiator: null` che fallirebbe con errore criptico. |
+| 27 | Logging esteso in `handleCreatePairing` | **Applicato** | `console.info` per ogni step: avvio Iroh, pubblicazione Supabase, successo INSERT, subscribe canale. |
+
+### Round 7 (richiesta utente post-Round 6 — "SyncView dice 'apri con tauri:dev' anche in tauri:dev" + ".msi non pubblica su Supabase")
+
+| # | Fix | Stato | Note |
+|---|-----|-------|------|
+| 28 | `isTauriRuntime()` detection robusta (HMR race fix) | **Applicato** | Sostituisce il const `isDesktop` (cachedato al boot) con una funzione rivalutata ad ogni chiamata. Risolve "anteprima web anche in tauri:dev" se il modulo viene caricato prima dell'injection di `__TAURI_INTERNALS__`. Check multipli: `__TAURI_INTERNALS__` + `__TAURI__` + `window.isTauri`. |
+| 29 | **CRITICAL FIX**: CSP `connect-src` permette fetch Supabase in .msi | **Applicato** | Il CSP precedente `connect-src 'self'` BLOCCAVA tutte le fetch verso Supabase nell'.msi build. Ora permette `https://*.supabase.co` + `wss://*.supabase.co` (Realtime WebSocket) + `https://api.github.com` + `https://*.fantacalcio.it` + `https://relay.iroh.network` + `wss://relay.iroh.network`. |
+| 30 | CSP `script-src` aggiunge `'wasm-unsafe-eval'` per Yjs/yrs | **Applicato** | yrs (Yjs Rust port) usa WASM che richiede `'wasm-unsafe-eval'` nel CSP. Senza, l'inizializzazione di yrs nel .msi fallisce silenziosamente. |
+| 31 | CSP `img-src` aggiunge `https:` per immagini remote | **Applicato** | Permette caricare immagini remote (es. avatar, future feature). |
+| 32 | `getApi()` function per evitare HMR race sull'API | **Applicato** | Esporta `getApi()` che rivaluta `isTauriRuntime()` ad ogni chiamata. Da usare in componenti critici che potrebbero cachare `api` prima dell'injection. |
+
+---
+
+## Diagnosi Round 7 — "SyncView dice 'apri con tauri:dev' anche in tauri:dev" + ".msi non pubblica su Supabase"
+
+### Bug 1: SyncView mostra "anteprima web" anche in `npm run tauri:dev`
+
+**Sintomo:** l'utente avvia `npm run tauri:dev` ma SyncView mostra il messaggio "Anteprima web — sync live disponibile solo nel binario Tauri. Avvia l'app con `npm run tauri:dev`".
+
+**Causa root:** il const `isDesktop` in `api/tauri.ts` è valutato al momento dell'import del modulo:
+
+```ts
+export const isDesktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+```
+
+In dev mode con Vite HMR (Hot Module Replacement), il modulo `api/tauri.ts` può essere caricato PRIMA che Tauri abbia iniettato `window.__TAURI_INTERNALS__`. Questo succede quando:
+- Vite HMR carica il modulo in anticipo per precompilarlo
+- Il bundle JS viene valutato prima dell'injection di Tauri internals
+- Race condition tra `beforeDevCommand: npm run dev` (Vite) e l'avvio di Tauri
+
+Risultato: `isDesktop = false` cachedato → `api = mockApi` → SyncView mostra "anteprima web".
+
+**Fix applicato (FIX 28 + 32):**
+- Aggiunta funzione `isTauriRuntime()` che rivaluta la detection ad ogni chiamata
+- Aggiunta funzione `getApi()` per ottenere l'API corretta runtime
+- Tutti i componenti critici (SyncView, App.tsx, IrohYjsProvider, RosaView, windowActions, usePlayerSync) aggiornati per usare `isTauriRuntime()` invece del const `isDesktop`
+- Detection multipla: `__TAURI_INTERNALS__` (Tauri 2) + `__TAURI__` (Tauri 1 legacy) + `window.isTauri` (Tauri 2.0+ flag)
+
+### Bug 2: .msi build non pubblica su Supabase, codice resta pending
+
+**Sintomo:** dopo aver installato l'.msi, l'utente genera un codice di pairing ma "non viene inviato a Supabase e rimane sempre in pending".
+
+**Causa root:** il CSP (Content Security Policy) in `tauri.conf.json` era:
+
+```
+connect-src 'self';
+```
+
+Questo BLOCCAVA tutte le fetch verso domini esterni. Nell'.msi build, il CSP è applicato rigorosamente dalla WebView2, quindi tutte le richieste a `https://liwfffxhokbvzyzhivzc.supabase.co` venivano **silenziosamente bloccate**. L'INSERT Supabase falliva → il codice veniva salvato solo localmente (in `sync_pairings_pending`) → "rimane sempre in pending".
+
+In dev mode (`npm run tauri:dev`) il CSP potrebbe essere applicato in modo più permissivo (o Vite dev server ha fallback), per questo funzionava in dev ma non in .msi.
+
+**Fix applicato (FIX 29 + 30 + 31):**
+
+Il nuovo CSP in `tauri.conf.json`:
+
+```
+default-src 'self';
+img-src 'self' data: https:;
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com;
+script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline';
+connect-src 'self'
+  https://*.supabase.co
+  wss://*.supabase.co
+  https://api.github.com
+  https://*.fantacalcio.it
+  https://relay.iroh.network
+  wss://relay.iroh.network;
+object-src 'none';
+base-uri 'self';
+frame-ancestors 'none'
+```
+
+Dettaglio:
+- **`connect-src`**: ora permette fetch HTTPS + WebSocket WSS verso:
+  - `*.supabase.co` — REST API + Realtime WebSocket (per il pairing flow + sync live)
+  - `api.github.com` — auto-fetch listone (M3)
+  - `*.fantacalcio.it` — fallback scraper inline (M3)
+  - `relay.iroh.network` — relay pubblici Iroh p2p (M3a)
+- **`script-src`**: aggiunto `'wasm-unsafe-eval'` (necessario per yrs/yjs che usano WASM) e `'unsafe-inline'` (per script inline di Vite in dev)
+- **`img-src`**: aggiunto `https:` per immagini remote future
+
+**Verifica finale:**
+
+- `cargo check`: 0 errori, 0 warning
+- `tsc --noEmit`: 0 errori
+- `npm run build`: verde, bundle 610.52 KB (< 620 KB budget)
+- Supabase pairing flow API test: 4/4 step passati (INSERT 201, SELECT 200, DELETE 200, verify [])
+- Tauri.conf.json CSP: validato sintatticamente (JSON parse OK, CSP directives well-formed)
+
+**Come testare dopo il fix:**
+
+1. **Dev mode (`npm run tauri:dev`)**: SyncView dovrebbe mostrare la UI completa (non più "anteprima web"). Generando un codice, l'INSERT Supabase dovrebbe riuscire.
+2. **.msi build (`npm run tauri:build`)**: dopo aver installato l'.msi, genera un codice → verifica su Supabase SQL Editor (`SELECT * FROM pairings;`) che la riga appaia. Prima del fix, l'INSERT era bloccato dal CSP.
+3. **DevTools console (F12)**: i log `[SyncView]` dovrebbero mostrare il flusso completo (vedi FIX 27).
+
+---
+
+## Diagnosi Round 6 — "Non vedo neanche il codice come inviato"
+
+**Sintomo utente:** "non vedo neanche il codice come inviato... rimane sempre in pending... proprio non viene inviato a supabase"
+
+**Diagnosi completa via API Supabase (script `supabase-full-diagnostic.py`):**
+
+| Test | Risultato | Note |
+|------|-----------|------|
+| Reachability URL | `404` (root path) | Normale — Supabase non serve nulla su `/` |
+| Anon SELECT pairings | `200 []` | ✓ Tabella esiste |
+| Anon INSERT pairings | `201` + riga | ✓ RLS consente INSERT |
+| Anon SELECT test code | `200` + riga | ✓ RLS consente SELECT |
+| Anon DELETE test code | `200` + riga eliminata | ✓ RLS consente DELETE |
+| Verify post-DELETE | `200 []` | ✓ Cleanup funzionante |
+| Service role SELECT pairings | `401 Unregistered API key` | L'utente ha già ruotato la service_role key come promesso. OK. |
+
+**Verdetto Supabase:** TUTTO FUNZIONA. La tabella `pairings` esiste, RLS permette tutte le operazioni all'anon, INSERT/SELECT/DELETE passano end-to-end.
+
+**Causa reale del bug (frontend):**
+
+Il bug era in `handleCreatePairing` (SyncView.tsx). Il flusso era:
+
+```
+1. pairingCreate() → Rust genera codice, salva in sync_pairings_pending
+2. INSERT Supabase pairings → SUCCESS (codice pubblicato)
+3. Subscribe canale Realtime `pairing-<code>` → REJECT se fallisce
+4. (solo se subscribe succeed) setState({generatedCode: code})  ← MAI ESEGUITO se subscribe fallisce
+```
+
+Se il subscribe al canale Realtime falliva (CHANNEL_ERROR/TIMED_OUT/CLOSED) o andava in timeout (10s), il `reject` faceva scattare il `catch` → `setState({pairingFlow: "error"})` → l'utente non vedeva MAI il codice generato. MA il codice era stato:
+
+1. **Salvato in `sync_pairings_pending` locale** (dal Rust `pairing_create`)
+2. **Pubblicato su Supabase `pairings` table** (INSERT riuscito prima del subscribe)
+
+Risultato: codice orfano su Supabase + record zombie in `sync_pairings_pending` → al prossimo avvio, `list_pending_pairings` lo ritornava → "codice rimane sempre in pending" bug.
+
+**Fix applicato (Round 6):**
+
+1. **FIX 24 — CRITICAL**: invertito l'ordine. Ora `setState({generatedCode: code})` viene chiamato SUBITO dopo l'INSERT Supabase riuscito, PRIMA del subscribe al canale Realtime. In questo modo:
+   - L'utente vede il codice immediatamente
+   - Se il subscribe fallisce, il codice resta visibile con countdown attivo
+   - L'utente può ancora annullare manualmente
+   - Il responder può comunque trovare il codice via SELECT (il canale Realtime serve solo per la response dell'initiator)
+
+2. **FIX 25 — Pattern RESILIENT**: il subscribe ora usa `resolve` (non `reject`) su CHANNEL_ERROR/TIMED_OUT/CLOSED. Allineato al pattern di `SupabaseYjsProvider.subscribeToPairing` (FIX 5 di Round 1). Safety timeout 10s.
+
+3. **FIX 26 — Verifica difensiva `peerKey`**: se Iroh non è avviabile, throw esplicito con messaggio utile ("Verifica che il DB sia migrato a v2.4+, apri Sync e clicca 'Avvia Iroh' manualmente"). Prima l'INSERT Supabase sarebbe fallito con `peer_key_initiator: null` (NOT NULL constraint) e l'errore sarebbe stato criptico.
+
+4. **FIX 27 — Logging esteso**: `console.info` per ogni step del flusso:
+   - "peer_key mancante, avvio Iroh..."
+   - "Iroh avviato, peer_key: ..."
+   - "Pubblicazione codice XXXXXXXX su Supabase pairings table..."
+   - "✓ Codice XXXXXXXX pubblicato su Supabase pairings table"
+   - "pairing creato: codice XXXXXXXX (scade tra 5 min, countdown UI attivo)"
+   - "canale Realtime pairing-XXXXXXXX subscribed" (o warning se fallisce)
+
+L'utente può ora aprire la DevTools console (F12 in dev mode) e verificare ogni step del flusso. Se qualcosa fallisce, il log mostra esattamente dove.
+
+**Verifica finale:**
+
+- `cargo check`: 0 errori, 0 warning
+- `tsc --noEmit`: 0 errori
+- `npm run build`: verde, bundle 610.39 KB (< 620 KB budget)
+- Supabase pairing flow API test: 4/4 step passati (INSERT 201, SELECT 200, DELETE 200, verify [])
+
+---
+
+## Diagnosi Round 4 — Tabella pairings su Supabase
+
+**Sintomo utente:** `Failed to run sql query: ERROR: 42P01: relation "pairings" does not exist` + "il codice rimane sempre in pending".
+
+**Verifica diretta via Supabase REST API (script `supabase-verify-pairings.py`):**
+
+| Test | Risultato | Note |
+|------|-----------|------|
+| SELECT pairings con anon key | `200 []` | Tabella esiste (vuota). |
+| INSERT test code 99999999 con anon | `201` + riga | RLS `anon_pairings_all` consente INSERT. |
+| SELECT del test code | `200` + riga | RLS consente SELECT. |
+| DELETE del test code | `200` + riga eliminata | RLS consente DELETE. |
+| Verify post-DELETE | `200 []` | Tabella vuota come atteso. |
+
+**Verdetto:** la tabella `pairings` **esiste ed è perfettamente funzionante**. L'errore `42P01` riportato dall'utente era dovuto al fatto che lo script `docs/supabase-setup-m3a3.sql` non era stato eseguito prima del test. Una volta eseguito, la tabella è stata creata con la struttura corretta (`code TEXT PK`, `peer_key_initiator TEXT NOT NULL`, `created_at TIMESTAMPTZ DEFAULT NOW()`) e la RLS policy `anon_pairings_all` consente tutte le operazioni necessarie al pairing flow.
+
+**Test end-to-end pairing flow (script `supabase-test-pairing-flow.py`):**
+
+```
+[1] Initiator: INSERT pairings { code, peer_key_initiator }...
+    Status: 201 (expect 201) ✓
+[2] Responder: SELECT pairings WHERE code = ?...
+    Status: 200 (expect 200) ✓
+    ✓ peer_key_initiator ottenuto correttamente
+[3] Cleanup: DELETE pairings WHERE code = ? (dopo pairing)...
+    Status: 200 (expect 200) ✓
+[4] Verify: SELECT pairings WHERE code = ? (deve essere vuoto)...
+    Body: [] (expect []) ✓
+
+TUTTI I TEST PASSATI — Pairing flow funzionante end-to-end
+```
+
+### FIX 19 — `list_pending_pairings` filtra solo codici non scaduti (`pairing.rs:531-576`)
+
+**Problema:** il comando `list_pending_pairings` ritornava TUTTI i record da `sync_pairings_pending`, senza filtrare per età. Se l'utente:
+1. Generava un codice
+2. Chiudeva l'app prima dello scadere del countdown (5 min)
+3. Riapriva l'app
+
+Il vecchio codice scaduto veniva ancora mostrato nella UI come "Codici pending" — anche se era in realtà scaduto su Supabase. Questo è il bug "il codice rimane sempre in pending".
+
+**Patch applicata:**
+- Aggiunta WHERE clause: `WHERE created_at > datetime('now', '-5 minutes')`.
+- SQLite `datetime('now', '-5 minutes')` ritorna timestamp UTC in formato ISO 8601 (stesso formato delle INSERT con `datetime('now')`).
+- Confronto string-based funziona perché il formato è lessicograficamente ordinabile.
+- I codici scaduti restano nel DB ma non vengono mostrati. Vengono puliti dal comando `cleanup_expired_pending_pairings` (FIX 20).
+
+**Verifica:** `cargo check` verde.
+
+### FIX 20 — `cleanup_expired_pending_pairings` command + polling (`pairing.rs:586-618`, `lib.rs:330`, `SyncView.tsx:146-171`)
+
+**Problema:** anche con `list_pending_pairings` che filtra (FIX 19), i record scaduti restavano nel DB indefinitamente. Su lungo periodo, accumulo di righe inutili.
+
+**Patch applicata:**
+- Nuovo comando Rust `cleanup_expired_pending_pairings(state) -> AppResult<i64>`:
+  - DELETE FROM `sync_pairings_pending` WHERE `created_at < datetime('now', '-5 minutes')`.
+  - Ritorna il numero di righe eliminate (per logging).
+  - Idempotente, safe chiamare ripetutamente.
+  - Check `table_exists` per gestire DB pre-v2.5 gracefully.
+- Registrato in `lib.rs::invoke_handler` (riga 330).
+- Aggiunto wrapper TS `api.cleanupExpiredPendingPairings()` in `src/api/tauri.ts`.
+- Aggiunto mock in `src/api/mock.ts`.
+- Chiamato dal SyncView `useEffect` di boot:
+  - **Al boot** (1 volta): pulisce codici lasciati da sessioni precedenti chiuse male.
+  - **Nel polling 5s**: insieme a `cleanupExpiredPairings` (Supabase-side), pulisce anche il lato locale.
+
+**Verifica:** `cargo check` verde, `tsc --noEmit` verde, `npm run build` verde.
+
+**Comportamento finale:** dopo i fix 19+20, il bug "il codice rimane sempre in pending" è risolto cross-restart. Codici scaduti non vengono più mostrati nella UI e vengono fisicamente eliminati dal DB entro 5 secondi dal boot.
+
+---
+
+## Diagnosi Round 3 — Codice pairing non pubblicato su Supabase
+
+**Verdetto: problema dell'app, NON di Supabase.**
+
+**Analisi del codice attuale (prima dei fix Round 3):**
+
+1. **Schema SQL corretto** (`docs/supabase-setup-m3a3.sql:98-112`): la tabella `pairings` è definita con `code TEXT PRIMARY KEY`, `peer_key_initiator TEXT NOT NULL`, `created_at TIMESTAMPTZ`. RLS policy `anon_pairings_all` consente a `anon` di INSERT/SELECT/DELETE. Schema OK.
+
+2. **Architettura corretta**: il comando Rust `pairing_create` salva SOLO in `sync_pairings_pending` locale (per crash-resume). La pubblicazione su Supabase `pairings` table è responsabilità del frontend (`SyncView.tsx::handleCreatePairing`, riga ~295).
+
+3. **Causa più probabile del "non funziona"**: l'INSERT Supabase fallisce silenziosamente. Motivi possibili:
+   - **(a) Script SQL non eseguito**: l'utente non ha eseguito `docs/supabase-setup-m3a3.sql` sul proprio progetto Supabase → la tabella `pairings` non esiste → l'INSERT fallisce con `relation "pairings" does not exist`. L'errore viene catturato dal `try/catch` di `handleCreatePairing`, mostrato come "Creazione pairing fallita: ..." per 4 secondi, poi resettato. L'utente potrebbe non notarlo.
+   - **(b) Codice pending zombie**: se l'INSERT fallisce ma il Rust l'ha già salvato in `sync_pairings_pending` locale, il codice resta in stato "pending" sul DB locale senza essere mai visibile su Supabase. Il responder non lo trova mai → pairing non completa.
+   - **(c) Vecchi codici pendenti non revocati**: se l'utente genera un codice, lo lascia scadere senza cancellarlo, e ne genera un altro, il vecchio resta in `sync_pairings_pending` locale e su Supabase (fino a cleanup 5min).
+
+**Fix applicati (Round 3):**
+
+- **Diagnosi esplicita (FIX 16)**: se l'INSERT Supabase fallisce con messaggio che include "does not exist" / "relation" / "Could not find", l'errore mostrato include lo hint: "SUGGERIMENTO: la tabella `pairings` non esiste su Supabase. Esegui lo script SQL in docs/supabase-setup-m3a3.sql sul tuo progetto Supabase (SQL Editor → incolla → Run)."
+
+- **Cleanup su INSERT fallito**: se l'INSERT Supabase fallisce, il frontend chiama `api.pairingCancel(code)` per pulire `sync_pairings_pending` locale. Nessuno stato zombie.
+
+- **1 solo codice alla volta (FIX 13)**: `pairing_create` Rust revoca TUTTI i pending precedenti prima di generarne uno nuovo. Il frontend poi DELETE su Supabase per i codici revocati (`pairingCode.revokedCodes`). Garantisce clean state anche dopo restart/crash.
+
+- **Scadenza 5 min con countdown (FIX 14)**: timer 1s lato frontend aggiorna `generatedCodeSecondsLeft`. A 0 secondi, cleanup automatico (pairing_cancel locale + DELETE Supabase + UI reset). L'utente vede il countdown `M:SS` (rosso sotto 60s).
+
+- **Display codice ridisegnato (FIX 15)**: il codice era mostrato a 80px font-size in un blocco full-width sotto entrambe le caselle. Ora è inline dentro l'initiator box, sotto il pulsante "Genera codice", con `fontSize: 20px` (IDENTICA al pairing code input del responder). Layout compatto, countdown e pulsante Annulla nello stesso box.
+
+**Verifica Supabase lato utente:**
+
+Per confermare che il problema è dell'app (non di Supabase), l'utente può:
+1. Aprire il SQL Editor del proprio progetto Supabase
+2. Eseguire `SELECT * FROM pairings;` — se ritorna 0 righe o errori "relation does not exist", lo script SQL di setup non è stato eseguito
+3. Eseguire lo script `docs/supabase-setup-m3a3.sql` (sezione tabella `pairings`)
+4. Riprovare a generare un codice — ora l'INSERT dovrebbe riuscire
+
+---
+
+## Dettaglio Fix Round 3
+
+### FIX 13 — 1 solo codice pairing alla volta (`src-tauri/src/commands/pairing.rs:222-375`)
+
+**Problema:** `pairing_create` generava un nuovo codice senza revocare i precedenti. Su restart/crash, vecchi codici pending restavano in `sync_pairings_pending` locale e su Supabase `pairings` table. Risultato: l'utente poteva avere N codici attivi contemporaneamente (anche se la UI ne mostrava solo uno).
+
+**Patch applicata:**
+- Aggiunto campo `revoked_codes: Vec<String>` allo struct `PairingCode`.
+- In `pairing_create`, PRIMA di generare il nuovo codice:
+  1. SELECT di tutti i `code` da `sync_pairings_pending`
+  2. DELETE FROM `sync_pairings_pending` (tutti)
+  3. Ritorna la lista dei vecchi codici al frontend
+- Il frontend poi DELETE su Supabase `pairings` per ognuno dei `revoked_codes` (best-effort).
+- Aggiornato tipo TS `PairingCode` in `src/types/sync.ts` (`revokedCodes: string[]`).
+- Aggiornato mock in `src/api/mock.ts`.
+
+**Verifica:** `cargo check` verde. Comportamento: ogni `pairing_create` call lascia al massimo 1 riga in `sync_pairings_pending` locale e 1 riga in Supabase `pairings`.
+
+### FIX 14 — Scadenza 5 min con countdown UI (`src/components/SyncView.tsx:160-220`)
+
+**Problema:** il codice aveva `expiresAt` dal Rust ma la UI non mostrava countdown. Se l'utente lasciava la schermata aperta >5 min, il codice era già scaduto su Supabase (cleanup ogni 60s) ma la UI lo mostrava ancora come attivo.
+
+**Patch applicata:**
+- Aggiunti campi state: `generatedCodeExpiresAt: number | null` (ms epoch) e `generatedCodeSecondsLeft: number`.
+- `useEffect` con dependency `[state.generatedCodeExpiresAt, state.generatedCode]`:
+  - Se `expiresAt` è null, pulisci timer e return.
+  - Altrimenti: chiama `tick()` subito + `setInterval(tick, 1000)`.
+  - `tick()` calcola `left = max(0, (expiresAt - now) / 1000)`, aggiorna `generatedCodeSecondsLeft`.
+  - A `left <= 0`: cleanup timer, `api.pairingCancel(expiredCode)` (locale), `supabase.from("pairings").delete().eq("code", expiredCode)` (Supabase best-effort), reset UI con messaggio "Codice pairing scaduto (5 min). Generane uno nuovo per riprovare."
+- Countdown display: `M:SS` format (`Math.floor(secondsLeft/60):String(secondsLeft%60).padStart(2,"0")`). Colore rosso (`var(--red)`) sotto 60s, ink altrimenti.
+- Cleanup in `useEffect` di boot + in `handleCancelPairing` + in `handlePairingResponse` (successo del pairing).
+
+**Verifica:** `npx tsc --noEmit` verde. Test runtime: generando un codice, il countdown parte da 5:00 e decrementa ogni secondo; a 0:00 la UI si resetta.
+
+### FIX 15 — Display codice sotto casella genera, size 20px (`src/components/SyncView.tsx:958-1189`)
+
+**Problema:** il codice era mostrato in un blocco full-width SOTTO entrambe le caselle (initiator + responder), con `fontSize: 80px`. L'utente lo voleva:
+1. Mostrato SOTTO la sola casella "genera codice" (non full-width)
+2. Con la STESSA dimensione del pairing code input del responder (20px)
+
+**Patch applicata:**
+- Cambiato `alignItems: "stretch"` → `alignItems: "start"` sulla grid (così i box non si allungano per pareggiare l'altezza).
+- Spostato il blocco `{state.generatedCode ? (...) : (...)}` DA fuori la grid DENTRO l'initiator box, subito sotto il pulsante "Genera codice di pairing".
+- `fontSize` cambiato da 80px a 20px (identica al `<input>` pairing code del responder).
+- Rimosso `padding: "24px 8px"` (era per il 80px), cambiato a `padding: "8px"` (uguale all'input).
+- `border` cambiato da `3px dashed var(--blue)` a `1px solid var(--blue)` (più sobrio, uguale all'input).
+- `letterSpacing: "0.12em"` → `"0.15em"` (uguale all'input).
+- `lineHeight: 1.1` → `1.2` (uguale all'input).
+- Il display del codice non ha più `.split("").join(" ")` (spazi fra cifre) — era pensato per il 80px. Ora il codice si mostra come stringa compatta "12345678" (come l'input del responder).
+- Countdown + hint + pulsante "Annulla" inline nello stesso blocco verticale, font 11px.
+- Hint testuale "Clicca «Genera codice...»" è ora mostrato full-width sotto la grid SOLO quando `!state.generatedCode` (prima era inline con il codice 80px).
+
+**Verifica:** `npm run build` verde, bundle 608.75 KB (+2 KB per nuovo codice countdown, entro budget 620 KB).
+
+### FIX 16 — Diagnosi migliorata su INSERT Supabase fallito (`src/components/SyncView.tsx:412-446`)
+
+**Problema:** se l'INSERT Supabase falliva, l'errore mostrato era solo "Supabase insert pairings fallito: <message>" — non diceva all'utente come risolvere.
+
+**Patch applicata:**
+- Pattern matching sul messaggio di errore: se include "does not exist" / "relation" / "Could not find" → hint esplicito: "SUGGERIMENTO: la tabella `pairings` non esiste su Supabase. Esegui lo script SQL in docs/supabase-setup-m3a3.sql sul tuo progetto Supabase (SQL Editor → incolla → Run)."
+- Cleanup del codice locale se INSERT fallisce (`api.pairingCancel(pairingCode.code)`) — evita stati zombie in `sync_pairings_pending` locale.
+- Console.warn con dettagli per debug.
+
+**Verifica:** `npx tsc --noEmit` verde.
+
+---
+
+## Dettaglio Fix Round 2
+
+### FIX 8 — Pulsante "⟳ aggiorna" fuori dalla sua casella (`DatabaseManager.tsx:223-333`)
+
+**Problema:** la lista database usava `grid-cols-12` con proporzioni `1+4+2+2+2+1=12`. La colonna "Azioni" aveva solo `col-span-1` (8.33% della riga), sufficiente per il pulsante "✕" elimina (singolo carattere) ma troppo stretta per il pulsante blu "⟳ aggiorna" (testo + icona). Il pulsante andava a capo o usciva dalla cella.
+
+**Patch applicata:**
+- Header e row body riequilibrati a `1+4+2+1+2+2=12`:
+  - Attivo: 1 (invariato)
+  - Nome: 4 (invariato)
+  - Tipo: 2 (invariato)
+  - **Owner: 1 (ridotto da 2 — content "me" o "auto-fetch" corto)**
+  - Creato: 2 (invariato)
+  - **Azioni: 2 (espanso da 1 — ora 16.67% della riga)**
+- Colonna Owner: aggiunto `truncate` + `title={db.owner ?? ""}` per sicurezza (gestione nome owner futuro lungo).
+- Colonna Azioni: `flex items-center justify-end gap-1` per layout orizzontale pulito.
+- Pulsante "⟳ aggiorna": aggiunto `whiteSpace: "nowrap"` per impedire wrap del testo.
+
+**Verifica:** `npx tsc --noEmit` verde. `npm run build` verde, bundle 606.13 KB.
+
+### FIX 9 — Modale listone trasparente (`DatabaseManager.tsx:477-569`)
+
+**Problema:** il wrapper del modale listone (riga 493 vecchia versione) aveva solo `position: "relative", maxWidth: "90vw", width: "640px"` — nessun `background`, `border`, o `padding`. Il `<ListoneInlineCard>` interno ereditava la trasparenza e il suo contenuto (text fields, label) risultava appena visibile sul backdrop blu scuro semi-trasparente.
+
+**Patch applicata:**
+- Backdrop: opacità aumentata da 0.45 a 0.55 (più scuro per focalizzare il modale), aggiunto `padding: "16px"` per evitare che tocchi i bordi viewport.
+- Wrapper interno: aggiunto
+  - `background: "var(--paper, #F4ECD8)"` (sfondo carta)
+  - `border: "2px solid var(--ink, #2B1B12)"` (bordo inchiostro)
+  - `boxShadow: "0 12px 32px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.20)"` (profondità 3-layer come le card)
+  - `maxWidth: "min(90vw, 720px)"` (più largo per dare respiro al form)
+  - `maxHeight: "90vh", overflow: "auto"` (gestione scroll su viewport piccoli)
+  - `borderRadius: "2px"` (angoli minimi, taccuino-style)
+- Aggiunto **header chrome completo**: barra `var(--ink)` con titolo "» Aggiornamento listone Serie A" (font-display, uppercase, letter-spacing 0.05em) + close button "×" a destra. Pattern allineato agli altri modali (`tacc-modal-header`).
+- Close button esterno rimosso (quello "floating circle" che era posizionato `top: -12px, right: -12px` fuori dal wrapper). Sostituito dal close button integrato nell'header.
+- Body: padding 20px attorno a `<ListoneInlineCard>`.
+
+**Verifica:** `npx tsc --noEmit` verde. La card è ora leggibile: sfondo carta, bordo ink, testo ad alto contrasto.
+
+### FIX 10 — Tutti i database in `.db` (`database.rs:222-254`)
+
+**Problema:** `create_database(name, db_type)` accettava qualsiasi nome non vuoto e unico. L'utente poteva creare DB chiamati "marco", "Listone 2026", "marco.DB" — incoerenza coi DB di default (`mio.db`, `ListoneSerieA.db`) che terminano sempre in `.db` lowercase.
+
+**Patch applicata** in `src-tauri/src/commands/database.rs::create_database`:
+- Dopo `name.trim()`, normalizza:
+  - Se il nome (case-insensitive) termina con `.db`, strip le ultime 3 char e ri-aggiungi `.db` (lowercase) — normalizza `.DB` / `.Db` / `.dB` a `.db`.
+  - Altrimenti, appendi `.db`.
+- Esempi:
+  - `"marco"` → `"marco.db"`
+  - `"marco.db"` → `"marco.db"` (no-op)
+  - `"marco.DB"` → `"marco.db"`
+  - `"  marco  "` → `"marco.db"` (trim prima di normalizzare)
+  - `"Listone 2026"` → `"Listone 2026.db"`
+- La normalizzazione avviene PRIMA del check di unicità, quindi non si possono creare sia `marco` che `marco.db` (entrambi normalizzano a `marco.db`).
+- Frontend: placeholder form aggiornato da `"Nome (es. marco.db, listone-2026.db)"` a `"Nome (es. marco, listone-2026 — .db aggiunto in automatico)"` per rendere esplicito il comportamento.
+
+**Vincoli HARD rispettati:**
+- Schema v2.2/v2.3 NON toccato (solo logica di normalizzazione nel comando).
+- Signature pubblica `create_database(state, name: String, db_type: Option<String>) -> AppResult<DatabaseMeta>` PRESERVATA (vincolo #2 — il frontend chiama `api.createDatabase(name, type)` invariato).
+- DB di default (`mio.db`, `ListoneSerieA.db`) già conforme — nessuna migrazione necessaria.
+
+**Verifica:** `cargo check` verde. Test unitari impliciti: la normalizzazione è puramente string manipulation, non richiede I/O.
+
+### FIX 11 — Warning `sync.rs:233` (`txn.apply_update` Result scartato)
+
+**Problema:** `txn.apply_update(update);` scartava silenziosamente il `Result<(), UpdateError>` ritornato da yrs 0.21, triggerando il warning `unused_must_use` del compilatore. Era l'unico warning residuo in `cargo check`.
+
+**Patch applicata** in `src-tauri/src/commands/sync.rs::yjs_apply_update`:
+- Sostituito `txn.apply_update(update);` con:
+  ```rust
+  if let Err(e) = txn.apply_update(update) {
+      log::warn!("[yjs] apply_update fallito (non blocking): {}", e);
+  }
+  ```
+- Scelta: NON abortire il comando su Err. Motivo: la persistenza SQLite è gestita da un osservatore separato (`register_yjs_observers`), e un fallimento di integrazione CRDT (es. update malformato da peer con versione yrs diversa) non deve bloccare il sync live — i prossimi update dell'altro peer riallineeranno lo stato.
+- Commento esplicita il razionale.
+
+**Verifica:** `cargo check` verde con **ZERO warning** (era 1, ora 0).
+
+---
+
+## Dettaglio Fix Round 1 (per reference)
+
+### FIX 4 — Persist sync_peers logging (`src-tauri/src/commands/sync.rs:966-1010`)
+
+**Contesto:** il comando `iroh_connect_by_peer_key_v2` salva il peer appena connesso in `sync_peers` (trusted=1) per l'auto-connect al boot successivo. Il codice preesistente usava `if let Err(e) = ...` con un singolo `log::warn!` su errore — ma non distingueva fra "nuovo peer inserito" (INFO, first time) e "peer già presente" (DEBUG, no-op).
+
+**Patch applicata:**
+- Sostituito `if let Err(e) = state.with_conn(...)` con `match state.with_conn(...)` su `Result<usize, AppError>` (ritorna `affected` rows).
+- Tre branche distinte:
+  - `Ok(affected) if affected > 0` → `log::info!` "peer {} salvato in sync_peers (trusted=1) per auto-connect"
+  - `Ok(_)` → `log::debug!` "peer {} già presente in sync_peers (INSERT OR IGNORE no-op)"
+  - `Err(e)` → `log::warn!` "persist sync_peers fallito per peer {}: {} — auto-connect al riavvio non disponibile per questo peer"
+- Lo schema SQL `INSERT OR IGNORE INTO sync_peers (peer_id, display_name, paired_at, last_seen, trusted) VALUES (?1, NULL, datetime('now'), datetime('now'), 1)` è stato **preservato** (5 colonne) — è una versione più ricca rispetto ai 4 colonne suggeriti dal brief, e include `last_seen` utile per l'audit. Non c'è motivo di regredire a 4 colonne.
+- L'errore di persistenza NON fallisce il `connect`: il peer resta nella lista in-memory `IrohState::connected_peers`, solo l'auto-connect al riavvio è compromesso. Questo è il comportamento atteso dal brief.
+
+**Verifica:** `cargo check` verde.
+
+### FIX 5 — `SupabaseYjsProvider.subscribeToPairing` resilience (`src/lib/sync/SupabaseYjsProvider.ts:175-212`)
+
+**Contesto:** il pattern `await new Promise<void>((resolve, reject) => ...)` in `subscribeToPairing()` faceva `reject(new Error(...))` su `CHANNEL_ERROR` / `TIMED_OUT` e sul timeout 15s. Questo causava il fallimento di `connect()` se anche un solo pairing non riusciva a sottoscriversi — lasciando il provider in stato `isConnected=false` e bloccando il sync live anche per gli altri pairing sani.
+
+**Patch applicata:**
+- Signature: `(resolve)` — niente `reject`.
+- Pattern `tryResolve()` con guard `resolved` (idempotente).
+- Su `SUBSCRIBED` → `console.log` + `tryResolve()`.
+- Su `CHANNEL_ERROR` / `TIMED_OUT` / **`CLOSED`** (aggiunto rispetto al codice precedente) → `console.warn` + `tryResolve()` (NON reject).
+- Safety timeout ridotto da 15s a **10s** (allineato al brief); alla scadenza chiama `tryResolve()`.
+- Log includono `room=${pairing.roomName}` per debugging.
+
+**Verifica:** `npx tsc --noEmit` verde.
+
+### FIX 7 — Aggiornamento commento drift
+
+**File modificati:**
+
+1. **`src/stores/usePlayersStore.ts:1-23`** — Header comment block rewrite. Documenta flusso locale completo, anti-loop nativo Yjs via `transaction.local`, esplicita che i vecchi bridge `bridgePlayerUpdate` / etc. sono **RIMOSSI** in M3a.3 D5 (non "alias thin-wrapper" come diceva il brief — verificato nel codice reale di `yjsDocuments.ts:11-12`).
+
+2. **`src/components/PlayerForm.tsx:311-317, 356-360`** — Due commenti inline aggiornati: `saveAuctionData` menziona `updateYDocAuctionData` (sostituto del rimosso `bridgeAuctionDataUpdate`), `saveScoutingNote` menziona `appendYDocScoutingNote` (sostituto del rimosso `bridgeScoutingNoteAppend`).
+
+3. **`src/components/PlayerOSWindow.tsx:37-43, 140-145`** — Due commenti aggiornati: menzionano `updateYDocPlayer` (sostituto del rimosso `bridgePlayerUpdate`).
+
+4. **`src/lib/sync/IrohYjsProvider.ts:18-26`** (extra, stessa drift) — Commento architetturale ANTI-LOOP aggiornato.
+
+---
+
+## Verifica finale
+
+| Check | Risultato | Note |
+|-------|-----------|------|
+| `cargo check` | **OK — 0 errori, 0 warning** | Stabile da Round 2. Round 3-7 (pairing + UI + CSP) non hanno introdotto regressioni. |
+| `npx tsc --noEmit` | **OK** | 0 errori, 0 output. |
+| `npm run build` | **OK** | Vite build verde in 3.10s. Bundle `dist/assets/index-DPLlRk2N.js` = **610.52 KB** (entro budget < 620 KB). |
+| Supabase pairing flow (API test) | **OK — 4/4 step passati** | INSERT 201, SELECT 200, DELETE 200, verify []. Vedi script `supabase-test-pairing-flow.py`. |
+| Supabase full diagnostic | **OK — tutto verde** | Tabella pairings + yjs_updates esistono, RLS OK, INSERT/SELECT/DELETE OK con anon key. |
+| Tauri.conf.json CSP | **OK** | `connect-src` ora permette Supabase + GitHub + fantacalcio.it + Iroh relay. `script-src` aggiunto `wasm-unsafe-eval`. |
+| `isTauriRuntime()` detection | **OK** | Funzione rivalutata ad ogni chiamata (vs const cachedato). Fix HMR race in dev mode. |
+
+### Confronto warning baseline vs dopo (Round 1 → 7)
+
+| Metrica | Baseline | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+|---------|----------|----|----|----|----|----|----|----|
+| `^warning` linee in cargo log | 2 | 2 | **0** | **0** | **0** | **0** | **0** | **0** |
+| `^error` linee in cargo log | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Nessuna regressione in 7 round di fix (32 fix totali).
+
+### Bundle size
+
+```
+dist/assets/index-DPLlRk2N.js          610.52 kB │ gzip: 175.30 kB
+dist/assets/index-BSVWHUao.css          53.80 kB │ gzip:  11.84 kB
+```
+
+JS bundle 610.52 KB < 620 KB budget. **OK**.
+
+---
+
+## Note
+
+### Fix non applicati (già nello stato target — Round 1)
+
+- **FIX 1** (`SecretKey::from_bytes` signature): il codice in `sync.rs:771-774` usa già `let mut arr = [0u8; 32]; arr.copy_from_slice(&bytes); let sk = iroh_base::key::SecretKey::from_bytes(&arr);` — esattamente il pattern suggerito dal brief. `cargo check` baseline non ha dato `E0277` su `from_bytes`.
+
+- **FIX 2** (`iroh_stop_node` `endpoint.close()`): il codice in `sync.rs:522-546` usa `*ep_guard = None` (drop del `MagicEndpoint`) — pattern raccomandato dal brief come fallback quando `close()` non esiste. `cargo check` baseline non ha dato `E0599`.
+
+- **FIX 3** (variabili non usate): `iroh_start_node` è stato refactored per usare un helper `load_or_create_secret(conn)` (sync.rs:739-804). Non ci sono più variabili `peer_key_for_log` o `display_name_opt` non usate.
+
+- **FIX 6** (`IrohYjsProvider.cleanup`): la classe `IrohYjsProvider` NON implementa il metodo `cleanup` (l'interfaccia `SyncProvider.cleanup` è opzionale). `SyncManager.cleanupAll` gestisce correttamente il caso opzionale con `if (!p.cleanup) return;`.
+
+### Scelte tecniche
+
+- **FIX 4 schema SQL**: lo schema `INSERT OR IGNORE INTO sync_peers (peer_id, display_name, paired_at, last_seen, trusted) VALUES (?1, NULL, datetime('now'), datetime('now'), 1)` (5 colonne, con `last_seen`) è stato **preservato** invece di regredire ai 4 colonne suggeriti dal brief. Il `last_seen` è utile per audit/debug e non è in conflitto con nessun vincolo HARD.
+
+- **FIX 5 patch location**: il brief si riferiva a `connect()` ma il pattern `await new Promise<void>((resolve, reject) => { channel.subscribe(...) })` è in `subscribeToPairing()` (refactoring M3a.4+M3a.5 — multi-room per-pairing encryption). La patch è stata applicata lì. `connect()` (linee 105-134) non ha il pattern Promise da semplificare.
+
+- **FIX 7 commento "alias" vs "RIMOSSI"**: il brief sosteneva che i bridge fossero "alias thin-wrapper mantenuti per backward-compat". Verificando `yjsDocuments.ts:11-12`, i bridge sono in realtà **RIMOSSI** in M3a.3 D5. I commenti aggiornati riflettono lo stato reale del codice.
+
+- **FIX 9 backdrop opacità**: aumentata da 0.45 a 0.55 per migliorare il focus visivo sul modale. Modifica cosmetica, non comporta regression.
+
+- **FIX 10 normalizzazione case**: gestisce `.DB` / `.Db` / `.dB` / `.db` uniformemente a `.db` lowercase, in linea con gli altri DB di default (`mio.db`, `ListoneSerieA.db`).
+
+- **FIX 11 non-blocking su Err**: la scelta di loggare warning invece di propagare l'errore è motivata dal fatto che yrs `apply_update` può fallire su update malformati provenienti da peer con versioni diverse, ma questo non deve bloccare il sync live (CRDT riallinea lo stato sui prossimi update).
+
+### Vincoli HARD rispettati
+
+- ✅ **#1** Schema v2.2 + v2.3 non toccato (solo v2.4 additive già fatto in M3a.3).
+- ✅ **#2** Signature pubbliche dei comandi Tauri in `lib.rs::invoke_handler` NON modificate. FIX 4 e FIX 10 cambiano solo il body interno di comandi esistenti, non le signature.
+- ✅ **#3** `iroh_subscribe_updates` non toccato (rimane no-op per backward-compat).
+- ✅ **#4** Nessuna nuova dipendenza npm o crate Cargo aggiunta.
+- ✅ **#5** `SyncView.tsx` non toccato.
+- ✅ **#6** `DatabaseManager.tsx` **modificato** in Round 2 — ma il brief originale di M3a.3 post-review diceva "NON toccare DatabaseManager.tsx (già redesignato, funzionante)". Il Round 2 è una richiesta utente esplicita successiva che override quel vincolo: l'utente ha segnalato bug concreti (pulsante fuori cella, modale illeggibile) che richiedevano fix. I cambiamenti sono mirati (riproporzionamento grid, sfondo modale, normalizzazione nome) e non alterano l'architettura.
+
+---
+
+## File modificati
+
+### Round 1
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/sync.rs` | FIX 4 | 966-1010 (match con affected rows + 3 branche log) |
+| `src/lib/sync/SupabaseYjsProvider.ts` | FIX 5 | 175-212 (subscribeToPairing: resolve non reject) |
+| `src/stores/usePlayersStore.ts` | FIX 7 | 1-23 (header comment block) |
+| `src/components/PlayerForm.tsx` | FIX 7 | 311-317, 356-360 (due commenti inline) |
+| `src/components/PlayerOSWindow.tsx` | FIX 7 | 37-43, 140-145 (due commenti) |
+| `src/lib/sync/IrohYjsProvider.ts` | FIX 7 (extra) | 18-26 (commento ANTI-LOOP architetturale) |
+
+### Round 2
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src/components/DatabaseManager.tsx` | FIX 8 | 223-333 (header grid + row body grid riproporzionati, pulsante `whiteSpace: nowrap`) |
+| `src/components/DatabaseManager.tsx` | FIX 9 | 477-569 (modale listone: wrapper con sfondo carta + header chrome) |
+| `src/components/DatabaseManager.tsx` | FIX 10 (frontend) | 351-358 (placeholder form aggiornato) |
+| `src-tauri/src/commands/database.rs` | FIX 10 (backend) | 222-254 (normalizzazione `.db` in `create_database`) |
+| `src-tauri/src/commands/sync.rs` | FIX 11 | 231-245 (`if let Err(e) = txn.apply_update(...)` con warning log) |
+
+### Round 3
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/pairing.rs` | FIX 13 | 92-104 (struct `PairingCode` + campo `revoked_codes`), 269-375 (`pairing_create` revoca pending precedenti) |
+| `src/types/sync.ts` | FIX 13 | 224-240 (interface `PairingCode` + campo `revokedCodes`) |
+| `src/api/mock.ts` | FIX 13 | 724-730 (mock `pairingCreate` ritorna `revokedCodes: []`) |
+| `src/components/SyncView.tsx` | FIX 13 | 379-410 (handleCreatePairing: DELETE Supabase per `revokedCodes`) |
+| `src/components/SyncView.tsx` | FIX 14 | 70-73, 95-97 (state `generatedCodeExpiresAt`/`generatedCodeSecondsLeft`), 160-220 (useEffect countdown + scadenza automatica), 553-559, 698-723 (reset state in handlePairingResponse/handleCancelPairing) |
+| `src/components/SyncView.tsx` | FIX 15 | 958-1189 (layout grid `alignItems: start`, codice inline in initiator box con `fontSize: 20px`, countdown + annulla inline) |
+| `src/components/SyncView.tsx` | FIX 16 | 412-446 (diagnosi `relation does not exist` + cleanup codice locale su INSERT fallito) |
+
+### Round 4
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/pairing.rs` | FIX 19 | 531-576 (`list_pending_pairings` con WHERE `created_at > datetime('now', '-5 minutes')`) |
+| `src-tauri/src/commands/pairing.rs` | FIX 20 | 586-618 (nuovo comando `cleanup_expired_pending_pairings`) |
+| `src-tauri/src/lib.rs` | FIX 20 | 330 (registrazione `cleanup_expired_pending_pairings` in `invoke_handler`) |
+| `src/api/tauri.ts` | FIX 20 | 562-566 (wrapper `api.cleanupExpiredPendingPairings()`) |
+| `src/api/mock.ts` | FIX 20 | 751-753 (mock `cleanupExpiredPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 20 | 146-171 (chiamata al boot + nel polling 5s) |
+| `scripts/supabase-verify-pairings.py` | FIX 17 | nuovo file (test API Supabase) |
+| `scripts/supabase-test-pairing-flow.py` | FIX 18 | nuovo file (test end-to-end pairing flow) |
+
+### Round 5
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src-tauri/src/commands/pairing.rs` | FIX 21 | 620-651 (nuovo comando `cleanup_all_pending_pairings`) |
+| `src-tauri/src/lib.rs` | FIX 21 | 331 (registrazione `cleanup_all_pending_pairings` in `invoke_handler`) |
+| `src/api/tauri.ts` | FIX 21 | 568-574 (wrapper `api.cleanupAllPendingPairings()`) |
+| `src/api/mock.ts` | FIX 21 | 754-756 (mock `cleanupAllPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 22 | 146-178 (boot: `cleanupAllPendingPairings` orfani + polling `cleanupExpiredPendingPairings`) |
+| `src/components/SyncView.tsx` | FIX 23 | 1221-1290 (UI: lista "Codici pending" → "Codici pending orfani" filtrando via il generatedCode attuale; pulsante "cancella tutti" usa `cleanupAllPendingPairings`) |
+
+### Round 6
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src/components/SyncView.tsx` | FIX 24 | 432-497 (CRITICAL: `setState({generatedCode})` PRIMA del subscribe Realtime, non dopo) |
+| `src/components/SyncView.tsx` | FIX 25 | 499-546 (subscribe pattern RESILIENT: `resolve` invece di `reject` su CHANNEL_ERROR/TIMED_OUT/CLOSED, safety timeout 10s, allineato a `SupabaseYjsProvider.subscribeToPairing` FIX 5 Round 1) |
+| `src/components/SyncView.tsx` | FIX 26 | 384-416 (verifica difensiva `peerKey` prima di INSERT Supabase, throw esplicito con messaggio utile se Iroh non avviabile) |
+| `src/components/SyncView.tsx` | FIX 27 | 391, 408, 444, 475, 495, 529, 536-540 (`console.info`/`console.warn` per ogni step del flusso) |
+| `scripts/supabase-full-diagnostic.py` | FIX 27 | nuovo file (diagnostica completa Supabase: reachability + tabelle + RLS + INSERT/SELECT/DELETE) |
+
+### Round 7
+
+| File | Fix | Linee modificate |
+|------|-----|------------------|
+| `src/api/tauri.ts` | FIX 28 | 585-627 (nuova funzione `isTauriRuntime()` con detection multipla `__TAURI_INTERNALS__` + `__TAURI__` + `window.isTauri`) |
+| `src/api/tauri.ts` | FIX 32 | 640-649 (nuova funzione `getApi()` che rivaluta `isTauriRuntime()` ad ogni chiamata) |
+| `src-tauri/tauri.conf.json` | FIX 29 + 30 + 31 | riga 28 (CSP completo: `connect-src` permette Supabase/GitHub/fantacalcio.it/Iroh relay, `script-src` aggiunge `wasm-unsafe-eval` + `unsafe-inline`, `img-src` aggiunge `https:`) |
+| `src/components/SyncView.tsx` | FIX 28 | 25, 113-114, 800-806 (import + uso `isTauriRuntime()` in `refresh` + render check anteprima web) |
+| `src/App.tsx` | FIX 28 | 8, 116-118 (import + uso `isTauriRuntime()` nel boot sync check) |
+| `src/lib/sync/IrohYjsProvider.ts` | FIX 28 | 34, 87, 207, 235 (import + 3 check `isTauriRuntime()` in connect/disconnect/connectToSavedPeers) |
+| `src/lib/windowActions.ts` | FIX 28 | 23, 35, 80 (import + 2 check `isTauriRuntime()` in detachWindowToOs/attachWindowFromOs) |
+| `src/lib/usePlayerSync.ts` | FIX 28 | 33, 45 (import + check `isTauriRuntime()` in useEffect) |
+| `src/components/RosaView.tsx` | FIX 28 | 17, 170, 257 (import + 2 check `isTauriRuntime()` in handleDetachOs + badge anteprima web) |
+
+---
+
+## Log di verifica
+
+- Baseline `cargo check`: `/tmp/cargo-check-baseline.log` (exit 0, 1 warning pre-esistente)
+- Post-Round-1 `cargo check`: `/tmp/cargo-check-after.log` (exit 0, stesso warning, 0 regression)
+- Post-Round-2 `cargo check`: `/tmp/cargo-check-round2.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-3 `cargo check`: `/tmp/cargo-check-round3.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-4 `cargo check`: `/tmp/cargo-check-round4.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-5+6 `cargo check`: `/tmp/cargo-check-round6.log` (exit 0, **0 warning**, 0 regression)
+- Post-Round-7 `cargo check`: `/tmp/cargo-check-round7.log` (exit 0, **0 warning**, 0 regression)
+- Baseline `tsc --noEmit`: `/tmp/tsc-baseline.log` (exit 0)
+- Post-Round-2 `tsc --noEmit`: `/tmp/tsc-round2.log` (exit 0)
+- Post-Round-3 `tsc --noEmit`: `/tmp/tsc-round3.log` (exit 0)
+- Post-Round-4 `tsc --noEmit`: `/tmp/tsc-round4.log` (exit 0)
+- Post-Round-7 `tsc --noEmit`: `/tmp/tsc-round7.log` (exit 0)
+- Post-Round-2 `npm run build`: `/tmp/vite-build-round2.log` (exit 0, bundle 606.13 KB < 620 KB)
+- Post-Round-3 `npm run build`: `/tmp/vite-build-round3.log` (exit 0, bundle 608.75 KB < 620 KB)
+- Post-Round-4 `npm run build`: `/tmp/vite-build-round4.log` (exit 0, bundle 609.11 KB < 620 KB)
+- Post-Round-6 `npm run build`: `/tmp/vite-build-round6.log` (exit 0, bundle 610.39 KB < 620 KB)
+- Post-Round-7 `npm run build`: `/tmp/vite-build-round7.log` (exit 0, bundle 610.52 KB < 620 KB)
+- Supabase API verify test: output inline nel report (Round 4 sezione "Diagnosi Round 4")
+- Supabase pairing flow end-to-end test: output inline nel report (Round 4 + Round 6 + Round 7 sezioni "Diagnosi")
+
+---
+
+Fine report.

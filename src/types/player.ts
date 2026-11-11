@@ -129,6 +129,17 @@ export interface DatabaseMeta {
   schema_ver: number;
 }
 
+/**
+ * M3a.3 fix post-review (Round 11) — Output di `create_shared_database`.
+ * Mirror di Rust `SharedDatabaseInvitation` (database.rs).
+ */
+export interface SharedDatabaseInvitation {
+  dbId: string;
+  dbName: string;
+  peerKeyOther: string;
+  peerKeyInitiator: string;
+}
+
 // ----------------------------------------------------------------------
 // M2 — listone + archiviazione automatica
 // ----------------------------------------------------------------------

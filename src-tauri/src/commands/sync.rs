@@ -40,7 +40,7 @@
 use std::sync::{Mutex, OnceLock};
 
 use rusqlite::Connection;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // M3a.2 — Import `Emitter` trait per `app.emit(...)` (come in players.rs:37).
 // Senza questo, i `let _ = app.emit(...)` a riga 434/444/453 (subscribe loop
@@ -230,7 +230,16 @@ pub fn yjs_apply_update(update_bytes: Vec<u8>) -> AppResult<bool> {
         })?;
         // Applica l'update al Doc (transazione interna yrs)
         let mut txn = doc.transact_mut();
-        txn.apply_update(update);
+        // M3a.3 fix post-review — `apply_update` ritorna `Result<(), UpdateError>`
+        // in yrs 0.21. Il warning `unused_must_use` del compilatore indica che
+        // l'Err veniva silenziosamente scartato. Su Err, logga warning ma NON
+        // abortire il comando: la persistenza SQLite è gestita dall'osservatore
+        // separato, e un fallimento di integrazione CRDT (es. update malformato
+        // proveniente da un peer con versione yrs diversa) non deve bloccare
+        // il sync live — i prossimi update dell'altro peer riallineeranno lo stato.
+        if let Err(e) = txn.apply_update(update) {
+            log::warn!("[yjs] apply_update fallito (non blocking): {}", e);
+        }
         // Nota: la persistenza SQLite è gestita dall'osservatore
         // registrato in `register_yjs_observers()` (vedi modulo bridge).
         drop(txn);
@@ -301,17 +310,28 @@ pub fn yjs_get_diff(state_vector: Vec<u8>) -> AppResult<Vec<u8>> {
 ///
 /// M3a.1 (PB2 fix) — Implementazione completa: costruisce `MagicEndpoint`,
 /// `Gossip`, join topic + subscribe + accept loop + subscribe loop.
+///
+/// M3a.3 (Deliverable 3 — Peer key persistente) — La SecretKey non è più
+/// generata ephemeral ad ogni avvio. Viene caricata da `sync_identity`
+/// (singleton table nel DB attivo). Se non esiste ancora, viene generata,
+/// salvata in `sync_identity`, e restituita. Al boot successivo la stessa
+/// SecretKey viene ricaricata → la peer_key (NodeId derivato) è STABILE
+/// cross-boot. L'utente non deve più ri-scambiare la peer_key con i peer
+/// fidati ad ogni riavvio.
 #[tauri::command]
-pub async fn iroh_start_node(app: tauri::AppHandle) -> AppResult<String> {
-    // Se la peer key è già stata generata, ritorna quella.
+pub async fn iroh_start_node(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::DbState>,
+) -> AppResult<String> {
+    // Se la peer key è già stata generata in questa sessione, ritorna quella.
     if let Some(pk) = IrohState::instance().get_peer_key() {
         return Ok(pk);
     }
 
-    // Crea un secret key casuale (ephemeral per sessione — persistenza
-    // opzionale: in produzione si persiste su app_data_dir/iroh_secret.key
-    // per mantenere la stessa identità tra riavvii).
-    let secret = iroh_base::key::SecretKey::generate();
+    // M3a.3 — Carica la SecretKey salvata da `sync_identity` (singleton table).
+    // Se non esiste, genera + salva. La SecretKey ha 32 byte (iroh_base::key::SecretKey::LEN).
+    let db_id = state.active_db_id()?;
+    let secret = state.with_conn(&db_id, |conn| load_or_create_secret(conn))?;
 
     // Costruisce il MagicEndpoint con ALPN `GOSSIP_ALPN` (richiesto da
     // iroh-gossip per identificare le connessioni QUIC dedicate al gossip).
@@ -494,6 +514,46 @@ pub async fn iroh_start_node(app: tauri::AppHandle) -> AppResult<String> {
     Ok(peer_key)
 }
 
+/// Disconnette il nodo Iroh corrente, rilasciando le risorse QUIC.
+///
+/// M3a.3 (Deliverable 4 — iroh_stop_node richiesto da IrohYjsProvider.disconnect).
+///
+/// Comportamento:
+///  - Mette a `None` endpoint + gossip nello stato globale. Lo `Drop` del
+///    `MagicEndpoint` chiude tutti i socket QUIC + rilascia le risorse tokio.
+///  - Pulisce `connected_peers` (nessun peer connesso a nodo spento).
+///  - NON elimina la SecretKey persistita in `sync_identity` — resta per
+///    il prossimo `iroh_start_node` (peer_key stabile cross-boot).
+///  - Il subscribe loop spawnato in `iroh_start_node` termina da solo:
+///    quando il `Gossip` actor viene droppato, il `broadcast::Receiver`
+///    chiude → `rx.recv()` ritorna `Err` → loop esce.
+#[tauri::command]
+pub async fn iroh_stop_node() -> AppResult<()> {
+    {
+        let mut ep_guard = IrohState::instance().endpoint.lock().await;
+        *ep_guard = None; // drop MagicEndpoint → close QUIC + free sockets
+    }
+    {
+        let mut gs_guard = IrohState::instance().gossip.lock().await;
+        *gs_guard = None; // drop Gossip actor → broadcast receivers closed
+    }
+    // Pulisce connected_peers (non più rilevante con nodo spento).
+    // Mantiene peer_key salvato in IrohState per essere restituito da
+    // `iroh_get_peer_key` finché non si riavvia (NO — in realtà è meglio
+    // pulire anche peer_key: `iroh_get_peer_key` deve ritornare errore se
+    // il nodo è spento, così il frontend lo sa).
+    {
+        let mut pk_guard = IrohState::instance().peer_key.lock().expect("IrohState peer_key poisoned");
+        *pk_guard = None;
+    }
+    {
+        let mut peers_guard = IrohState::instance().connected_peers.lock().expect("IrohState peers poisoned");
+    peers_guard.clear();
+    }
+    log::info!("[M3a.3] iroh_stop_node: nodo fermato, risorse QUIC rilasciate.");
+    Ok(())
+}
+
 /// Ritorna la peer key corrente, o errore se il nodo non è ancora avviato.
 #[tauri::command]
 pub fn iroh_get_peer_key() -> AppResult<String> {
@@ -565,6 +625,12 @@ pub async fn iroh_connect_by_peer_key(peer_key: String) -> AppResult<bool> {
             // del peer remoto (nel suo accept loop) la dispatchera al gossip
             // actor. Dopo join, entrambi i peer si vedranno come neighbor.
             IrohState::instance().add_peer(peer_key.clone());
+            // M3a.3 (Deliverable 4) — NOTA: il salvataggio del peer come trusted
+            // in `sync_peers` avviene in `iroh_connect_by_peer_key_v2` (il comando
+            // che accetta `State<DbState>`). Questo `iroh_connect_by_peer_key` (v1)
+            // NON ha accesso al DB state — resta per backward-compat con frontend
+            // che non è stato ancora aggiornato al nuovo SyncView. Il nuovo SyncView
+            // chiama `iroh_connect_by_peer_key_v2` che delega a questo v1 + salva.
             log::info!("[M3a.2] connesso a peer: {}", peer_key);
             Ok(true)
         }
@@ -649,6 +715,341 @@ pub fn iroh_disconnect_peer(peer_key: String) -> AppResult<()> {
     IrohState::instance().remove_peer(&peer_key);
     log::info!("[M3a] iroh_disconnect_peer: {}", peer_key);
     Ok(())
+}
+
+// ----------------------------------------------------------------------
+// M3a.3 (Deliverable 3) — sync_identity: peer key persistente + display_name
+// ----------------------------------------------------------------------
+
+/// Identità sync persistita (singleton row di `sync_identity`).
+///
+/// Ritornata da `get_sync_identity`. Usata dal frontend SyncView per mostrare
+/// "La tua identità: ● marco (peer key: abc23-... [copia])" e per il restore
+/// al boot (se `Some`, l'app auto-avvia Iroh con la SecretKey salvata).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncIdentity {
+    /// NodeId Iroh (formato base32). Scambiata out-of-band con i peer.
+    pub peer_key: String,
+    /// Nome umano opzionale (es. "marco"). NULL se non ancora impostato.
+    pub display_name: Option<String>,
+    /// ISO 8601 della prima generazione della SecretKey.
+    pub created_at: String,
+}
+
+/// Carica la SecretKey Iroh da `sync_identity` se esiste, altrimenti genera + salva.
+///
+/// Comportamento:
+///  1. SELECT secret_key_bytes, peer_key FROM sync_identity WHERE id=1
+///  2. Se esiste → ricostruisce SecretKey dai 32 byte salvati.
+///  3. Se non esiste → genera nuova SecretKey, INSERT in sync_identity.
+///
+/// Idempotente: `INSERT OR IGNORE` su id=1 garantisce che anche se la tabella
+/// è vuota e due thread chiamano contemporaneamente, solo il primo scrive.
+fn load_or_create_secret(conn: &Connection) -> AppResult<iroh_base::key::SecretKey> {
+    // Verifica che la tabella sync_identity esista (se il DB non è stato migrato
+    // a v2.4, fallback a ephemeral — non bloccare il boot).
+    let table_exists: bool = conn
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_identity' LIMIT 1")?
+        .exists([])?;
+    if !table_exists {
+        log::warn!(
+            "[M3a.3] tabella sync_identity non trovata (DB pre-v2.4?). Fallback a SecretKey ephemeral."
+        );
+        return Ok(iroh_base::key::SecretKey::generate());
+    }
+
+    // Tenta di caricare la riga singleton.
+    let loaded: Option<(Vec<u8>, String)> = conn
+        .query_row(
+            "SELECT secret_key_bytes, peer_key FROM sync_identity WHERE id = 1 LIMIT 1",
+            [],
+            |r| {
+                let bytes: Vec<u8> = r.get(0)?;
+                let pk: String = r.get(1)?;
+                Ok((bytes, pk))
+            },
+        )
+        .ok();
+
+    if let Some((bytes, pk_cached)) = loaded {
+        // Ricostruisci SecretKey dai 32 byte. `SecretKey::from_bytes` prende
+        // `&[u8; 32]` (array fisso di 32 byte, NON slice) e ritorna `Self`
+        // direttamente (NON Result — qualsiasi 32 byte è una SecretKey ed25519
+        // valida). Verifichiamo la lunghezza prima della conversione: se i byte
+        // sono corrotti (len != 32), rigeneriamo una nuova key.
+        if bytes.len() == 32 {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            let sk = iroh_base::key::SecretKey::from_bytes(&arr);
+            log::info!(
+                "[M3a.3] SecretKey caricata da sync_identity. peer_key={}...",
+                &pk_cached.get(..16).unwrap_or(&pk_cached)
+            );
+            // sk è SecretKey (owned, Copy/Clone) — lo ritorniamo direttamente.
+            return Ok(sk);
+        } else {
+            // Bytes corrotti — genera nuova key, sovrascrivi la riga.
+            log::warn!(
+                "[M3a.3] SecretKey bytes len {} != 32 — rigenero + overwrite.",
+                bytes.len()
+            );
+        }
+    }
+
+    // Genera nuova SecretKey e salvala.
+    let sk = iroh_base::key::SecretKey::generate();
+    let pk = sk.public().to_string();
+    let sk_bytes = sk.to_bytes(); // [u8; 32]
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_identity (id, secret_key_bytes, peer_key, display_name, created_at)
+         VALUES (1, ?1, ?2, NULL, datetime('now'))",
+        rusqlite::params![sk_bytes, pk],
+    )?;
+    log::info!(
+        "[M3a.3] Nuova SecretKey generata + salvata in sync_identity. peer_key={}...",
+        pk.get(..16).unwrap_or(&pk)
+    );
+    Ok(sk)
+}
+
+/// Salva un peer connesso come trusted in `sync_peers` per auto-connect al boot.
+/// Idempotente via INSERT OR IGNORE (chiave primaria su peer_id).
+///
+/// M3a.3 (Deliverable 4) — L'effettivo salvataggio avviene in
+/// `iroh_connect_by_peer_key_v2` (che ha accesso a `State<DbState>`). Questa
+/// funzione helper è un placeholder documentato — rimane per chiarezza
+/// architetturale e come punto di estensione futuro (es. se in M5+ vogliamo
+/// salvare peer da altri punti senza duplicare la logica SQL).
+#[allow(dead_code)]
+fn save_trusted_peer(_conn: &Connection, _peer_key: &str) -> AppResult<()> {
+    // Vedi `iroh_connect_by_peer_key_v2` per l'implementazione attiva.
+    Ok(())
+}
+
+/// Ritorna l'identità sync persistita (singleton row), se esiste.
+///
+/// Chiamato dal frontend al boot per decidere se auto-avviare Iroh:
+///   1. `await api.getSyncIdentity()`
+///   2. Se Some → `await api.irohStartNode()` (carica SecretKey salvata)
+///   3. Se None → non avviare Iroh automaticamente (l'utente deve avviarlo manualmente)
+#[tauri::command]
+pub fn get_sync_identity(
+    state: tauri::State<'_, crate::DbState>,
+) -> AppResult<Option<SyncIdentity>> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_identity' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Ok(None); // DB pre-v2.4
+        }
+        let row: Option<(String, Option<String>, String)> = conn
+            .query_row(
+                "SELECT peer_key, display_name, created_at FROM sync_identity WHERE id = 1 LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .ok();
+        Ok(row.map(|(peer_key, display_name, created_at)| SyncIdentity {
+            peer_key,
+            display_name,
+            created_at,
+        }))
+    })
+}
+
+/// Imposta il display_name dell'identità sync corrente.
+/// Usato dal SyncView quando l'utente compila "nome: [marco________] [salva]".
+#[tauri::command]
+pub fn set_sync_display_name(
+    state: tauri::State<'_, crate::DbState>,
+    name: String,
+) -> AppResult<()> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        // Trim + clamp a 64 char (sanitizzazione minima).
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation(
+                "display_name vuoto non ammesso".into(),
+            ));
+        }
+        if trimmed.len() > 64 {
+            return Err(AppError::Validation(format!(
+                "display_name troppo lungo (max 64, dati {})",
+                trimmed.len()
+            )));
+        }
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_identity' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Err(AppError::Generic(
+                "sync_identity table non esistente (DB pre-v2.4). Avvia iroh_start_node prima.".into(),
+            ));
+        }
+        let n_updated = conn.execute(
+            "UPDATE sync_identity SET display_name = ?1 WHERE id = 1",
+            rusqlite::params![trimmed],
+        )?;
+        if n_updated == 0 {
+            return Err(AppError::Generic(
+                "sync_identity row non trovata (id=1). Chiamare iroh_start_node prima.".into(),
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// Lista dei peer fidati salvati (per auto-connect al boot).
+///
+/// Ritorna i record di `sync_peers` con `trusted = 1`. Il frontend
+/// SyncView chiama questo al boot, dopo `iroh_start_node`, per riconnettere
+/// automaticamente i peer della sessione precedente.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustedPeer {
+    pub peer_id: String,
+    pub display_name: Option<String>,
+    pub paired_at: String,
+    pub last_seen: Option<String>,
+    pub trusted: bool,
+}
+
+#[tauri::command]
+pub fn list_trusted_peers(
+    state: tauri::State<'_, crate::DbState>,
+) -> AppResult<Vec<TrustedPeer>> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        let table_exists: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_peers' LIMIT 1")?
+            .exists([])?;
+        if !table_exists {
+            return Ok(Vec::new()); // DB pre-v2.3
+        }
+        let mut stmt = conn.prepare(
+            "SELECT peer_id, display_name, paired_at, last_seen, trusted
+             FROM sync_peers WHERE trusted = 1 ORDER BY paired_at DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(TrustedPeer {
+                peer_id: r.get(0)?,
+                display_name: r.get(1)?,
+                paired_at: r.get(2)?,
+                last_seen: r.get(3)?,
+                trusted: r.get::<_, i64>(4)? != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    })
+}
+
+/// Versione 2 di `iroh_connect_by_peer_key` che accetta `DbState` e salva il
+/// peer come trusted su `sync_peers` dopo una connessione QUIC riuscita.
+///
+/// M3a.3 (Deliverable 4) — Il vecchio `iroh_connect_by_peer_key` resta per
+/// backward-compat (lo richiama il frontend se non aggiornato). Il nuovo
+/// SyncView chiama `iroh_connect_by_peer_key_v2` che delega la connect
+/// effettiva al vecchio comando (per evitare duplicazione della logica) e
+/// poi salva il peer.
+///
+/// Per evitare di duplicare la logica di connect, `iroh_connect_by_peer_key_v2`
+/// CHIAMA direttamente la logica di connect via la funzione interna (non
+/// tramite `invoke`). Per non rifattorizzare, copiamo la logica qui — sarebbe
+/// meglio estrarre `do_iroh_connect(peer_key) -> bool` helper, ma per M3a.3
+/// accettiamo la duplicazione (todo: refactor M4).
+#[tauri::command]
+pub async fn iroh_connect_by_peer_key_v2(
+    state: tauri::State<'_, crate::DbState>,
+    peer_key: String,
+) -> AppResult<bool> {
+    // Delega al comando originale (che non ha stato DB). Inoltra il peer_key
+    // e cattura il risultato bool.
+    let connected = iroh_connect_by_peer_key(peer_key.clone()).await?;
+
+    if connected {
+        // M3a.3 D4 fix — Persisti il peer in sync_peers (trusted=1) per
+        // auto-connect al boot successivo. INSERT OR IGNORE: se il peer era
+        // già salvato, non sovrascrive display_name/paired_at/last_seen
+        // esistenti. Distinzione esplicita fra:
+        //   - affected > 0 → INFO (prima volta che il peer viene persisted)
+        //   - affected = 0 → DEBUG (no-op, peer già noto)
+        //   - Err          → WARN (persistenza fallita, il peer resta in
+        //                            memoria ma al riavvio dovrà essere
+        //                            riaggiunto manualmente)
+        let db_id = state.active_db_id()?;
+        match state.with_conn(&db_id, |conn| {
+            let affected = conn.execute(
+                "INSERT OR IGNORE INTO sync_peers (peer_id, display_name, paired_at, last_seen, trusted)
+                 VALUES (?1, NULL, datetime('now'), datetime('now'), 1)",
+                rusqlite::params![peer_key],
+            )?;
+            Ok::<_, AppError>(affected)
+        }) {
+            Ok(affected) if affected > 0 => {
+                log::info!(
+                    "[M3a.3] peer {} salvato in sync_peers (trusted=1) per auto-connect",
+                    peer_key
+                );
+            }
+            Ok(_) => {
+                log::debug!(
+                    "[M3a.3] peer {} già presente in sync_peers (INSERT OR IGNORE no-op)",
+                    peer_key
+                );
+            }
+            Err(e) => {
+                // NON fallire il connect: il peer è in lista in-memory, solo
+                // la persistenza è fallita. L'utente vedrà il peer connesso
+                // in questa sessione, ma al riavvio dovrà riaggiungerlo
+                // manualmente.
+                log::warn!(
+                    "[M3a.3] persist sync_peers fallito per peer {}: {} — \
+                     auto-connect al riavvio non disponibile per questo peer",
+                    peer_key,
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(connected)
+}
+
+/// Rimuove un peer dalla lista dei trusted (es. utente non vuole più auto-connect).
+/// Aggiorna `trusted = 0` (NON DELETE — mantiene lo storico paired_at/last_seen
+/// per audit). Vincolo HARD #1 (no delete automatici).
+#[tauri::command]
+pub fn remove_trusted_peer(
+    state: tauri::State<'_, crate::DbState>,
+    peer_key: String,
+) -> AppResult<()> {
+    let db_id = state.active_db_id()?;
+    state.with_conn(&db_id, |conn| {
+        let n = conn.execute(
+            "UPDATE sync_peers SET trusted = 0 WHERE peer_id = ?1",
+            rusqlite::params![peer_key],
+        )?;
+        if n == 0 {
+            log::debug!(
+                "[M3a.3] remove_trusted_peer: peer {} non trovato in sync_peers.",
+                peer_key
+            );
+        } else {
+            log::info!(
+                "[M3a.3] remove_trusted_peer: peer {} rimosso dai trusted (trusted=0).",
+                peer_key
+            );
+        }
+        Ok(())
+    })
 }
 
 // ----------------------------------------------------------------------

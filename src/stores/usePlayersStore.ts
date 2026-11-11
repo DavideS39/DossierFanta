@@ -1,21 +1,26 @@
-// Store Zustand per stato giocatori + filtri UI.
-// Tutte le mutazioni passano per api/tauri.ts (comandi Rust), mai SQL diretto.
-//
-// M2: il filtro db_id è gestito qui. Valori possibili:
-//   null/undefined → "active" (default: usa active_db_id dal backend)
-//   "all"          → tutti i DB
-//   "<uuid>"       → un DB specifico
-//
-// M3a.1 (PB4 fix) — Cablaggio del bridge Rust→Yjs.
-// Le mutazioni `updatePlayer` / `saveScoutingNote` / `saveAuctionData`
-// DOPO il commit SQLite invocano anche le funzioni bridge di yjsDocuments
-// per applicare l'update al Y.Doc locale e propagarlo ai peer via Iroh.
-// Questo attiva il path end-to-end del sync live:
-//   UI → api.updatePlayer → SQLite commit → bridgePlayerUpdate →
-//   yPlayers.update → iroh_broadcast_update → gossip → Peer B
-// L'anti-loop è garantito dal flag `isApplyingRemoteUpdate` in yjsDocuments:
-// il path `save_*_from_sync` NON invoca bridge*, quindi peer B che riceve
-// un update non lo re-invia ad A.
+/**
+ * usePlayersStore — store Zustand per i giocatori (M3a.3 D5 — PB4-A fix).
+ *
+ * Flusso completo di una modifica locale:
+ *   UI → api.updatePlayer → SQLite commit (updated_by='me')
+ *      → updateYDocPlayer(player) → yPlayers.set(...) [transazione LOCALE Yjs]
+ *      → Y.Doc emette 'update' event (origin=undefined)
+ *      → provider Supabase + Iroh ricevono l'event, broadcast ai peer remoti
+ *
+ * Anti-loop nativo Yjs (PB4-A fix M3a.3):
+ *   Il listener `yPlayers.observe((event, transaction) => ...)` in
+ *   `yjsDocuments.ts::initYjsBridge` controlla `transaction.local`:
+ *    - true  → update locale (skip save_player_from_sync, updated_by='me' PRESERVATO)
+ *    - false → update remoto (procedi, save_player_from_sync, updated_by='sync-live')
+ *
+ * I vecchi bridge `bridgePlayerUpdate` / `bridgeScoutingNoteAppend` /
+ * `bridgeAuctionDataUpdate` in `yjsDocuments.ts` sono RIMOSSI in M3a.3 D5.
+ * Le sostituiscono `updateYDocPlayer` / `appendYDocScoutingNote` /
+ * `updateYDocAuctionData` — firma identica, senza flag manuale
+ * `isApplyingLocalBridge` (l'anti-loop è nativo Yjs via `transaction.local`).
+ *
+ * Vincolo HARD #13: SQLite rimane source of truth. Yjs è transport + merge.
+ */
 
 import { create } from "zustand";
 import { api } from "@/api/tauri";
@@ -33,10 +38,21 @@ import type {
   ScoutingNoteSyncInput,
 } from "@/types/sync";
 import {
-  bridgeAuctionDataUpdate,
-  bridgePlayerUpdate,
-  bridgeScoutingNoteAppend,
+  updateYDocAuctionData,
+  updateYDocPlayer,
+  appendYDocScoutingNote,
 } from "@/lib/sync/yjsDocuments";
+import { useDbStore } from "@/stores/useDbStore";
+
+/** M3a.5 — ID del database ListoneSerieA. I player di questo DB NON
+ * vengono sincronizzati su Supabase (il listone è auto-fetched da GitHub,
+ * non ha bisogno di sync peer-to-peer). */
+const LISTONE_DB_ID = "default-listone";
+
+/** True se il db_id è quello del listone — skip del Yjs bridge (no Supabase sync). */
+function isListoneDb(dbId: string | null | undefined): boolean {
+  return dbId === LISTONE_DB_ID;
+}
 
 interface PlayersState {
   // Stato dati
@@ -148,7 +164,13 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
 
   refresh: async () => {
     const { search, roleFilter, dbFilter, includeArchive } = get();
-    const filters = buildFilters(search, roleFilter, dbFilter, includeArchive);
+    // M3a.5 — Multi-DB attivo: se più DB sono nel set activeDbIds,
+    // usa db_id="all" per mostrare tutti i giocatori di tutti i DB attivi.
+    // Se solo 1 DB attivo, usa quello specifico.
+    const activeDbIds = useDbStore.getState().activeDbIds;
+    const effectiveDbFilter =
+      dbFilter ?? (activeDbIds.size > 1 ? "all" : null);
+    const filters = buildFilters(search, roleFilter, effectiveDbFilter, includeArchive);
     set({ loading: true, error: null });
     try {
       const [players, count] = await Promise.all([
@@ -172,11 +194,13 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
 
   createPlayer: async (input) => {
     const player = await api.createPlayer(input);
-    // M3a.1 (PB4) — Propaga al Y.Doc + Iroh per i peer remoti.
-    try {
-      await bridgePlayerUpdate(playerToSyncInput(player));
-    } catch (err) {
-      console.warn("[sync] bridgePlayerUpdate (create) skip:", err);
+    // M3a.5 — Skip Yjs bridge per il DB listone (non sincronizzare su Supabase).
+    if (!isListoneDb(player.db_id)) {
+      try {
+        await updateYDocPlayer(playerToSyncInput(player));
+      } catch (err) {
+        console.warn("[sync] updateYDocPlayer (create) skip:", err);
+      }
     }
     await get().refresh();
     return player;
@@ -184,15 +208,13 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
 
   updatePlayer: async (input) => {
     const player = await api.updatePlayer(input);
-    // M3a.1 (PB4) — DOPO il commit SQLite, applica l'update al Y.Doc locale
-    // e broadcast ai peer via Iroh. Se 0 peer connessi, è no-op silente.
-    // L'anti-loop è garantito lato peer ricevente: il suo listener
-    // `yPlayers.observe` chiama `save_player_from_sync` (NO bridge), quindi
-    // l'update NON viene ri-broadcastato indietro ad A.
-    try {
-      await bridgePlayerUpdate(playerToSyncInput(player));
-    } catch (err) {
-      console.warn("[sync] bridgePlayerUpdate (update) skip:", err);
+    // M3a.5 — Skip Yjs bridge per il DB listone (non sincronizzare su Supabase).
+    if (!isListoneDb(player.db_id)) {
+      try {
+        await updateYDocPlayer(playerToSyncInput(player));
+      } catch (err) {
+        console.warn("[sync] updateYDocPlayer (update) skip:", err);
+      }
     }
     await get().refresh();
     return player;
@@ -223,10 +245,14 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
         source: input.source ?? null,
         syncNodeId: null,
       };
-      try {
-        await bridgeScoutingNoteAppend(syncInput);
-      } catch (err) {
-        console.warn("[sync] bridgeScoutingNoteAppend skip:", err);
+      // M3a.5 — Skip Yjs bridge se il player appartiene al DB listone.
+      const player = get().players.find((p) => p.id === input.player_id);
+      if (!player || !isListoneDb(player.db_id)) {
+        try {
+          await appendYDocScoutingNote(syncInput);
+        } catch (err) {
+          console.warn("[sync] appendYDocScoutingNote skip:", err);
+        }
       }
     }
     await get().refresh();
@@ -260,10 +286,14 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
         assignedAt: null,
         syncNodeId: null,
       };
-      try {
-        await bridgeAuctionDataUpdate(syncInput);
-      } catch (err) {
-        console.warn("[sync] bridgeAuctionDataUpdate skip:", err);
+      // M3a.5 — Skip Yjs bridge se il player appartiene al DB listone.
+      const player = get().players.find((p) => p.id === playerId);
+      if (!player || !isListoneDb(player.db_id)) {
+        try {
+          await updateYDocAuctionData(syncInput);
+        } catch (err) {
+          console.warn("[sync] updateYDocAuctionData skip:", err);
+        }
       }
     }
     await get().refresh();

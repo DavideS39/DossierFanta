@@ -30,7 +30,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 
 export function usePlayerSync(
   playerId: string | null,
@@ -42,7 +42,8 @@ export function usePlayerSync(
   cbRef.current = onUpdated;
 
   useEffect(() => {
-    if (!isDesktop) return; // mock mode: no-op
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (!isTauriRuntime()) return; // mock mode: no-op
     let unlisten: (() => void) | null = null;
     let cancelled = false;
 

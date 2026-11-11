@@ -6,6 +6,311 @@ e il progetto adotta [Semantic Versioning](https://semver.org/lang/it/).
 
 ---
 
+## [0.3.4] — 2026-10-19 — M3a.4 + M3a.5 + M3a.6: Pairing 8-cifre + ECDH + AES-GCM
+
+Sprint che chiude la falla di sicurezza di M3a.3 (Luca poteva leggere i dati
+di A+B facendo SELECT * FROM yjs_updates). Implementa pairing con codice
+8-cifre + ECDH X25519 + AES-256-GCM end-to-end encryption. Ogni pairing
+ha la sua stanza cifrata — anche un terzo peer con l'app installata non
+può decifrare i dati senza aver pairato esplicitamente.
+
+### Problema risolto
+
+In M3a.3, l'implementazione Supabase usava un singolo `room_name` globale
+(`dossierfanta-sync`) e RLS che permetteva a `anon` di leggere TUTTE le
+righe di `yjs_updates`. Conseguenza: chiunque installasse l'app (stesso
+URL+anonKey hardcoded) poteva leggere i bytes CRDT di tutti i pairing
+e ricostruire lo stato completo del Y.Doc.
+
+### Soluzione architetturale
+
+**Pairing esplicito + cifratura end-to-end.**
+
+```
+A (initiator)                       B (responder)
+1. pairing_create()                  2. (condivide codice 8-cifre)
+   → code "12345678"                  → entra su B
+   → INSERT Supabase pairings       3. pairing_join("12345678")
+   → subscribe Realtime                → SELECT pairings → peer_key_A
+     "pairing-12345678"                → ECDH(my_secret, peer_key_A)
+                                       → shared_secret (32 byte)
+                                       → broadcast "response"
+                                       → save sync_pairings
+
+4. A riceve "response" via Realtime
+   → pairing_complete(code, peer_key_B)
+   → ECDH(my_secret, peer_key_B) → STESSA shared_secret (matematica ECDH)
+   → room_name = "df-sync-<hex16(sha256(shared_secret))>"
+   → save sync_pairings
+   → DELETE Supabase pairings
+```
+
+Da quel momento, il sync Supabase tra A e B è **cifrato AES-256-GCM** con
+la shared_secret ECDH derivata. Anche se Luca (terzo peer) fa `SELECT *`
+su yjs_updates, ottiene ciphertext cifrati con chiavi che non ha. Senza
+pairing esplicito, Luca non vede nulla.
+
+### Deliverable M3a.4 + M3a.5 + M3a.6
+
+#### M3a.4 — Cifratura per-pairing (base layer)
+- **Schema v2.5**: nuove tabelle `sync_pairings` (peer_key_other,
+  shared_secret, room_name, display_name) + `sync_pairings_pending`
+  (codici 8-cifre in corso, initiator side). Migration idempotente
+  via `CREATE TABLE IF NOT EXISTS`.
+- **Cargo.toml**: nuove dipendenze crypto:
+  - `curve25519-dalek = "4.1"` (X25519 ECDH)
+  - `aes-gcm = "0.10"` (AES-256-GCM con 12-byte nonce + 16-byte tag)
+  - `sha2 = "0.10"` (SHA-256 per derivare room_name)
+  - `rand = "0.8"` (nonce generation)
+  - `hex = "0.4"` (room_name encoding)
+- **`src-tauri/src/commands/crypto.rs` (NUOVO)** — helper Rust:
+  - `derive_shared_secret_inner(conn, their_peer_key)`: carica mio SecretKey
+    da sync_identity, parsia loro PublicKey, calcola
+    `my_scalar * their_point` (X25519 ECDH) → 32 byte
+  - `derive_room_name_inner(shared_secret)`: SHA-256(shared_secret),
+    primi 8 byte → hex → "df-sync-<16 char>"
+  - `encrypt_update_inner(plaintext, shared_secret)`: AES-256-GCM con
+    12-byte random nonce (OsRng). Output: `[nonce || ciphertext || tag]`
+  - `decrypt_update_inner(ciphertext, shared_secret)`: AES-GCM decrypt
+    con tag verification (reject su tag invalid)
+  - `generate_pairing_code_inner()`: random 8-cifre (range 10000000-99999999)
+- **`src-tauri/src/commands/pairing.rs` (NUOVO)** — Tauri commands:
+  - `derive_shared_secret(their_peer_key)` → Vec<u8>
+  - `encrypt_update(update, shared_secret)` → Vec<u8>
+  - `decrypt_update(ciphertext, shared_secret)` → Vec<u8>
+  - `list_pairings()` → Vec<Pairing>
+  - `save_pairing(peer_key_other, shared_secret, room_name, display_name)`
+  - `delete_pairing(peer_key_other)`
+  - `pairing_create()` → PairingCode { code, expires_at } (initiator)
+  - `pairing_join(code, peer_key_initiator)` → PairingResult (responder)
+  - `pairing_complete(code, peer_key_responder)` → PairingResult (initiator)
+  - `pairing_cancel(code)`
+  - `list_pending_pairings()` → Vec<PairingPending>
+  - `touch_pairing_last_seen(peer_key_other)`
+  - `set_pairing_display_name(peer_key_other, name)`
+- **`SupabaseYjsProvider` refactor**: multi-room per-pairing. Per ogni
+  pairing salvato apre un canale Realtime dedicato + SELECT da
+  `yjs_updates WHERE room_name = ?`. Tutti i bytes broadcast/persistiti
+  sono cifrati AES-GCM con la shared_secret del pairing.
+
+#### M3a.5 — Pairing flow con 8-cifre + ECDH
+- **Supabase `pairings` table (NUOVA)** — rendezvous point temporaneo.
+  RLS: anon può INSERT/SELECT/DELETE. Il codice 8-cifre è public,
+  non contiene materiale crittografico.
+- **`src/lib/sync/supabaseClient.ts` (NUOVO)** — singleton Supabase client
+  per il pairing flow (separato dal SupabaseYjsProvider.client che gestisce
+  i canali per-room). Include `cleanupExpiredPairings(5)` per pulire
+  codici scaduti periodicamente.
+- **Flusso pairing completo** (vedi sezione "Soluzione architetturale"):
+  - Initiator: pairing_create → INSERT Supabase → subscribe Realtime
+  - Responder: SELECT Supabase → ECDH → broadcast response
+  - Initiator: riceve response → ECDH → stesso shared_secret → cleanup
+- **Codice 8-cifre (100M combinazioni)**: con 5-min TTL + rate-limit,
+  brute-force ha ~0.016% probabilità per finestra.
+
+#### M3a.6 — SyncView UI redesign con sezione pairing
+- **Sezione PAIRING**: due box affiancati
+  - Box sinistro (initiator): "Genera codice" → mostra codice 8-cifre
+    in grande + countdown + pulsante annulla
+  - Box destro (responder): input 8-cifre + pulsante "Paira"
+- **Sezione PAIRINGS CIFRATI**: lista pairings salvati con
+  - peer_key_other + room_name + display_name
+  - stato online/offline (●/○)
+  - info "sync cifrato AES-GCM + Iroh p2p"
+  - pulsanti [set nome / rinomina] [rimuovi pairing]
+- **Pending pairings**: badge in alto se ci sono codici in attesa
+  di risposta (initiator side).
+- **Cleanup periodico**: ogni 5s chiama `cleanupExpiredPairings(5)` per
+  rimuovere codici scaduti su Supabase.
+
+### Security model completo
+
+| Minaccia | Difesa |
+|---|---|
+| Luca indovina il codice 8-cifre | Codice scade dopo 5 min, brute-force 100M combo = ~0.016% probabilità per finestra |
+| Luca intercetta i messaggi pairing su `pairing-<code>` | ECDH X25519: anche con tutti i messaggi, senza le chiavi private non può derivare shared_secret |
+| Luca enumera tutte le room_name da `SELECT DISTINCT` | room_name = `hash(shared_secret)`. Unguessable senza shared_secret |
+| Luca applica i bytes al suo Y.Doc | Senza shared_secret, i bytes in yjs_updates sono AES-GCM ciphertext → rumore indecifrabile |
+| Replay attack (Luca ritrasmette vecchi pairing) | Codice monouso: dopo successo, DELETE row da Supabase + unsubscribe Realtime |
+
+### Vincoli HARD rispettati (estesi)
+
+- **#13**: SQLite locale SEMPRE source of truth. Yjs è transport + merge.
+- **#14**: Pairing esplicito. Niente auto-discovery su internet.
+- **#15**: Cargo.lock + package-lock.json committati (con nuove deps crypto).
+- **#16**: Schema v2.2 + v2.3 + v2.4 invariati. v2.5 solo additive
+  (CREATE TABLE IF NOT EXISTS sync_pairings + sync_pairings_pending).
+- **#18**: Supabase NON è authoritativo.
+- **#19**: SUPABASE_URL e SUPABASE_ANON_KEY hardcoded (publishable key).
+- **#20 (esteso)**: yjs_updates contiene SOLO bytes AES-GCM cifrati.
+  Decodificabile solo con la shared_secret del pairing corrispondente,
+  che vive solo in sync_pairings SQLite locale.
+- **#21**: Iroh opzionale. Se non disponibile, Supabase basta per il sync.
+
+### Files principali
+
+- `src-tauri/migrations/schema_v2.5.sql` (NUOVO)
+- `src-tauri/src/commands/crypto.rs` (NUOVO)
+- `src-tauri/src/commands/pairing.rs` (NUOVO)
+- `src-tauri/src/db.rs` (SCHEMA_VERSION_TARGET = 5, migrazione v2.5)
+- `src-tauri/src/lib.rs` (registrazione nuovi comandi)
+- `src-tauri/Cargo.toml` (nuove deps crypto + version bump 0.3.4)
+- `src/lib/sync/SupabaseYjsProvider.ts` (refactor multi-room + encryption)
+- `src/lib/sync/supabaseClient.ts` (NUOVO singleton per pairing flow)
+- `src/types/sync.ts` (nuovi tipi: Pairing, PairingCode, PairingResult, PairingPending)
+- `src/api/tauri.ts` (nuovi wrapper per i 13 comandi pairing/crypto)
+- `src/api/mock.ts` (stub per anteprima web)
+- `src/components/SyncView.tsx` (ridesign UI con sezione pairing)
+- `docs/supabase-setup-m3a3.sql` (aggiunta tabella `pairings` + RLS)
+
+### Version bump
+
+- `package.json` 0.3.3 → 0.3.4
+- `Cargo.toml` 0.3.3 → 0.3.4
+- `tauri.conf.json` 0.3.3 → 0.3.4
+- `HTTP_USER_AGENT` in `listone.rs` 0.3.3 → 0.3.4
+- `Cargo.lock` voce `dossierfanta` 0.3.3 → 0.3.4
+
+---
+
+## [0.3.3] — 2026-10-18 — M3a.3: sync multi-canale (Supabase + Iroh) + peer key persistente + Listone come DB
+
+Sprint finale per chiudere M3. Architettura sync completa con due provider
+attivi simultaneamente sullo stesso Y.Doc: Supabase (relay + offline storage)
+e Iroh (p2p diretto low-latency). La peer key Iroh è persistita in SQLite
+(stabile cross-boot). SyncView ridisegnata con auto-connect dei peer fidati.
+Listone promosso a DB di prima classe nel DatabaseManager con azioni inline.
+
+### Architettura sync finale (design doc v2.5, Cap.5 + brief M3a.3)
+
+```
+PC A ←─ Supabase Realtime ─→ Supabase ←─ Supabase Realtime ─→ PC B
+      (WebSocket ~100ms)    (gratis)    (WebSocket ~100ms)
+Y.Doc                         PostgreSQL
+SQLite                        yjs_updates
+      ←─ query (su reconnect) ─→   ←─ query (su reconnect) ─→
+
+      ←─ Iroh p2p diretto ──────────────────────────────────→
+         (quando entrambi online, ~50ms)
+```
+
+DUE PROVIDER attivi contemporaneamente sullo stesso Y.Doc. Yjs gestisce i
+duplicati automaticamente (idempotenza CRDT). Entrambi implementano
+l'interfaccia `SyncProvider` (abstraction layer) — domani, per sostituire
+Supabase con un server proprio, basta creare un nuovo provider che
+implementa la stessa interfaccia.
+
+### Deliverable M3a.3 (8 totali)
+
+1. **Abstraction layer SyncProvider + SyncManager** — interfaccia comune
+   per tutti i provider (`src/lib/sync/SyncProvider.ts`,
+   `src/lib/sync/SyncManager.ts`). Manager multi-provider con
+   `connectAll()` / `disconnectAll()` / `syncAllFromOffline()` via
+   `Promise.allSettled` (un provider fallito non blocca gli altri).
+2. **SupabaseYjsProvider** (`src/lib/sync/SupabaseYjsProvider.ts`) —
+   realtime broadcast via WebSocket (~100ms) + offline storage su
+   tabella PostgreSQL `yjs_updates`. Setup SQL documentato in
+   `docs/supabase-setup-m3a3.sql` (RLS policies, indici, pubblicazione
+   Realtime). Config centralizzata in `src/lib/sync/syncConfig.ts`
+   (URL + anonKey + roomName + cleanupDays).
+3. **Peer key persistente (Iroh)** — nuova tabella `sync_identity`
+   (schema v2.4, singleton row id=1) in
+   `src-tauri/migrations/schema_v2.4.sql`. `iroh_start_node` carica la
+   SecretKey salvata se esiste, altrimenti la genera + salva. Peer_key
+   (NodeId derivato) è STABILE cross-boot. `SCHEMA_VERSION_TARGET = 4`
+   in `db.rs`, migrazione `v2.3 → v2.4` idempotente.
+4. **IrohYjsProvider** (`src/lib/sync/IrohYjsProvider.ts`) — integrazione
+   frontend di Iroh gossip. Registra `onSyncUpdateReceived` per applicare
+   update remoti (`Y.applyUpdate(doc, bytes, this)`) + `ydoc.on('update')`
+   per broadcast update locali via `iroh_broadcast_update`. Auto-connect
+   trusted peers al boot. `connectToSavedPeers(peerKeys)` riconnette i
+   peer salvati in `sync_peers`.
+5. **Fix PB4-A (architetturale)** — risolto ELIMINANDO i bridge manuali
+   (`bridgePlayerUpdate`, `bridgeScoutingNoteAppend`,
+   `bridgeAuctionDataUpdate`) e i flag `isApplyingLocalBridge` /
+   `isApplyingRemoteUpdate`. L'anti-loop è ora gestito dal parametro
+   `origin` di Yjs (nativo, molto più robusto del flag manuale):
+   - Update locale: `yPlayers.set(...)` senza origin → listener
+     `yPlayers.observe` vede `transaction.local === true` → SKIP persistenza
+     (già fatta da `update_player` con `updated_by='me'`).
+   - Update remoto: `Y.applyUpdate(doc, bytes, this)` → listener vede
+     `transaction.local === false` → PROCEDE con `save_player_from_sync`
+     (`updated_by='sync-live'`).
+6. **SyncView redesign** (`src/components/SyncView.tsx`) — UI completamente
+   ridisegnata: sezione identità (peer key + display_name + [salva]),
+   stato dual-provider (● Supabase + ●/○ Iroh), lista peer conosciuti con
+   [connetti]/[disconnetti]/[rimuovi], aggiungi nuovo peer, box info.
+   Sincronizza con SyncManager singleton + `api.getSyncIdentity()` +
+   `api.listTrustedPeers()`.
+7. **Listone come DB nel DatabaseManager** — il DB di tipo `listone`
+   appare nel workspace con card inline contenente: counter giocatori,
+   ultimo aggiornamento, 3 pulsanti (`[aggiorna ora]` / `[anteprima]` /
+   `[fallback: fantacalcio.it]`). ImportPreview renderizzato inline nella
+   card per confermare il diff prima di applicare. Sostituisce la necessità
+   di aprire la schermata AggiornamentiView separata per le azioni di
+   routine.
+8. **Fix PB6 + WARN residui**:
+   - **PB6** (owner GitHub): `DATA_REPO_OWNER = "DavideS39"` già impostato
+     in `listone.rs:989` (M3a.2). Repo `DavideS39/DossierFanta-Data` è il
+     riferimento pubblico. Verifica: workflow `.github/workflows/scrape.yml`
+     + release con `players.json` asset pubblicato.
+   - **W1** (rimozione "marco" da `validate_updated_by`): già fatto in
+     M3a.2 — whitelist ora `{ "me", "auto-fetch", "sync-live" }`.
+   - **W2** (CHANGELOG entries M3 / M3.1 / M3a / M3a.1 / M3a.2 / M3a.3):
+     questa entry chiude W2 con un riepilogo completo.
+   - **W3** (`iroh_connect_by_peer_key` ritorna `Ok(false)` su errore/
+     timeout): già fatto in M3a.2 — solo `Ok(Ok(_conn))` ritorna `Ok(true)`
+     + aggiunge il peer alla lista connessi.
+
+### Altre modifiche
+
+- **App.tsx boot sync** — `initYjsBridge()` + `startCursorsCleanup()` +
+  `SyncManager.addProvider(SupabaseYjsProvider)` (sempre) + (se
+  `getSyncIdentity()` ritorna Some) `addProvider(IrohYjsProvider)` +
+  `connectAll()` + auto-connect trusted peers. Il listener
+  `sync-update-received` vive al root (non nel SyncView) così sopravvive
+  alla chiusura del modal. Gap 1 + Gap 2 chiusi.
+- **Nuovi comandi Tauri** (registrati in `lib.rs`):
+  `iroh_stop_node`, `get_sync_identity`, `set_sync_display_name`,
+  `list_trusted_peers`, `remove_trusted_peer`, `iroh_connect_by_peer_key_v2`.
+- **Nuovi wrapper `api/tauri.ts`**: `irohStopNode`,
+  `irohConnectByPeerKeyV2`, `getSyncIdentity`, `setSyncDisplayName`,
+  `listTrustedPeers`, `removeTrustedPeer`, `onSyncUpdateReceived`,
+  `onSyncPeerConnected`, `onSyncPeerDisconnected`.
+- **Nuovi tipi `types/sync.ts`**: `SyncIdentity`, `TrustedPeer`.
+- **`@supabase/supabase-js` v2.118** aggiunto alle dipendenze
+  (`package.json`).
+- **Cargo.lock + package-lock.json** aggiornati (vincolo HARD #15).
+- **Versioni bumped**: `package.json` 0.3.0 → 0.3.3, `Cargo.toml`
+  0.3.0 → 0.3.3, `tauri.conf.json` 0.3.0 → 0.3.3, `HTTP_USER_AGENT`
+  in `listone.rs` 0.3.2 → 0.3.3.
+
+### Vincoli HARD rispettati
+
+- **#13**: Sync-live NON sostituisce SQLite come source of truth. Yjs è
+  transport + merge layer.
+- **#14**: Pairing esplicito (peer key scambiata out-of-band).
+- **#15**: Cargo.lock + package-lock.json committati.
+- **#16**: Schema v2.2 + v2.3 invariati. v2.4 solo additive
+  (CREATE TABLE IF NOT EXISTS sync_identity).
+- **#17**: Niente Tag & Filtri (M4).
+- **#18**: Supabase NON è authoritativo. SQLite locale è source of truth.
+- **#19**: SUPABASE_URL e SUPABASE_ANON_KEY hardcoded in `syncConfig.ts`
+  (chiave publishable, NON sensibile).
+- **#20**: Tabella `yjs_updates` contiene SOLO bytes binari Yjs (CRDT
+  diffs). Decodificabile solo con il Y.Doc locale.
+- **#21**: Iroh opzionale. Se non disponibile, Supabase basta per il sync.
+
+### Test funzionali (14 minimi)
+
+Vedi `docs/supabase-setup-m3a3.sql` per l'SQL setup + brief M3a.3 per la
+checklist dei 14 test funzionali (Supabase connection, peer key persistente,
+sync online + offline + auto-reconnect, multi-provider idempotenza,
+updated_by markers, conflict resolution B.7, cursori collaborativi,
+listone come DB, build .msi verde).
+
+---
+
 ## [Unreleased] — 2026-10-17 — HOTFIX critico: l'app .msi non si avviava proprio
 
 Hotfix chirurgico che risolve un bug critico segnalato dall'utente: dopo aver

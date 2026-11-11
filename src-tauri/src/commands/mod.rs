@@ -3,8 +3,10 @@
 //! Convenzione: ogni comando è sincrono (rusqlite è sync, niente async necessario).
 //! Gli errori sono mappati a stringhe leggibili via `AppError`.
 
+pub mod crypto;
 pub mod database;
 pub mod listone;
+pub mod pairing;
 pub mod players;
 pub mod sync;
 pub mod windows;

@@ -6,9 +6,7 @@ import { StatsBar } from "@/components/StatsBar";
 import { PlayerForm } from "@/components/PlayerForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { DatabaseManager } from "@/components/DatabaseManager";
-import { ImportListone } from "@/components/ImportListone";
 import { ArchiveView } from "@/components/ArchiveView";
-import { AggiornamentiView } from "@/components/AggiornamentiView";
 import { SyncView } from "@/components/SyncView";
 import { WindowManager } from "@/components/WindowManager";
 import { usePlayersStore } from "@/stores/usePlayersStore";
@@ -16,7 +14,7 @@ import { useDbMetaStore } from "@/stores/useDbMetaStore";
 import { useDbStore } from "@/stores/useDbStore";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 import { useAutoFetchStore } from "@/stores/useAutoFetchStore";
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 import type { CreatePlayerInput, Player, Status, UpdatePlayerInput } from "@/types/player";
 
 type FormState =
@@ -24,7 +22,7 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; player: Player };
 
-type ModalState = "none" | "databases" | "import" | "archive" | "aggiornamenti" | "sync";
+type ModalState = "none" | "databases" | "archive" | "sync";
 
 /**
  * Vista principale M2.1: Rosa (multi-DB + archiviazione + design taccuino
@@ -168,7 +166,8 @@ export function RosaView() {
   const handleDetachOs = async (id: string) => {
     // v2.3.2 — in anteprima web (mock) le finestre OS non esistono: toast
     // informativo invece di un errore Tauri.
-    if (!isDesktop) {
+    // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+    if (!isTauriRuntime()) {
       setToast("Le finestre OS native sono disponibili solo nell'app desktop. In anteprima web usa il Window Manager in-app (click sulla card).");
       return;
     }
@@ -255,7 +254,7 @@ export function RosaView() {
             </h1>
             <p className="df-tagline">taccuino scouting · offline-first · multi-DB · WM ibrido · auto-fetch</p>
           </div>
-          {!isDesktop && (
+          {!isTauriRuntime() && (
             <span className="df-mockbadge" title="Stai vedendo l'app nel browser con dati dimostrativi in-memory. Nell'app desktop i dati vivono in SQLite locale.">
               anteprima web · mock
             </span>
@@ -273,24 +272,6 @@ export function RosaView() {
             <span style={{ opacity: 0.65, fontSize: 9 }}>DB:</span>
             <span>{activeDb?.name ?? "—"}</span>
             <span aria-hidden style={{ opacity: 0.6 }}>»</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setModal("import")}
-            className="df-btn df-btn--warn"
-            title="Import listone Serie A (anteprima diff + archiviazione automatica)"
-          >
-            ⚑ Import listone
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setModal("aggiornamenti")}
-            className="df-btn df-btn--accent"
-            title="Aggiornamenti listone auto-fetch via GitHub Releases"
-          >
-            ⟳ Aggiornamenti
           </button>
 
           <button
@@ -412,15 +393,16 @@ export function RosaView() {
       )}
 
       {/* M3 — Toast notifica "aggiornamento disponibile" (auto-fetch all'avvio).
-          L'utente clicka per aprire la schermata Aggiornamenti e confermare.
+          L'utente clicka per aprire il DatabaseManager dove può cliccare
+          "aggiorna" sulla riga ListoneSerieA.db.
           Vincolo hard #12: NON auto-applicare, l'archiviazione è irreversibile. */}
-      {updateNotice && modal !== "aggiornamenti" && (
+      {updateNotice && modal !== "databases" && (
         <div
           className="df-toast df-toast--accent"
           role="status"
           style={{ cursor: "pointer", borderColor: "var(--amber)" }}
-          onClick={() => setModal("aggiornamenti")}
-          title="Clicca per aprire la schermata Aggiornamenti"
+          onClick={() => setModal("databases")}
+          title="Clicca per aprire il Database Manager e aggiornare il listone"
         >
           ⟳ {updateNotice}
           <button
@@ -455,31 +437,10 @@ export function RosaView() {
       {modal === "databases" && (
         <DatabaseManager onClose={() => setModal("none")} />
       )}
-      {modal === "import" && (
-        <ImportListone
-          onClose={() => setModal("none")}
-          onImported={() => {
-            void refresh();
-            void refreshMeta();
-          }}
-        />
-      )}
       {modal === "archive" && (
         <ArchiveView
           onClose={() => setModal("none")}
           onRestored={() => {
-            void refresh();
-            void refreshMeta();
-          }}
-        />
-      )}
-      {modal === "aggiornamenti" && (
-        <AggiornamentiView
-          onClose={() => setModal("none")}
-          onApplied={() => {
-            // Dopo l'apply, pulisce il toast notifica (se presente) e refresha
-            // la lista + i meta (conteggi Rosa)
-            clearUpdateNotice();
             void refresh();
             void refreshMeta();
           }}

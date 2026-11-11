@@ -30,6 +30,16 @@ import type {
   Status,
   UpdatePlayerInput,
 } from "@/types/player";
+// M3a.3 — Tipi sync_* mirror Rust (per gli stub mock dei comandi M3a.3)
+import type {
+  SyncIdentity,
+  TrustedPeer,
+  SyncUpdateReceivedEvent,
+  Pairing,
+  PairingCode,
+  PairingResult,
+  PairingPending,
+} from "@/types/sync";
 
 const delay = (ms = 70) => new Promise((r) => setTimeout(r, ms));
 
@@ -205,6 +215,30 @@ export const mockApi = {
   async getActiveDatabase() {
     await delay();
     return databases.find((d) => d.id === activeDbId)!;
+  },
+
+  // M3a.3 fix post-review (Round 11) — DB condivisi con invito (mock)
+  async createSharedDatabase(name: string, peerKeyOther: string) {
+    await delay();
+    return {
+      dbId: "mock-shared-db-id-" + Date.now(),
+      dbName: name,
+      peerKeyOther,
+      peerKeyInitiator: "mock-my-peer-key",
+    };
+  },
+
+  async acceptSharedDatabaseInvitation(dbId: string, dbName: string) {
+    await delay();
+    return {
+      id: dbId,
+      name: dbName,
+      type: "shared" as const,
+      owner: "peer",
+      created_at: new Date().toISOString(),
+      last_sync: null,
+      schema_ver: 3,
+    };
   },
 
   async listPlayers(filters?: ListFilters | null) {
@@ -604,6 +638,12 @@ export const mockApi = {
     };
   },
 
+  // M3a.5 — Archiviazione asterisk (stub mock)
+  async archiveAsteriskPlayers(): Promise<number> {
+    await delay(50);
+    return 0;
+  },
+
   // ===== M3a — Stub mock per i comandi sync live (anteprima web dev-only) =====
   // M3a.1 (verifica TS) — Aggiunti stub per tutti i comandi M3a (yjs_*, iroh_*,
   // save_*_from_sync) + M3a.1 (lan_*) così tsc --noEmit è pulito anche in
@@ -640,6 +680,108 @@ export const mockApi = {
     return [];
   },
   async irohDisconnectPeer(_peerKey: string): Promise<void> {
+    // no-op
+  },
+
+  // M3a.3 — Peer key persistente + trusted peers (stub mock)
+  async irohStopNode(): Promise<void> {
+    // no-op
+  },
+  async irohConnectByPeerKeyV2(_peerKey: string): Promise<boolean> {
+    return true;
+  },
+  async getSyncIdentity(): Promise<SyncIdentity | null> {
+    return null; // anteprima web — nessuna identità persistita
+  },
+  async setSyncDisplayName(_name: string): Promise<void> {
+    // no-op
+  },
+  async listTrustedPeers(): Promise<TrustedPeer[]> {
+    return [];
+  },
+  async removeTrustedPeer(_peerKey: string): Promise<void> {
+    // no-op
+  },
+
+  // M3a.3 — Listener eventi Tauri (stub mock, mai attivi in anteprima)
+  async onSyncUpdateReceived(
+    _cb: (event: SyncUpdateReceivedEvent) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op unlisten
+    };
+  },
+  async onSyncPeerConnected(
+    _cb: (event: { peerKey: string }) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op
+    };
+  },
+  async onSyncPeerDisconnected(
+    _cb: (event: { peerKey: string }) => void
+  ): Promise<() => void> {
+    return () => {
+      // no-op
+    };
+  },
+
+  // M3a.4 + M3a.5 — Pairing cifrato (stub mock, anteprima web non paira davvero)
+  async deriveSharedSecret(_theirPeerKey: string): Promise<Uint8Array> {
+    return new Uint8Array(32); // 32 byte di zeri come mock shared_secret
+  },
+  async encryptUpdate(update: Uint8Array, _sharedSecret: Uint8Array): Promise<Uint8Array> {
+    return update; // pass-through (no encryption in mock)
+  },
+  async decryptUpdate(ciphertext: Uint8Array, _sharedSecret: Uint8Array): Promise<Uint8Array> {
+    return ciphertext; // pass-through
+  },
+  async listPairings(): Promise<Pairing[]> {
+    return [];
+  },
+  async savePairing(): Promise<void> {
+    // no-op
+  },
+  async deletePairing(): Promise<void> {
+    // no-op
+  },
+  async pairingCreate(): Promise<PairingCode> {
+    return {
+      code: "12345678",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      revokedCodes: [],
+    };
+  },
+  async pairingJoin(_code: string, _peerKeyInitiator: string): Promise<PairingResult> {
+    return {
+      peerKeyOther: "mock-peer-key-1234567890abcdef",
+      roomName: "df-sync-mock",
+      sharedSecret: new Array(32).fill(0),
+    };
+  },
+  async pairingComplete(_code: string, _peerKeyResponder: string): Promise<PairingResult> {
+    return {
+      peerKeyOther: "mock-peer-key-1234567890abcdef",
+      roomName: "df-sync-mock",
+      sharedSecret: new Array(32).fill(0),
+    };
+  },
+  async pairingCancel(): Promise<void> {
+    // no-op
+  },
+  async listPendingPairings(): Promise<PairingPending[]> {
+    return [];
+  },
+  async cleanupExpiredPendingPairings(): Promise<number> {
+    return 0;
+  },
+  async cleanupAllPendingPairings(): Promise<number> {
+    return 0;
+  },
+  async touchPairingLastSeen(): Promise<void> {
+    // no-op
+  },
+  async setPairingDisplayName(): Promise<void> {
     // no-op
   },
 

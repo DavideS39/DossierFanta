@@ -20,7 +20,7 @@
  * Una scheda è O in-app O OS nativa (switch, non duplica) — Cap.17 spec.
  */
 
-import { api, isDesktop } from "@/api/tauri";
+import { api, isTauriRuntime } from "@/api/tauri";
 import { useWindowsStore } from "@/stores/useWindowsStore";
 
 /**
@@ -32,7 +32,8 @@ import { useWindowsStore } from "@/stores/useWindowsStore";
  *           deve gestire il toast informativo)
  */
 export async function detachWindowToOs(playerId: string): Promise<boolean> {
-  if (!isDesktop) {
+  // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+  if (!isTauriRuntime()) {
     // In anteprima web le finestre OS non esistono: il chiamante mostra
     // un toast informativo (vedi RosaView.handleDetachOs).
     return false;
@@ -77,7 +78,8 @@ export async function detachWindowToOs(playerId: string): Promise<boolean> {
  * se lo desidera (es. l'utente ha click X sulla OS → torniamo in-app).
  */
 export async function attachWindowFromOs(playerId: string): Promise<boolean> {
-  if (!isDesktop) {
+  // M3a.3 fix post-review (Round 7) — Usa isTauriRuntime() per HMR race.
+  if (!isTauriRuntime()) {
     return false;
   }
   try {

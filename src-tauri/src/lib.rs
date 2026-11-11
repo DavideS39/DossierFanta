@@ -257,6 +257,9 @@ pub fn run() {
             commands::database::delete_database,
             commands::database::set_active_database,
             commands::database::get_active_database,
+            // M3a.3 fix post-review (Round 11) — DB condivisi con invito
+            commands::database::create_shared_database,
+            commands::database::accept_shared_database_invitation,
             // players.rs (M1 + M2 refactor)
             commands::players::list_players,
             commands::players::create_player,
@@ -290,6 +293,8 @@ pub fn run() {
             commands::listone::apply_auto_fetch,
             commands::listone::scrape_listone_inline,
             commands::listone::get_autofetch_status,
+            // M3a.5 — Archiviazione giocatori asterisk (fuori serie A)
+            commands::listone::archive_asterisk_players,
             // sync.rs (M3a — B.3 yrs core + B.4 Iroh + B.8 sync-live markers)
             commands::sync::yjs_apply_update,
             commands::sync::yjs_get_state_vector,
@@ -297,6 +302,15 @@ pub fn run() {
             commands::sync::iroh_start_node,
             commands::sync::iroh_get_peer_key,
             commands::sync::iroh_connect_by_peer_key,
+            // M3a.3 — nuova versione che accetta DbState e salva il peer
+            // come trusted in `sync_peers` dopo una connessione riuscita.
+            commands::sync::iroh_connect_by_peer_key_v2,
+            // M3a.3 — comandi per sync_identity (peer key persistente)
+            commands::sync::iroh_stop_node,
+            commands::sync::get_sync_identity,
+            commands::sync::set_sync_display_name,
+            commands::sync::list_trusted_peers,
+            commands::sync::remove_trusted_peer,
             commands::sync::iroh_broadcast_update,
             commands::sync::iroh_subscribe_updates,
             commands::sync::iroh_get_connected_peers,
@@ -304,6 +318,22 @@ pub fn run() {
             commands::sync::save_player_from_sync,
             commands::sync::save_scouting_note_from_sync,
             commands::sync::save_auction_data_from_sync,
+            // M3a.4 + M3a.5 — Pairing cifrato + crypto helpers
+            commands::pairing::derive_shared_secret,
+            commands::pairing::encrypt_update,
+            commands::pairing::decrypt_update,
+            commands::pairing::list_pairings,
+            commands::pairing::save_pairing,
+            commands::pairing::delete_pairing,
+            commands::pairing::pairing_create,
+            commands::pairing::pairing_join,
+            commands::pairing::pairing_complete,
+            commands::pairing::pairing_cancel,
+            commands::pairing::list_pending_pairings,
+            commands::pairing::cleanup_expired_pending_pairings,
+            commands::pairing::cleanup_all_pending_pairings,
+            commands::pairing::touch_pairing_last_seen,
+            commands::pairing::set_pairing_display_name,
             // sync_lan.rs (M3a B.9) — solo con feature `lan-only`
             // M3a.1 fix aggiuntivo B: lan_broadcast_update è ora bidirezionale,
             // lan_discover_peers nuovo per mDNS discovery automatico.

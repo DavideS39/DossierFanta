@@ -34,9 +34,12 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "@/api/tauri";
 // M2.2 — FIX A2 (F12): hook per sync live con la main window.
 import { usePlayerSync } from "@/lib/usePlayerSync";
-// M3a.1 (PB4) — Usa lo store Zustand per updatePlayer: lo store cabla
-// automaticamente il bridge Rust→Yjs (bridgePlayerUpdate) DOPO il commit
-// SQLite, propagando l'update ai peer remoti via Iroh gossip.
+// M3a.3 D5 (PB4-A fix) — Usa lo store Zustand per updatePlayer: lo store
+// cabla automaticamente il bridge Rust→Yjs (`updateYDocPlayer`, sostituto
+// del rimosso `bridgePlayerUpdate`) DOPO il commit SQLite, propagando
+// l'update al Y.Doc locale [transazione LOCALE] + broadcast ai peer remoti
+// via Iroh gossip / Supabase Realtime. Anti-loop nativo Yjs via
+// `transaction.local` (non più flag `isApplyingLocalBridge`).
 import { usePlayersStore } from "@/stores/usePlayersStore";
 import type { CreatePlayerInput, Player, UpdatePlayerInput } from "@/types/player";
 import { PlayerForm } from "./PlayerForm";
@@ -134,9 +137,11 @@ export function PlayerOSWindow({ playerId }: Props) {
 
   const handleSubmit = async (input: CreatePlayerInput | UpdatePlayerInput) => {
     if (!player) return;
-    // M3a.1 (PB4) — Passa per lo store Zustand invece di api diretta:
-    // lo store, dopo il commit SQLite, invoca bridgePlayerUpdate per
-    // propagare l'update al Y.Doc locale + Iroh broadcast ai peer.
+    // M3a.3 D5 (PB4-A fix) — Passa per lo store Zustand invece di api
+    // diretta: lo store, dopo il commit SQLite, invoca `updateYDocPlayer`
+    // (sostituto del rimosso `bridgePlayerUpdate`) per propagare l'update
+    // al Y.Doc locale [transazione LOCALE] + Iroh/Supabase broadcast.
+    // Anti-loop nativo Yjs via `transaction.local` (no flag manuale).
     await usePlayersStore.getState().updatePlayer(input as UpdatePlayerInput);
     // Re-fetch per mostrare i dati aggiornati (l'evento player-updated
     // non viene emesso da update_player — vedi M2.2 FIX A2 scope).
